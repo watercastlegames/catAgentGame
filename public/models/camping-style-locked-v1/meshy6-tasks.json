@@ -1,0 +1,53 @@
+{
+  "ai_model": "meshy-6",
+  "task_type": "image-to-3d",
+  "target_format": "glb",
+  "hd_texture": true,
+  "remove_lighting": true,
+  "target_polycount": 40000,
+  "total_consumed_credits": 120,
+  "remaining_credits_after_batch": 1906,
+  "assets": [
+    {
+      "name": "camping-supplies-cluster",
+      "task_id": "019f950d-4db2-7d99-9bee-f01e3b80daf1",
+      "consumed_credits": 30,
+      "source_image": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-references\\camping-style-locked-v1\\camping-supplies-cluster-v1.png",
+      "original_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-source\\camping-style-locked-v1\\camping-supplies-cluster-meshy6-v1.glb",
+      "web_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\public\\models\\camping-style-locked-v1\\camping-supplies-cluster-meshy6-web-v1.glb",
+      "web_file_size_bytes": 909108
+    },
+    {
+      "name": "camping-lantern",
+      "task_id": "019f950d-7d2f-7daa-a543-5c7d30a572b5",
+      "consumed_credits": 30,
+      "source_image": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-references\\camping-style-locked-v1\\camping-lantern-v1.png",
+      "original_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-source\\camping-style-locked-v1\\camping-lantern-meshy6-v1.glb",
+      "web_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\public\\models\\camping-style-locked-v1\\camping-lantern-meshy6-web-v1.glb",
+      "web_file_size_bytes": 783456
+    },
+    {
+      "name": "tropical-foliage-flowers-cluster",
+      "task_id": "019f950d-ba39-75b7-b44e-ab0f6ac41b7f",
+      "consumed_credits": 30,
+      "source_image": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-references\\camping-style-locked-v1\\tropical-foliage-flowers-cluster-v1.png",
+      "original_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-source\\camping-style-locked-v1\\tropical-foliage-flowers-cluster-meshy6-v1.glb",
+      "web_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\public\\models\\camping-style-locked-v1\\tropical-foliage-flowers-cluster-meshy6-web-v1.glb",
+      "web_file_size_bytes": 824104
+    },
+    {
+      "name": "shoreline-rock-starfish-shell-cluster",
+      "task_id": "019f950d-efed-7395-aa2c-0799a1f08b34",
+      "consumed_credits": 30,
+      "source_image": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-references\\camping-style-locked-v1\\shoreline-rock-starfish-shell-cluster-v1.png",
+      "original_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-source\\camping-style-locked-v1\\shoreline-rock-starfish-shell-cluster-meshy6-v1.glb",
+      "web_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\public\\models\\camping-style-locked-v1\\shoreline-rock-starfish-shell-cluster-meshy6-web-v1.glb",
+      "web_file_size_bytes": 627784
+    }
+  ],
+  "web_optimization": {
+    "geometry_compression": "meshopt",
+    "texture_format": "webp",
+    "texture_size": 2048
+  }
+}

@@ -88,6 +88,14 @@ const FOLDING_LAPTOP_STATION_MODEL_URL =
   "/models/camping-v5/folding-laptop-radio-station-meshy6-web-v1.glb";
 const LOW_MONITOR_STATION_MODEL_URL =
   "/models/camping-v5/low-monitor-station-meshy6-web-v1.glb";
+const CAMPING_SUPPLIES_MODEL_URL =
+  "/models/camping-style-locked-v1/camping-supplies-cluster-meshy6-web-v1.glb";
+const CAMPING_LANTERN_MODEL_URL =
+  "/models/camping-style-locked-v1/camping-lantern-meshy6-web-v1.glb";
+const TROPICAL_FOLIAGE_MODEL_URL =
+  "/models/camping-style-locked-v1/tropical-foliage-flowers-cluster-meshy6-web-v1.glb";
+const SHORELINE_DECOR_MODEL_URL =
+  "/models/camping-style-locked-v1/shoreline-rock-starfish-shell-cluster-meshy6-web-v1.glb";
 const DESK_KEYCAP_TEXTURE_URLS = [
   "/art/desk-keycap-1-top-v1.png",
   "/art/desk-keycap-2-top-v1.png",
@@ -208,6 +216,21 @@ type MeshyWorkstationPlacement = {
   height: number;
   shadowRadius: number;
   obstacle: SceneObstacle;
+};
+
+type MeshyDecorationPlacement = {
+  id: string;
+  position: THREE.Vector3;
+  rotationY: number;
+  height: number;
+  shadowRadius: number;
+  obstacle?: SceneObstacle;
+};
+
+type MeshyDecorationAsset = {
+  id: string;
+  url: string;
+  placements: MeshyDecorationPlacement[];
 };
 
 type PalmLeafSwayTarget = {
@@ -366,6 +389,90 @@ const MESHY_WORKSTATION_PLACEMENTS: MeshyWorkstationPlacement[] = [
     height: 1.12,
     shadowRadius: 0.88,
     obstacle: DESK_OBSTACLE,
+  },
+];
+const MESHY_DECORATION_ASSETS: MeshyDecorationAsset[] = [
+  {
+    id: "camping-supplies",
+    url: CAMPING_SUPPLIES_MODEL_URL,
+    placements: [
+      {
+        id: CAMPING_SUPPLY_CLUSTER_OBSTACLE.id,
+        position: CAMPING_SUPPLY_CLUSTER_POSITION,
+        rotationY: 0.12,
+        height: 0.88,
+        shadowRadius: 0.74,
+        obstacle: CAMPING_SUPPLY_CLUSTER_OBSTACLE,
+      },
+    ],
+  },
+  {
+    id: "camping-lantern",
+    url: CAMPING_LANTERN_MODEL_URL,
+    placements: [
+      {
+        id: CAMPING_LANTERN_OBSTACLE.id,
+        position: CAMPING_LANTERN_POSITION,
+        rotationY: -0.18,
+        height: 0.78,
+        shadowRadius: 0.32,
+        obstacle: CAMPING_LANTERN_OBSTACLE,
+      },
+    ],
+  },
+  {
+    id: "tropical-foliage",
+    url: TROPICAL_FOLIAGE_MODEL_URL,
+    placements: [
+      {
+        id: "foliage-northwest",
+        position: new THREE.Vector3(-3.35, 0, -3.1),
+        rotationY: 0.28,
+        height: 0.62,
+        shadowRadius: 0.45,
+      },
+      {
+        id: "foliage-northeast",
+        position: new THREE.Vector3(3.25, 0, -3.2),
+        rotationY: -0.48,
+        height: 0.68,
+        shadowRadius: 0.49,
+      },
+      {
+        id: "foliage-southwest",
+        position: new THREE.Vector3(-3.4, 0, 4.72),
+        rotationY: 0.58,
+        height: 0.58,
+        shadowRadius: 0.42,
+      },
+      {
+        id: "foliage-southeast",
+        position: new THREE.Vector3(3.32, 0, 4.82),
+        rotationY: -0.72,
+        height: 0.58,
+        shadowRadius: 0.42,
+      },
+    ],
+  },
+  {
+    id: "shoreline-decoration",
+    url: SHORELINE_DECOR_MODEL_URL,
+    placements: [
+      {
+        id: "shoreline-decoration-southwest",
+        position: new THREE.Vector3(-2.78, 0, 5.58),
+        rotationY: 0.38,
+        height: 0.52,
+        shadowRadius: 0.48,
+      },
+      {
+        id: "shoreline-decoration-southeast",
+        position: new THREE.Vector3(2.82, 0, 5.52),
+        rotationY: -0.42,
+        height: 0.46,
+        shadowRadius: 0.43,
+      },
+    ],
   },
 ];
 const SCENE_OBSTACLES = [
@@ -2134,10 +2241,6 @@ float shoreOverlayWaterSignal( vec3 color ) {
         createRockCluster(islandPropsWatercolorTexture, placement),
       );
     });
-    scene.add(
-      createCampingSupplyCluster(islandPropsWatercolorTexture),
-      createCampingLantern(islandPropsWatercolorTexture),
-    );
     const palmLeafSwayTargets: PalmLeafSwayTarget[] = [];
 
     const meshyPropLoader = new GLTFLoader();
@@ -2147,8 +2250,20 @@ float shoreOverlayWaterSignal( vec3 color ) {
       ...MESHY_WORKSTATION_PLACEMENTS.map((placement) =>
         meshyPropLoader.loadAsync(placement.url),
       ),
-    ]).then(([palmResult, ...workstationResults]) => {
+      ...MESHY_DECORATION_ASSETS.map((asset) =>
+        meshyPropLoader.loadAsync(asset.url),
+      ),
+    ]).then((propResults) => {
       if (disposed) return;
+
+      const palmResult = propResults[0];
+      const workstationResults = propResults.slice(
+        1,
+        1 + MESHY_WORKSTATION_PLACEMENTS.length,
+      );
+      const decorationResults = propResults.slice(
+        1 + MESHY_WORKSTATION_PLACEMENTS.length,
+      );
 
       if (palmResult.status === "fulfilled") {
         const palmTemplate = createMeshyPropTemplate(
@@ -2218,6 +2333,54 @@ float shoreOverlayWaterSignal( vec3 color ) {
           ),
         );
         scene.add(workstation);
+      });
+
+      decorationResults.forEach((result, index) => {
+        const asset = MESHY_DECORATION_ASSETS[index];
+        if (!asset) return;
+
+        if (result.status !== "fulfilled") {
+          if (asset.id === "camping-supplies") {
+            scene.add(
+              createCampingSupplyCluster(islandPropsWatercolorTexture),
+            );
+          } else if (asset.id === "camping-lantern") {
+            scene.add(
+              createCampingLantern(islandPropsWatercolorTexture),
+            );
+          }
+          return;
+        }
+
+        const template = createMeshyPropTemplate(
+          result.value.scene,
+          new THREE.Color(0xffffff),
+          maximumAnisotropy,
+        );
+        asset.placements.forEach((placement) => {
+          const decoration = new THREE.Group();
+          decoration.name = `${placement.id}-meshy6`;
+          decoration.position.copy(placement.position);
+          decoration.rotation.y = placement.rotationY;
+          if (placement.obstacle) {
+            decoration.userData.isNavigationObstacle = true;
+            decoration.userData.collisionBounds = {
+              ...placement.obstacle,
+            };
+          }
+
+          const visual = template.clone(true);
+          visual.scale.setScalar(placement.height);
+          decoration.add(
+            visual,
+            createMeshyPropShadow(
+              decoration.name,
+              placement.shadowRadius,
+              0.085,
+            ),
+          );
+          scene.add(decoration);
+        });
       });
 
       setLoadingProgress((value) => Math.max(value, 48));

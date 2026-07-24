@@ -81,8 +81,19 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /folding-laptop-radio-station-meshy6-web-v1\.glb/);
   assert.match(world3d, /low-monitor-station-meshy6-web-v1\.glb/);
   assert.match(world3d, /palm-tree-meshy6-web-v1\.glb/);
+  assert.match(world3d, /camping-supplies-cluster-meshy6-web-v1\.glb/);
+  assert.match(world3d, /camping-lantern-meshy6-web-v1\.glb/);
+  assert.match(
+    world3d,
+    /tropical-foliage-flowers-cluster-meshy6-web-v1\.glb/,
+  );
+  assert.match(
+    world3d,
+    /shoreline-rock-starfish-shell-cluster-meshy6-web-v1\.glb/,
+  );
   assert.match(world3d, /RoundedBoxGeometry/);
   assert.match(world3d, /MESHY_WORKSTATION_PLACEMENTS/);
+  assert.match(world3d, /MESHY_DECORATION_ASSETS/);
   assert.match(world3d, /createCodingStationInteractionOverlay/);
   assert.match(world3d, /low-monitor-workstation-live-code-screen/);
   assert.match(world3d, /desk-keycap-1-top-v1\.png/);
@@ -311,6 +322,36 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     access(
       new URL(
         "../public/models/beach-office-palm-meshy6-tasks.json",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-locked-v1/camping-supplies-cluster-meshy6-web-v1.glb",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-locked-v1/camping-lantern-meshy6-web-v1.glb",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-locked-v1/tropical-foliage-flowers-cluster-meshy6-web-v1.glb",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-locked-v1/shoreline-rock-starfish-shell-cluster-meshy6-web-v1.glb",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-locked-v1/meshy6-tasks.json",
         import.meta.url,
       ),
     ),
