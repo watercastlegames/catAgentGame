@@ -25,16 +25,21 @@ type AgentWorld3DProps = {
   statusLabel: string;
 };
 
-const CODING_DESK_TARGET = new THREE.Vector3(2.08, 0, -1.18);
-const DESK_KNEADING_EXIT_POSITION = new THREE.Vector3(2.08, 0, -0.82);
+const TENT_WORKSTATION_POSITION = new THREE.Vector3(-2.05, 0, -3.65);
+const ROUND_LAPTOP_STATION_POSITION = new THREE.Vector3(-2.2, 0, -0.42);
+const FOLDING_LAPTOP_STATION_POSITION = new THREE.Vector3(2.18, 0, -0.18);
+const LOW_MONITOR_STATION_POSITION = new THREE.Vector3(2.12, 0, 3.42);
+const LOW_MONITOR_STATION_ROTATION_Y = -0.06;
+const CODING_DESK_TARGET = new THREE.Vector3(2.12, 0, 4.12);
+const DESK_KNEADING_EXIT_POSITION = new THREE.Vector3(2.12, 0, 4.62);
 const WORLD_TARGETS: Record<AgentWorldLocation, THREE.Vector3> = {
-  entrance: new THREE.Vector3(-2.6, 0, 4.7),
-  general: new THREE.Vector3(-0.7, 0, -4.5),
+  entrance: new THREE.Vector3(-1.65, 0, 5.05),
+  general: new THREE.Vector3(-2.05, 0, -2.48),
   coding: CODING_DESK_TARGET,
-  design: new THREE.Vector3(-1.3, 0, 1.1),
-  music: new THREE.Vector3(2.8, 0, 1.6),
-  queue: new THREE.Vector3(-2.8, 0, 2.4),
-  office: new THREE.Vector3(2.25, 0, 6.72),
+  design: new THREE.Vector3(-2.2, 0, 0.78),
+  music: new THREE.Vector3(2.18, 0, 1.18),
+  queue: new THREE.Vector3(-0.25, 0, 2.45),
+  office: new THREE.Vector3(-2.05, 0, -2.48),
 };
 
 const LOCATION_LABELS: Record<AgentWorldLocation, string> = {
@@ -71,10 +76,16 @@ const CAT_MODEL_URL =
   "/models/PolyArt/Animals/Cats/FBX/Lowpoly_Cat_Blue.fbx";
 const CAT_ANIMATIONS_URL =
   "/models/PolyArt/Animals/Cats/FBX/Lowpoly_Cat_Animations_IP.fbx";
-const BEACH_OFFICE_HUT_MODEL_URL =
-  "/models/beach-office-hut-meshy6-web-v1.glb";
 const PALM_TREE_MODEL_URL =
   "/models/palm-tree-meshy6-web-v1.glb";
+const TENT_WORKSTATION_MODEL_URL =
+  "/models/camping-v5/tent-workstation-meshy6-web-v1.glb";
+const ROUND_LAPTOP_STATION_MODEL_URL =
+  "/models/camping-v5/round-laptop-station-meshy6-web-v1.glb";
+const FOLDING_LAPTOP_STATION_MODEL_URL =
+  "/models/camping-v5/folding-laptop-radio-station-meshy6-web-v1.glb";
+const LOW_MONITOR_STATION_MODEL_URL =
+  "/models/camping-v5/low-monitor-station-meshy6-web-v1.glb";
 const DESK_KEYCAP_TEXTURE_URLS = [
   "/art/desk-keycap-1-top-v1.png",
   "/art/desk-keycap-2-top-v1.png",
@@ -152,13 +163,13 @@ const AMBIENT_ANIMATIONS: AmbientAnimation[] = [
 ];
 
 const AMBIENT_WANDER_POINTS = [
-  new THREE.Vector3(-2.25, 0, -2.6),
-  new THREE.Vector3(-0.35, 0, -3.65),
-  new THREE.Vector3(4.0, 0, -2.55),
-  new THREE.Vector3(1.75, 0, 0.25),
-  new THREE.Vector3(0.5, 0, 2.65),
+  new THREE.Vector3(-0.45, 0, -2.45),
+  new THREE.Vector3(0.35, 0, -3.55),
+  new THREE.Vector3(3.7, 0, -2.45),
+  new THREE.Vector3(0.15, 0, -0.2),
+  new THREE.Vector3(0.35, 0, 2.15),
   new THREE.Vector3(-1.45, 0, 1.9),
-  new THREE.Vector3(-2.3, 0, 0.25),
+  new THREE.Vector3(-3.25, 0, 1.85),
 ];
 
 type SceneObstacle = {
@@ -169,15 +180,15 @@ type SceneObstacle = {
   maxZ: number;
 };
 
-const DESK_POSITION = new THREE.Vector3(2, 0, -1.78);
+const DESK_POSITION = LOW_MONITOR_STATION_POSITION;
 const DESK_MODEL_SCALE = 0.82 / 1.5;
-const DESK_ROTATION_Y = -0.18;
+const DESK_ROTATION_Y = LOW_MONITOR_STATION_ROTATION_Y;
 const DESK_OBSTACLE: SceneObstacle = {
-  id: "coding-desk",
-  minX: 0.9,
-  maxX: 3.1,
-  minZ: -2.45,
-  maxZ: -1.05,
+  id: "low-monitor-workstation",
+  minX: 1.08,
+  maxX: 3.18,
+  minZ: 2.65,
+  maxZ: 4.38,
 };
 
 type IslandPropPlacement = {
@@ -185,6 +196,16 @@ type IslandPropPlacement = {
   position: THREE.Vector3;
   rotationY: number;
   scale: number;
+};
+
+type MeshyWorkstationPlacement = {
+  id: string;
+  url: string;
+  position: THREE.Vector3;
+  rotationY: number;
+  height: number;
+  shadowRadius: number;
+  obstacle: SceneObstacle;
 };
 
 type PalmLeafSwayTarget = {
@@ -272,20 +293,72 @@ const BEACH_OFFICE_HUT_OBSTACLE: SceneObstacle = {
   minZ: 3.72,
   maxZ: 6.55,
 };
-const CAMPING_RADIO_TABLE_POSITION = new THREE.Vector3(-1.6, 0, 0.75);
-const CAMPING_RADIO_TABLE_OBSTACLE: SceneObstacle = {
-  id: "camping-radio-table",
-  minX: -2.35,
-  maxX: -0.85,
-  minZ: 0.15,
-  maxZ: 1.35,
+const TENT_WORKSTATION_OBSTACLE: SceneObstacle = {
+  id: "tent-workstation",
+  minX: -3.18,
+  maxX: -0.92,
+  minZ: -4.48,
+  maxZ: -2.72,
 };
+const ROUND_LAPTOP_STATION_OBSTACLE: SceneObstacle = {
+  id: "round-laptop-workstation",
+  minX: -3.18,
+  maxX: -1.2,
+  minZ: -1.32,
+  maxZ: 0.48,
+};
+const FOLDING_LAPTOP_STATION_OBSTACLE: SceneObstacle = {
+  id: "folding-laptop-radio-workstation",
+  minX: 1.02,
+  maxX: 3.32,
+  minZ: -1.12,
+  maxZ: 0.88,
+};
+const MESHY_WORKSTATION_PLACEMENTS: MeshyWorkstationPlacement[] = [
+  {
+    id: TENT_WORKSTATION_OBSTACLE.id,
+    url: TENT_WORKSTATION_MODEL_URL,
+    position: TENT_WORKSTATION_POSITION,
+    rotationY: 0.08,
+    height: 1.82,
+    shadowRadius: 0.95,
+    obstacle: TENT_WORKSTATION_OBSTACLE,
+  },
+  {
+    id: ROUND_LAPTOP_STATION_OBSTACLE.id,
+    url: ROUND_LAPTOP_STATION_MODEL_URL,
+    position: ROUND_LAPTOP_STATION_POSITION,
+    rotationY: 0.08,
+    height: 1.04,
+    shadowRadius: 0.82,
+    obstacle: ROUND_LAPTOP_STATION_OBSTACLE,
+  },
+  {
+    id: FOLDING_LAPTOP_STATION_OBSTACLE.id,
+    url: FOLDING_LAPTOP_STATION_MODEL_URL,
+    position: FOLDING_LAPTOP_STATION_POSITION,
+    rotationY: -0.12,
+    height: 1.08,
+    shadowRadius: 0.95,
+    obstacle: FOLDING_LAPTOP_STATION_OBSTACLE,
+  },
+  {
+    id: DESK_OBSTACLE.id,
+    url: LOW_MONITOR_STATION_MODEL_URL,
+    position: LOW_MONITOR_STATION_POSITION,
+    rotationY: LOW_MONITOR_STATION_ROTATION_Y,
+    height: 1.12,
+    shadowRadius: 0.88,
+    obstacle: DESK_OBSTACLE,
+  },
+];
 const SCENE_OBSTACLES = [
   DESK_OBSTACLE,
   ...PALM_TREE_OBSTACLES,
   ...ROCK_CLUSTER_OBSTACLES,
-  BEACH_OFFICE_HUT_OBSTACLE,
-  CAMPING_RADIO_TABLE_OBSTACLE,
+  TENT_WORKSTATION_OBSTACLE,
+  ROUND_LAPTOP_STATION_OBSTACLE,
+  FOLDING_LAPTOP_STATION_OBSTACLE,
 ];
 const NON_DESK_OBSTACLES = SCENE_OBSTACLES.filter(
   (obstacle) => obstacle !== DESK_OBSTACLE,
@@ -338,7 +411,10 @@ function findAvoidancePath(
     destination,
     obstacles,
     margin,
-  ).map((point) => new THREE.Vector3(point.x, 0, point.z));
+  ).map(
+    (point: { x: number; z: number }) =>
+      new THREE.Vector3(point.x, 0, point.z),
+  );
 }
 
 function disableOutline(material: THREE.Material) {
@@ -707,6 +783,81 @@ function createIllustratedDesk(textures: DeskTextureSet) {
   deskGroup.add(coffee);
 
   return { deskGroup, monitorScreenTexture };
+}
+
+function createCodingStationInteractionOverlay(
+  keycapTopTextures: THREE.Texture[],
+) {
+  const interactionGroup = new THREE.Group();
+  interactionGroup.name = "low-monitor-workstation-interaction-overlay";
+  interactionGroup.position.copy(LOW_MONITOR_STATION_POSITION);
+  interactionGroup.rotation.y = LOW_MONITOR_STATION_ROTATION_Y;
+
+  const monitorScreenTexture = createMonitorScreenTexture();
+  drawMonitorScreen(monitorScreenTexture, false, 0);
+  const monitorScreenMaterial = new THREE.MeshBasicMaterial({
+    map: monitorScreenTexture,
+    toneMapped: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
+  });
+  disableOutline(monitorScreenMaterial);
+  const monitorScreen = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.61, 0.34),
+    monitorScreenMaterial,
+  );
+  monitorScreen.name = "low-monitor-workstation-live-code-screen";
+  monitorScreen.position.set(0.17, 0.84, 0.195);
+  monitorScreen.renderOrder = 5;
+  interactionGroup.add(monitorScreen);
+
+  const keyColors = [0xf2a160, 0x9d8c9f, 0xef858a, 0xf0c175];
+  const animatedDeskKeycaps = keyColors.map((color, index) => {
+    const keycapName = `coding-desk-keycap-${index + 1}`;
+    const keycapMaterial = new THREE.MeshToonMaterial({ color });
+    const keycap = new THREE.Mesh(
+      new RoundedBoxGeometry(0.14, 0.065, 0.15, 3, 0.025),
+      keycapMaterial,
+    );
+    keycap.name = keycapName;
+    keycap.position.set(-0.28 + index * 0.17, 0.49, 0.39);
+    interactionGroup.add(keycap);
+
+    const keycapTopMaterial = new THREE.MeshBasicMaterial({
+      map: keycapTopTextures[index],
+      transparent: true,
+      alphaTest: 0.02,
+      toneMapped: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -3,
+      polygonOffsetUnits: -3,
+    });
+    disableOutline(keycapTopMaterial);
+    const keycapTop = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.12, 0.13),
+      keycapTopMaterial,
+    );
+    keycapTop.name = `${keycapName}-top-texture`;
+    keycapTop.rotation.x = -Math.PI / 2;
+    keycapTop.position.set(keycap.position.x, 0.524, keycap.position.z);
+    keycapTop.renderOrder = 6;
+    interactionGroup.add(keycapTop);
+
+    return [
+      { object: keycap as THREE.Object3D, restingY: keycap.position.y },
+      {
+        object: keycapTop as THREE.Object3D,
+        restingY: keycapTop.position.y,
+      },
+    ];
+  });
+
+  return {
+    interactionGroup,
+    monitorScreenTexture,
+    animatedDeskKeycaps,
+  };
 }
 
 function createPalmFrondGeometry(
@@ -1699,67 +1850,6 @@ float shoreOverlayWaterSignal( vec3 color ) {
       4,
       renderer.capabilities.getMaxAnisotropy(),
     );
-    const campingRadioTableTexture = textureLoader.load(
-      "/art/camping-radio-table-v1.png",
-    );
-    campingRadioTableTexture.colorSpace = THREE.SRGBColorSpace;
-    campingRadioTableTexture.anisotropy = maximumAnisotropy;
-    campingRadioTableTexture.minFilter = THREE.LinearMipmapLinearFilter;
-    campingRadioTableTexture.magFilter = THREE.LinearFilter;
-    const campingRadioTableMaterial = new THREE.MeshBasicMaterial({
-      map: campingRadioTableTexture,
-      transparent: true,
-      alphaTest: 0.025,
-      depthWrite: false,
-      toneMapped: false,
-    });
-    disableOutline(campingRadioTableMaterial);
-    const campingRadioTableBillboard = new THREE.Mesh(
-      new THREE.PlaneGeometry(1.72, 1.75),
-      campingRadioTableMaterial,
-    );
-    campingRadioTableBillboard.name = "camping-radio-table-illustration";
-    campingRadioTableBillboard.position.y = 0.88;
-    campingRadioTableBillboard.renderOrder = 2;
-    campingRadioTableBillboard.quaternion.copy(camera.quaternion);
-
-    const campingRadioTableGroup = new THREE.Group();
-    campingRadioTableGroup.name = CAMPING_RADIO_TABLE_OBSTACLE.id;
-    campingRadioTableGroup.position.copy(CAMPING_RADIO_TABLE_POSITION);
-    campingRadioTableGroup.userData.isNavigationObstacle = true;
-    campingRadioTableGroup.userData.collisionBounds = {
-      ...CAMPING_RADIO_TABLE_OBSTACLE,
-    };
-    campingRadioTableGroup.add(
-      createMeshyPropShadow(campingRadioTableGroup.name, 0.72, 0.12),
-      campingRadioTableBillboard,
-    );
-    scene.add(campingRadioTableGroup);
-
-    const deskWoodTexture = textureLoader.load(
-      "/art/desk-wood-watercolor-v1.png",
-    );
-    deskWoodTexture.colorSpace = THREE.SRGBColorSpace;
-    deskWoodTexture.wrapS = THREE.RepeatWrapping;
-    deskWoodTexture.wrapT = THREE.RepeatWrapping;
-    deskWoodTexture.repeat.set(1.6, 1.6);
-    deskWoodTexture.anisotropy = maximumAnisotropy;
-
-    const deskWatercolorGrainTexture = textureLoader.load(
-      "/art/desk-watercolor-grain-v1.png",
-    );
-    deskWatercolorGrainTexture.colorSpace = THREE.SRGBColorSpace;
-    deskWatercolorGrainTexture.wrapS = THREE.RepeatWrapping;
-    deskWatercolorGrainTexture.wrapT = THREE.RepeatWrapping;
-    deskWatercolorGrainTexture.repeat.set(1.35, 1.35);
-    deskWatercolorGrainTexture.anisotropy = maximumAnisotropy;
-
-    const deskGroundAreaTexture = textureLoader.load(
-      "/art/coding-desk-ground-illustration-v2.png",
-    );
-    deskGroundAreaTexture.colorSpace = THREE.SRGBColorSpace;
-    deskGroundAreaTexture.anisotropy = maximumAnisotropy;
-
     const deskKeycapTopTextures = DESK_KEYCAP_TEXTURE_URLS.map((url) => {
       const texture = textureLoader.load(url);
       texture.colorSpace = THREE.SRGBColorSpace;
@@ -1767,31 +1857,18 @@ float shoreOverlayWaterSignal( vec3 color ) {
       return texture;
     });
 
-    const { deskGroup, monitorScreenTexture } = createIllustratedDesk(
-      {
-        wood: deskWoodTexture,
-        watercolorGrain: deskWatercolorGrainTexture,
-        groundArea: deskGroundAreaTexture,
-        keycapTops: deskKeycapTopTextures,
-      },
+    const {
+      interactionGroup,
+      monitorScreenTexture,
+      animatedDeskKeycaps,
+    } = createCodingStationInteractionOverlay(
+      deskKeycapTopTextures,
     );
-    scene.add(deskGroup);
-    deskGroup.updateMatrixWorld(true);
-    const deskKneadingLookTarget = deskGroup.localToWorld(
-      new THREE.Vector3(0.12, 1.035, 0.18),
+    scene.add(interactionGroup);
+    interactionGroup.updateMatrixWorld(true);
+    const deskKneadingLookTarget = interactionGroup.localToWorld(
+      new THREE.Vector3(-0.02, 0.49, 0.39),
     );
-    const animatedDeskKeycaps = Array.from({ length: 4 }, (_, index) => {
-      const keycapName = `coding-desk-keycap-${index + 1}`;
-      const parts: Array<{
-        object: THREE.Object3D;
-        restingY: number;
-      }> = [];
-      deskGroup.traverse((object) => {
-        if (!object.name.startsWith(keycapName)) return;
-        parts.push({ object, restingY: object.position.y });
-      });
-      return parts;
-    });
 
     const islandPropsWatercolorTexture = textureLoader.load(
       "/art/island-props-watercolor-grain-v1.png",
@@ -1807,18 +1884,16 @@ float shoreOverlayWaterSignal( vec3 color ) {
         createRockCluster(islandPropsWatercolorTexture, placement),
       );
     });
-    const beachOfficeTextures = {
-      watercolorGrain: islandPropsWatercolorTexture,
-      wood: deskWoodTexture,
-    };
     const palmLeafSwayTargets: PalmLeafSwayTarget[] = [];
 
     const meshyPropLoader = new GLTFLoader();
     meshyPropLoader.setMeshoptDecoder(MeshoptDecoder);
     void Promise.allSettled([
       meshyPropLoader.loadAsync(PALM_TREE_MODEL_URL),
-      meshyPropLoader.loadAsync(BEACH_OFFICE_HUT_MODEL_URL),
-    ]).then(([palmResult, officeResult]) => {
+      ...MESHY_WORKSTATION_PLACEMENTS.map((placement) =>
+        meshyPropLoader.loadAsync(placement.url),
+      ),
+    ]).then(([palmResult, ...workstationResults]) => {
       if (disposed) return;
 
       if (palmResult.status === "fulfilled") {
@@ -1863,28 +1938,33 @@ float shoreOverlayWaterSignal( vec3 color ) {
         });
       }
 
-      if (officeResult.status === "fulfilled") {
-        const office = new THREE.Group();
-        office.name = `${BEACH_OFFICE_HUT_OBSTACLE.id}-meshy6`;
-        office.position.set(2.35, 0, 5.12);
-        office.rotation.y = THREE.MathUtils.degToRad(-70);
-        office.userData.isNavigationObstacle = true;
-        office.userData.collisionBounds = {
-          ...BEACH_OFFICE_HUT_OBSTACLE,
-        };
+      workstationResults.forEach((result, index) => {
+        const placement = MESHY_WORKSTATION_PLACEMENTS[index];
+        if (!placement || result.status !== "fulfilled") return;
 
-        const officeVisual = createMeshyPropTemplate(
-          officeResult.value.scene,
+        const workstation = new THREE.Group();
+        workstation.name = `${placement.id}-meshy6`;
+        workstation.position.copy(placement.position);
+        workstation.rotation.y = placement.rotationY;
+        workstation.userData.isNavigationObstacle = true;
+        workstation.userData.collisionBounds = { ...placement.obstacle };
+
+        const visual = createMeshyPropTemplate(
+          result.value.scene,
           new THREE.Color(0xffffff),
           maximumAnisotropy,
         );
-        officeVisual.scale.setScalar(2.72);
-        office.add(officeVisual);
-        office.add(createMeshyPropShadow(office.name, 1.72, 0.13));
-        scene.add(office);
-      } else {
-        scene.add(createBeachOfficeHut(beachOfficeTextures));
-      }
+        visual.scale.setScalar(placement.height);
+        workstation.add(
+          visual,
+          createMeshyPropShadow(
+            workstation.name,
+            placement.shadowRadius,
+            0.1,
+          ),
+        );
+        scene.add(workstation);
+      });
 
       setLoadingProgress((value) => Math.max(value, 48));
     });
@@ -2678,7 +2758,6 @@ float shoreOverlayWaterSignal( vec3 color ) {
       camera.zoom = worldZoomCurrent;
       camera.updateProjectionMatrix();
       camera.lookAt(cameraLookAt);
-      campingRadioTableBillboard.quaternion.copy(camera.quaternion);
       outlineEffect.render(scene, camera);
     });
 
