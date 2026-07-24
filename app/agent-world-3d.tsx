@@ -272,11 +272,20 @@ const BEACH_OFFICE_HUT_OBSTACLE: SceneObstacle = {
   minZ: 3.72,
   maxZ: 6.55,
 };
+const CAMPING_RADIO_TABLE_POSITION = new THREE.Vector3(-1.6, 0, 0.75);
+const CAMPING_RADIO_TABLE_OBSTACLE: SceneObstacle = {
+  id: "camping-radio-table",
+  minX: -2.35,
+  maxX: -0.85,
+  minZ: 0.15,
+  maxZ: 1.35,
+};
 const SCENE_OBSTACLES = [
   DESK_OBSTACLE,
   ...PALM_TREE_OBSTACLES,
   ...ROCK_CLUSTER_OBSTACLES,
   BEACH_OFFICE_HUT_OBSTACLE,
+  CAMPING_RADIO_TABLE_OBSTACLE,
 ];
 const NON_DESK_OBSTACLES = SCENE_OBSTACLES.filter(
   (obstacle) => obstacle !== DESK_OBSTACLE,
@@ -1690,6 +1699,43 @@ float shoreOverlayWaterSignal( vec3 color ) {
       4,
       renderer.capabilities.getMaxAnisotropy(),
     );
+    const campingRadioTableTexture = textureLoader.load(
+      "/art/camping-radio-table-v1.png",
+    );
+    campingRadioTableTexture.colorSpace = THREE.SRGBColorSpace;
+    campingRadioTableTexture.anisotropy = maximumAnisotropy;
+    campingRadioTableTexture.minFilter = THREE.LinearMipmapLinearFilter;
+    campingRadioTableTexture.magFilter = THREE.LinearFilter;
+    const campingRadioTableMaterial = new THREE.MeshBasicMaterial({
+      map: campingRadioTableTexture,
+      transparent: true,
+      alphaTest: 0.025,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    disableOutline(campingRadioTableMaterial);
+    const campingRadioTableBillboard = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.72, 1.75),
+      campingRadioTableMaterial,
+    );
+    campingRadioTableBillboard.name = "camping-radio-table-illustration";
+    campingRadioTableBillboard.position.y = 0.88;
+    campingRadioTableBillboard.renderOrder = 2;
+    campingRadioTableBillboard.quaternion.copy(camera.quaternion);
+
+    const campingRadioTableGroup = new THREE.Group();
+    campingRadioTableGroup.name = CAMPING_RADIO_TABLE_OBSTACLE.id;
+    campingRadioTableGroup.position.copy(CAMPING_RADIO_TABLE_POSITION);
+    campingRadioTableGroup.userData.isNavigationObstacle = true;
+    campingRadioTableGroup.userData.collisionBounds = {
+      ...CAMPING_RADIO_TABLE_OBSTACLE,
+    };
+    campingRadioTableGroup.add(
+      createMeshyPropShadow(campingRadioTableGroup.name, 0.72, 0.12),
+      campingRadioTableBillboard,
+    );
+    scene.add(campingRadioTableGroup);
+
     const deskWoodTexture = textureLoader.load(
       "/art/desk-wood-watercolor-v1.png",
     );
@@ -2632,6 +2678,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       camera.zoom = worldZoomCurrent;
       camera.updateProjectionMatrix();
       camera.lookAt(cameraLookAt);
+      campingRadioTableBillboard.quaternion.copy(camera.quaternion);
       outlineEffect.render(scene, camera);
     });
 

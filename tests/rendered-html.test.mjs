@@ -202,6 +202,14 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   );
   assert.match(world3d, /createMeshyPropShadow/);
   assert.match(world3d, /meshyPropLoader\.setMeshoptDecoder/);
+  assert.match(world3d, /camping-radio-table-v1\.png/);
+  assert.match(world3d, /CAMPING_RADIO_TABLE_POSITION/);
+  assert.match(world3d, /CAMPING_RADIO_TABLE_OBSTACLE/);
+  assert.match(world3d, /camping-radio-table-illustration/);
+  assert.match(
+    world3d,
+    /campingRadioTableBillboard\.quaternion\.copy\(camera\.quaternion\)/,
+  );
   assert.match(world3d, /3\.05 \* placement\.scale/);
   assert.match(world3d, /officeVisual\.scale\.setScalar\(2\.72\)/);
   assert.match(world3d, /beach-office-thatched-roof/);
@@ -286,6 +294,12 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     access(
       new URL(
         "../public/art/coding-desk-ground-illustration-v2.png",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/art/camping-radio-table-v1.png",
         import.meta.url,
       ),
     ),
