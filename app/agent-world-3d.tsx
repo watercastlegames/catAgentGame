@@ -66,6 +66,7 @@ const DESK_KNEADING_DURATION_SECONDS = 7;
 const DESK_CONTACT_MARGIN = 0.2;
 const DESK_KEYCAP_PRESS_DEPTH = 0.052;
 const DESK_KEYCAP_PRESS_HZ = 1.05;
+const MONITOR_CODE_FRAME_RATE = 8;
 const CAT_MODEL_URL =
   "/models/PolyArt/Animals/Cats/FBX/Lowpoly_Cat_Blue.fbx";
 const CAT_ANIMATIONS_URL =
@@ -352,6 +353,102 @@ type DeskTextureSet = {
   keycapTops: THREE.Texture[];
 };
 
+function createMonitorScreenTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 288;
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
+  return texture;
+}
+
+function drawMonitorScreen(
+  texture: THREE.CanvasTexture,
+  isCoding: boolean,
+  elapsed: number,
+) {
+  const canvas = texture.image as HTMLCanvasElement;
+  const context = canvas.getContext("2d");
+  if (!context) return;
+
+  if (!isCoding) {
+    const idleGradient = context.createLinearGradient(
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+    idleGradient.addColorStop(0, "#7f8586");
+    idleGradient.addColorStop(1, "#a6a7a2");
+    context.fillStyle = idleGradient;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "rgba(255, 255, 255, 0.22)";
+    context.fillRect(0, canvas.height - 12, canvas.width, 12);
+    context.fillStyle = "rgba(55, 65, 67, 0.5)";
+    context.font = "600 20px ui-monospace, SFMono-Regular, Consolas, monospace";
+    context.textAlign = "center";
+    context.fillText("STANDBY", canvas.width / 2, canvas.height / 2 + 7);
+    texture.needsUpdate = true;
+    return;
+  }
+
+  context.fillStyle = "#111827";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "#1f2937";
+  context.fillRect(0, 0, canvas.width, 38);
+  ["#fb7185", "#fbbf24", "#4ade80"].forEach((color, index) => {
+    context.beginPath();
+    context.arc(18 + index * 20, 19, 6, 0, Math.PI * 2);
+    context.fillStyle = color;
+    context.fill();
+  });
+  context.fillStyle = "#cbd5e1";
+  context.font = "600 16px ui-monospace, SFMono-Regular, Consolas, monospace";
+  context.textAlign = "left";
+  context.fillText("kneading.ts", 86, 25);
+
+  const codeLines = [
+    'const paws = ["left", "right"];',
+    "while (cat.isKneading) {",
+    "  keyboard.press(paws[step % 2]);",
+    '  monitor.render("coding");',
+    "  await nap(120);",
+    "}",
+  ];
+  const scrollStep = Math.floor(elapsed * 1.4) % codeLines.length;
+  context.font = "500 17px ui-monospace, SFMono-Regular, Consolas, monospace";
+  codeLines.forEach((_, lineIndex) => {
+    const sourceIndex = (lineIndex + scrollStep) % codeLines.length;
+    const y = 70 + lineIndex * 31;
+    context.fillStyle = "#64748b";
+    context.fillText(String(sourceIndex + 1).padStart(2, "0"), 18, y);
+    context.fillStyle =
+      sourceIndex === 0
+        ? "#67e8f9"
+        : sourceIndex === 1 || sourceIndex === 5
+          ? "#c4b5fd"
+          : sourceIndex === 3
+            ? "#fda4af"
+            : "#e2e8f0";
+    context.fillText(codeLines[sourceIndex], 58, y);
+  });
+
+  const cursorVisible = Math.floor(elapsed * 4) % 2 === 0;
+  if (cursorVisible) {
+    context.fillStyle = "#fbbf24";
+    context.fillRect(58, 250, 10, 20);
+  }
+  context.fillStyle = "#0f766e";
+  context.fillRect(0, canvas.height - 18, canvas.width, 18);
+  context.fillStyle = "#ccfbf1";
+  context.font = "600 12px ui-monospace, SFMono-Regular, Consolas, monospace";
+  context.fillText("CATCODE   UTF-8   RUNNING", 14, canvas.height - 5);
+  texture.needsUpdate = true;
+}
+
 function createIllustratedDesk(textures: DeskTextureSet) {
   const deskGroup = new THREE.Group();
   deskGroup.name = DESK_OBSTACLE.id;
@@ -376,7 +473,14 @@ function createIllustratedDesk(textures: DeskTextureSet) {
     map: textures.wood,
   });
   const monitorFrameMaterial = createToonMaterial(0x756b68);
-  const monitorScreenMaterial = createToonMaterial(0x9a9994);
+  const monitorScreenTexture = createMonitorScreenTexture();
+  drawMonitorScreen(monitorScreenTexture, false, 0);
+  const monitorScreenMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    map: monitorScreenTexture,
+    toneMapped: false,
+  });
+  disableOutline(monitorScreenMaterial);
   const monitorStandMaterial = createToonMaterial(0xafa6a0);
   const keypadBaseMaterial = createToonMaterial(0xf2eadf);
   const mousePadMaterial = createToonMaterial(0x968883);
@@ -564,7 +668,7 @@ function createIllustratedDesk(textures: DeskTextureSet) {
   coffee.position.set(-1.02, 1.174, 0.27);
   deskGroup.add(coffee);
 
-  return deskGroup;
+  return { deskGroup, monitorScreenTexture };
 }
 
 function createPalmFrondGeometry(
@@ -1346,11 +1450,13 @@ export default function AgentWorld3D({
       return texture;
     });
 
-    const deskGroup = createIllustratedDesk({
-      wood: deskWoodTexture,
-      watercolorGrain: deskWatercolorGrainTexture,
-      keycapTops: deskKeycapTopTextures,
-    });
+    const { deskGroup, monitorScreenTexture } = createIllustratedDesk(
+      {
+        wood: deskWoodTexture,
+        watercolorGrain: deskWatercolorGrainTexture,
+        keycapTops: deskKeycapTopTextures,
+      },
+    );
     scene.add(deskGroup);
     deskGroup.updateMatrixWorld(true);
     const deskKneadingLookTarget = deskGroup.localToWorld(
@@ -1499,6 +1605,7 @@ export default function AgentWorld3D({
     let ambientPointIndex = -1;
     let kneadingElapsed = 0;
     let kneadingBlend = 0;
+    let monitorScreenFrame = -1;
     let wasKneadingLastFrame = false;
     let wasAutonomous = AUTONOMOUS_STATUSES.has(motionRef.current.status);
     let modelProgress = 0;
@@ -2112,6 +2219,17 @@ export default function AgentWorld3D({
           object.position.y = restingY - pressDepth;
         });
       });
+      const nextMonitorScreenFrame = isKneading
+        ? Math.floor(kneadingElapsed * MONITOR_CODE_FRAME_RATE)
+        : -1;
+      if (nextMonitorScreenFrame !== monitorScreenFrame) {
+        monitorScreenFrame = nextMonitorScreenFrame;
+        drawMonitorScreen(
+          monitorScreenTexture,
+          isKneading,
+          kneadingElapsed,
+        );
+      }
 
       if (isMoving) {
         const remainingDistance =

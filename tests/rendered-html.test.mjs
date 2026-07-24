@@ -91,6 +91,12 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /coding-desk-top/);
   assert.match(world3d, /coding-desk-leg/);
   assert.match(world3d, /coding-desk-monitor-screen/);
+  assert.match(world3d, /createMonitorScreenTexture/);
+  assert.match(world3d, /drawMonitorScreen/);
+  assert.match(world3d, /kneading\.ts/);
+  assert.match(world3d, /CATCODE   UTF-8   RUNNING/);
+  assert.match(world3d, /MONITOR_CODE_FRAME_RATE = 8/);
+  assert.match(world3d, /nextMonitorScreenFrame/);
   assert.match(world3d, /coding-desk-four-key-keypad-base/);
   assert.match(world3d, /coding-desk-keycap-\$\{index \+ 1\}-top-texture/);
   assert.match(world3d, /coding-desk-coffee-cup/);
