@@ -1621,6 +1621,71 @@ float shoreWaterSignal( vec3 color ) {
     ground.position.y = -0.025;
     scene.add(ground);
 
+    const shoreWaterOverlayMaterial = new THREE.MeshBasicMaterial({
+      map: groundTexture,
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    shoreWaterOverlayMaterial.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <common>",
+        `#include <common>
+float shoreOverlayWaterSignal( vec3 color ) {
+  float turquoiseLead = ( color.g + color.b ) * 0.5 - color.r;
+  return smoothstep( 0.02, 0.14, turquoiseLead );
+}`,
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <map_fragment>",
+        `#ifdef USE_MAP
+
+  vec2 islandCenter = vec2( 0.5 );
+  vec2 coastDirection =
+    ( vMapUv - islandCenter ) /
+    max( length( vMapUv - islandCenter ), 0.001 );
+  vec4 shoreColor = texture2D( map, vMapUv );
+  float waterMask = shoreOverlayWaterSignal( shoreColor.rgb );
+  float nearbyWater = max(
+    waterMask,
+    shoreOverlayWaterSignal(
+      texture2D( map, vMapUv + coastDirection * 0.012 ).rgb
+    )
+  );
+  float foamBrightness = smoothstep(
+    0.76,
+    0.98,
+    dot( shoreColor.rgb, vec3( 0.299, 0.587, 0.114 ) )
+  );
+  float foamMask =
+    foamBrightness * smoothstep( 0.035, 0.5, nearbyWater );
+  shoreColor.a *= clamp( max( waterMask, foamMask ), 0.0, 1.0 );
+
+  #ifdef DECODE_VIDEO_TEXTURE
+
+    shoreColor = sRGBTransferEOTF( shoreColor );
+
+  #endif
+
+  diffuseColor *= shoreColor;
+
+#endif`,
+      );
+    };
+    shoreWaterOverlayMaterial.customProgramCacheKey = () =>
+      "shore-water-overlay-v2";
+    disableOutline(shoreWaterOverlayMaterial);
+    const shoreWaterOverlay = new THREE.Mesh(
+      new THREE.PlaneGeometry(10, 15),
+      shoreWaterOverlayMaterial,
+    );
+    shoreWaterOverlay.name = "animated-shore-water-overlay";
+    shoreWaterOverlay.rotation.x = -Math.PI / 2;
+    shoreWaterOverlay.position.y = -0.017;
+    shoreWaterOverlay.renderOrder = 1;
+    scene.add(shoreWaterOverlay);
+
     const maximumAnisotropy = Math.min(
       4,
       renderer.capabilities.getMaxAnisotropy(),
@@ -2149,6 +2214,17 @@ float shoreWaterSignal( vec3 color ) {
       palmLeafSwayTime += delta;
       oceanTideTime += delta;
       oceanTideUniform.value = oceanTideTime;
+      const shorelineBreath =
+        Math.sin(oceanTideTime * 0.785) * 0.82 +
+        Math.sin(oceanTideTime * 0.31 + 1.2) * 0.18;
+      const shorelineScale = 1 - shorelineBreath * 0.032;
+      shoreWaterOverlay.scale.set(
+        shorelineScale,
+        shorelineScale,
+        1,
+      );
+      shoreWaterOverlayMaterial.opacity =
+        0.9 + (shorelineBreath * 0.5 + 0.5) * 0.1;
       oceanTexture.offset.set(
         Math.sin(oceanTideTime * 0.13) * 0.011,
         Math.cos(oceanTideTime * 0.1) * 0.009,

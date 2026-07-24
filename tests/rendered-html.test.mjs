@@ -160,6 +160,11 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /tideBreath/);
   assert.match(world3d, /tideScale = tideBreath \* 0\.014/);
   assert.match(world3d, /surfaceRipple/);
+  assert.match(world3d, /shore-water-overlay-v2/);
+  assert.match(world3d, /animated-shore-water-overlay/);
+  assert.match(world3d, /shoreOverlayWaterSignal/);
+  assert.match(world3d, /shorelineScale/);
+  assert.match(world3d, /shoreWaterOverlay\.scale\.set/);
   assert.match(world3d, /oceanTexture\.offset\.set/);
   assert.doesNotMatch(world3d, /dioramaBase/);
   assert.match(world3d, /island-props-watercolor-grain-v1\.png/);
