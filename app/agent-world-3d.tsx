@@ -1542,14 +1542,14 @@ float shoreWaterSignal( vec3 color ) {
   float tideBreath =
     sin( oceanTideTime * 0.785 ) * 0.82 +
     sin( oceanTideTime * 0.31 + 1.2 ) * 0.18;
-  float tideScale = tideBreath * 0.0034;
+  float tideScale = tideBreath * 0.014;
   vec2 shoreTangent = vec2( -coastDirection.y, coastDirection.x );
   float smallCurrent =
     sin(
       oceanTideTime * 1.08 +
       vMapUv.x * 17.0 +
       vMapUv.y * 11.0
-    ) * 0.00045;
+    ) * 0.0016;
   vec2 tideUv =
     islandCenter +
     islandRadius * ( 1.0 + tideScale ) +
@@ -1581,8 +1581,16 @@ float shoreWaterSignal( vec3 color ) {
     movingWaterColor,
     movingWaterMask
   );
+  float waterSurface = max( stillWater, movingWater );
+  float surfaceRipple =
+    sin( vMapUv.x * 54.0 + oceanTideTime * 1.08 ) *
+    sin( vMapUv.y * 41.0 - oceanTideTime * 0.82 );
+  sampledDiffuseColor.rgb +=
+    vec3( 0.012, 0.026, 0.034 ) *
+    surfaceRipple *
+    waterSurface;
   float foamPulse = ( tideBreath * 0.5 + 0.5 ) * shoreFoam;
-  sampledDiffuseColor.rgb += vec3( 0.012, 0.026, 0.03 ) * foamPulse;
+  sampledDiffuseColor.rgb += vec3( 0.035, 0.065, 0.075 ) * foamPulse;
 
   #ifdef DECODE_VIDEO_TEXTURE
 
@@ -1596,7 +1604,7 @@ float shoreWaterSignal( vec3 color ) {
       );
     };
     groundMaterial.customProgramCacheKey = () =>
-      "shore-tide-breathing-v1";
+      "shore-tide-breathing-v3";
     disableOutline(groundMaterial);
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(10, 15),
