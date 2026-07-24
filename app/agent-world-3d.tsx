@@ -1518,6 +1518,85 @@ export default function AgentWorld3D({
       map: groundTexture,
       toneMapped: false,
     });
+    const oceanTideUniform = { value: 0 };
+    groundMaterial.onBeforeCompile = (shader) => {
+      shader.uniforms.oceanTideTime = oceanTideUniform;
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <common>",
+        `#include <common>
+uniform float oceanTideTime;
+
+float shoreWaterSignal( vec3 color ) {
+  float turquoiseLead = ( color.g + color.b ) * 0.5 - color.r;
+  return smoothstep( 0.025, 0.16, turquoiseLead );
+}`,
+      );
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <map_fragment>",
+        `#ifdef USE_MAP
+
+  vec2 islandCenter = vec2( 0.5 );
+  vec2 islandRadius = vMapUv - islandCenter;
+  vec2 coastDirection =
+    islandRadius / max( length( islandRadius ), 0.001 );
+  float tideBreath =
+    sin( oceanTideTime * 0.785 ) * 0.82 +
+    sin( oceanTideTime * 0.31 + 1.2 ) * 0.18;
+  float tideScale = tideBreath * 0.0034;
+  vec2 shoreTangent = vec2( -coastDirection.y, coastDirection.x );
+  float smallCurrent =
+    sin(
+      oceanTideTime * 1.08 +
+      vMapUv.x * 17.0 +
+      vMapUv.y * 11.0
+    ) * 0.00045;
+  vec2 tideUv =
+    islandCenter +
+    islandRadius * ( 1.0 + tideScale ) +
+    shoreTangent * smallCurrent;
+
+  vec4 stillWaterColor = texture2D( map, vMapUv );
+  vec4 movingWaterColor = texture2D( map, tideUv );
+  float stillWater = shoreWaterSignal( stillWaterColor.rgb );
+  float movingWater = shoreWaterSignal( movingWaterColor.rgb );
+  float nearbyWater = max(
+    stillWater,
+    shoreWaterSignal(
+      texture2D( map, vMapUv + coastDirection * 0.009 ).rgb
+    )
+  );
+  float brightFoam = smoothstep(
+    0.77,
+    0.98,
+    dot( stillWaterColor.rgb, vec3( 0.299, 0.587, 0.114 ) )
+  );
+  float shoreFoam = brightFoam * smoothstep( 0.04, 0.55, nearbyWater );
+  float movingWaterMask = clamp(
+    max( max( stillWater, movingWater ), shoreFoam ),
+    0.0,
+    1.0
+  );
+  vec4 sampledDiffuseColor = mix(
+    stillWaterColor,
+    movingWaterColor,
+    movingWaterMask
+  );
+  float foamPulse = ( tideBreath * 0.5 + 0.5 ) * shoreFoam;
+  sampledDiffuseColor.rgb += vec3( 0.012, 0.026, 0.03 ) * foamPulse;
+
+  #ifdef DECODE_VIDEO_TEXTURE
+
+    sampledDiffuseColor = sRGBTransferEOTF( sampledDiffuseColor );
+
+  #endif
+
+  diffuseColor *= sampledDiffuseColor;
+
+#endif`,
+      );
+    };
+    groundMaterial.customProgramCacheKey = () =>
+      "shore-tide-breathing-v1";
     disableOutline(groundMaterial);
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(10, 15),
@@ -1903,6 +1982,7 @@ export default function AgentWorld3D({
     const avoidanceWaypoints: THREE.Vector3[] = [];
     const clock = new THREE.Clock();
     let palmLeafSwayTime = 0;
+    let oceanTideTime = 0;
 
     const updateSize = () => {
       const width = Math.max(host.clientWidth, 1);
@@ -2052,6 +2132,12 @@ export default function AgentWorld3D({
     renderer.setAnimationLoop(() => {
       const delta = Math.min(clock.getDelta(), 0.05);
       palmLeafSwayTime += delta;
+      oceanTideTime += delta;
+      oceanTideUniform.value = oceanTideTime;
+      oceanTexture.offset.set(
+        Math.sin(oceanTideTime * 0.13) * 0.011,
+        Math.cos(oceanTideTime * 0.1) * 0.009,
+      );
       palmLeafSwayTargets.forEach(({ mesh, phase }) => {
         if (!mesh.morphTargetInfluences) return;
         mesh.morphTargetInfluences[0] =
