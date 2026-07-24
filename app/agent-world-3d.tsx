@@ -24,10 +24,11 @@ type AgentWorld3DProps = {
   statusLabel: string;
 };
 
+const CODING_DESK_TARGET = new THREE.Vector3(2.08, 0, -0.82);
 const WORLD_TARGETS: Record<AgentWorldLocation, THREE.Vector3> = {
   entrance: new THREE.Vector3(-2.6, 0, 4.7),
   general: new THREE.Vector3(-0.7, 0, -4.5),
-  coding: new THREE.Vector3(2.1, 0, -0.45),
+  coding: CODING_DESK_TARGET,
   design: new THREE.Vector3(-1.3, 0, 1.1),
   music: new THREE.Vector3(2.8, 0, 1.6),
   queue: new THREE.Vector3(-2.8, 0, 2.4),
@@ -57,6 +58,11 @@ const AMBIENT_MOVE_SPEED = 0.46;
 const TASK_MOVE_SPEED = 1.35;
 const AMBIENT_ARRIVAL_DISTANCE = 0.045;
 const TASK_ARRIVAL_DISTANCE = 0.025;
+const DESK_KNEADING_ANIMATION_KEY = "desk-knead";
+const DESK_KNEADING_ANIMATION_SUFFIX = "|Caress_idle";
+const DESK_KNEADING_DURATION_SECONDS = 7;
+const DESK_KEYCAP_PRESS_DEPTH = 0.052;
+const DESK_KEYCAP_PRESS_HZ = 1.05;
 const CAT_MODEL_URL =
   "/models/PolyArt/Animals/Cats/FBX/Lowpoly_Cat_Blue.fbx";
 const CAT_ANIMATIONS_URL =
@@ -98,14 +104,6 @@ const AMBIENT_ANIMATIONS: AmbientAnimation[] = [
     minSeconds: 4,
     maxSeconds: 7,
     timeScale: 0.78,
-  },
-  {
-    key: "idle-play",
-    suffix: "|Caress_idle",
-    label: "혼자 장난치는 중",
-    minSeconds: 4,
-    maxSeconds: 6.5,
-    timeScale: 0.85,
   },
   {
     key: "sit",
@@ -1415,6 +1413,22 @@ export default function AgentWorld3D({
       keycapTops: deskKeycapTopTextures,
     });
     scene.add(deskGroup);
+    deskGroup.updateMatrixWorld(true);
+    const deskKneadingLookTarget = deskGroup.localToWorld(
+      new THREE.Vector3(0.12, 1.035, 0.18),
+    );
+    const animatedDeskKeycaps = Array.from({ length: 4 }, (_, index) => {
+      const keycapName = `coding-desk-keycap-${index + 1}`;
+      const parts: Array<{
+        object: THREE.Object3D;
+        restingY: number;
+      }> = [];
+      deskGroup.traverse((object) => {
+        if (!object.name.startsWith(keycapName)) return;
+        parts.push({ object, restingY: object.position.y });
+      });
+      return parts;
+    });
 
     const islandPropsWatercolorTexture = textureLoader.load(
       "/art/island-props-watercolor-grain-v1.png",
@@ -1536,10 +1550,16 @@ export default function AgentWorld3D({
       | "resting"
       | "prewalking"
       | "walking"
-      | "settling" = "resting";
+      | "settling"
+      | "kneading" = "resting";
+    let ambientDestination: "wander" | "desk" = "wander";
+    let shouldKneadAtDeskNext = true;
+    let wanderStopsSinceKneading = 0;
     let ambientTimer = 4;
     let ambientAnimationIndex = 0;
     let ambientPointIndex = -1;
+    let kneadingElapsed = 0;
+    let kneadingBlend = 0;
     let wasAutonomous = AUTONOMOUS_STATUSES.has(motionRef.current.status);
     let modelProgress = 0;
     let animationsProgress = 0;
@@ -1677,6 +1697,17 @@ export default function AgentWorld3D({
           action.timeScale = ambientAnimation.timeScale;
           animationActions.set(ambientAnimation.key, action);
         }
+
+        const kneadingClip = animationSource.animations.find((candidate) =>
+          candidate.name.endsWith(DESK_KNEADING_ANIMATION_SUFFIX),
+        );
+        if (!kneadingClip) {
+          throw new Error("Cat desk kneading animation was not found.");
+        }
+        const kneadingAction = mixer.clipAction(kneadingClip);
+        kneadingAction.setLoop(THREE.LoopRepeat, Infinity);
+        kneadingAction.timeScale = 0.92;
+        animationActions.set(DESK_KNEADING_ANIMATION_KEY, kneadingAction);
 
         playAnimation("idle-look", 0);
 
@@ -1857,6 +1888,7 @@ export default function AgentWorld3D({
         mixer !== null &&
         AUTONOMOUS_STATUSES.has(motionRef.current.status);
       let isMoving = false;
+      let isKneading = false;
       let movementSpeed = TASK_MOVE_SPEED;
 
       if (isAutonomous && !wasAutonomous) {
@@ -1896,29 +1928,54 @@ export default function AgentWorld3D({
           ambientTimer -= delta;
 
           if (ambientTimer <= 0) {
-            let nextPointIndex = ambientPointIndex;
-            for (let attempt = 0; attempt < 8; attempt += 1) {
-              const candidateIndex = Math.floor(
-                Math.random() * AMBIENT_WANDER_POINTS.length,
-              );
-              const candidate = AMBIENT_WANDER_POINTS[candidateIndex];
-              if (
-                candidateIndex !== ambientPointIndex &&
-                currentPosition.distanceTo(candidate) > 1.1
-              ) {
-                nextPointIndex = candidateIndex;
-                break;
+            if (shouldKneadAtDeskNext) {
+              ambientDestination = "desk";
+              ambientTarget.copy(CODING_DESK_TARGET);
+              shouldKneadAtDeskNext = false;
+              wanderStopsSinceKneading = 0;
+              setAmbientLabel("책상으로 꾹꾹이를 하러 가는 중");
+            } else {
+              ambientDestination = "wander";
+              let nextPointIndex = ambientPointIndex;
+              for (let attempt = 0; attempt < 8; attempt += 1) {
+                const candidateIndex = Math.floor(
+                  Math.random() * AMBIENT_WANDER_POINTS.length,
+                );
+                const candidate = AMBIENT_WANDER_POINTS[candidateIndex];
+                if (
+                  candidateIndex !== ambientPointIndex &&
+                  currentPosition.distanceTo(candidate) > 1.1
+                ) {
+                  nextPointIndex = candidateIndex;
+                  break;
+                }
               }
+
+              if (nextPointIndex < 0) nextPointIndex = 0;
+              ambientPointIndex = nextPointIndex;
+              ambientTarget.copy(AMBIENT_WANDER_POINTS[ambientPointIndex]);
+              wanderStopsSinceKneading += 1;
+              shouldKneadAtDeskNext = wanderStopsSinceKneading >= 2;
+              setAmbientLabel("해변을 천천히 산책하는 중");
             }
 
-            if (nextPointIndex < 0) nextPointIndex = 0;
-            ambientPointIndex = nextPointIndex;
-            ambientTarget.copy(AMBIENT_WANDER_POINTS[ambientPointIndex]);
             ambientPhase = "walking";
             desiredPosition.copy(ambientTarget);
             isMoving = true;
             playAnimation("walk", 0.32);
-            setAmbientLabel("해변을 천천히 산책하는 중");
+          }
+        } else if (ambientPhase === "kneading") {
+          desiredPosition.copy(currentPosition);
+          ambientTimer -= delta;
+          isKneading = true;
+          playAnimation(DESK_KNEADING_ANIMATION_KEY, 0.24);
+
+          if (ambientTimer <= 0) {
+            ambientPhase = "prewalking";
+            ambientDestination = "wander";
+            ambientTimer = randomBetween(0.8, 1.1);
+            playAnimation("idle-look", 0.36);
+            setAmbientLabel("꾹꾹이를 마치고 산책을 준비하는 중");
           }
         } else if (ambientPhase === "settling") {
           desiredPosition.copy(currentPosition);
@@ -1950,10 +2007,19 @@ export default function AgentWorld3D({
           if (ambientDistance <= AMBIENT_ARRIVAL_DISTANCE) {
             currentPosition.copy(ambientTarget);
             desiredPosition.copy(currentPosition);
-            ambientPhase = "settling";
-            ambientTimer = randomBetween(1.1, 1.8);
-            playAnimation("idle-look", 0.36);
-            setAmbientLabel("걸음을 멈추고 주변을 살피는 중");
+            if (ambientDestination === "desk") {
+              ambientPhase = "kneading";
+              ambientTimer = DESK_KNEADING_DURATION_SECONDS;
+              kneadingElapsed = 0;
+              isKneading = true;
+              playAnimation(DESK_KNEADING_ANIMATION_KEY, 0.24);
+              setAmbientLabel("책상 키캡을 번갈아 꾹꾹 누르는 중");
+            } else {
+              ambientPhase = "settling";
+              ambientTimer = randomBetween(1.1, 1.8);
+              playAnimation("idle-look", 0.36);
+              setAmbientLabel("걸음을 멈추고 주변을 살피는 중");
+            }
           } else {
             isMoving = true;
             playAnimation("walk", 0.32);
@@ -1967,7 +2033,12 @@ export default function AgentWorld3D({
           playAnimation("walk", 0.28);
         } else {
           currentPosition.copy(desiredPosition);
-          playAnimation("idle-look", 0.34);
+          if (motionRef.current.location === "coding") {
+            isKneading = true;
+            playAnimation(DESK_KNEADING_ANIMATION_KEY, 0.24);
+          } else {
+            playAnimation("idle-look", 0.34);
+          }
         }
       }
 
@@ -2002,7 +2073,22 @@ export default function AgentWorld3D({
       }
 
       movementDirection.subVectors(movementGoal, currentPosition);
-      if (
+      if (isKneading && characterModel) {
+        movementDirection.subVectors(
+          deskKneadingLookTarget,
+          currentPosition,
+        );
+        const targetYaw = Math.atan2(
+          movementDirection.x,
+          movementDirection.z,
+        );
+        characterYaw = lerpAngle(
+          characterYaw,
+          targetYaw,
+          1 - Math.exp(-delta * 7),
+        );
+        characterModel.rotation.y = characterYaw;
+      } else if (
         isMoving &&
         characterModel &&
         movementDirection.lengthSq() > 0.001
@@ -2020,6 +2106,36 @@ export default function AgentWorld3D({
       }
 
       mixer?.update(delta);
+      kneadingBlend = THREE.MathUtils.damp(
+        kneadingBlend,
+        isKneading ? 1 : 0,
+        12,
+        delta,
+      );
+      if (isKneading) {
+        kneadingElapsed += delta;
+      } else if (kneadingBlend < 0.001) {
+        kneadingElapsed = 0;
+      }
+      animatedDeskKeycaps.forEach((parts, index) => {
+        const phaseOffset =
+          index < 2 ? index * 0.16 : Math.PI + (index - 2) * 0.16;
+        const pressWave = Math.max(
+          0,
+          Math.sin(
+            kneadingElapsed * Math.PI * 2 * DESK_KEYCAP_PRESS_HZ +
+              phaseOffset,
+          ),
+        );
+        const pressDepth =
+          Math.pow(pressWave, 2.4) *
+          DESK_KEYCAP_PRESS_DEPTH *
+          kneadingBlend;
+        parts.forEach(({ object, restingY }) => {
+          object.position.y = restingY - pressDepth;
+        });
+      });
+
       if (isMoving) {
         const remainingDistance =
           currentPosition.distanceTo(movementGoal);

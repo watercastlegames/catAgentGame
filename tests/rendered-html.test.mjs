@@ -105,6 +105,12 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /\|Walk_F/);
   assert.match(world3d, /\|Idle_2/);
   assert.match(world3d, /\|Caress_idle/);
+  assert.match(world3d, /DESK_KNEADING_ANIMATION_KEY/);
+  assert.match(world3d, /DESK_KNEADING_DURATION_SECONDS = 7/);
+  assert.match(world3d, /DESK_KEYCAP_PRESS_DEPTH = 0\.052/);
+  assert.match(world3d, /ambientPhase === "kneading"/);
+  assert.match(world3d, /animatedDeskKeycaps/);
+  assert.match(world3d, /책상 키캡을 번갈아 꾹꾹 누르는 중/);
   assert.match(world3d, /\|Sitting_Idle/);
   assert.match(world3d, /\|Sitting_idle_2/);
   assert.match(world3d, /\|Sitting_idle_3/);
