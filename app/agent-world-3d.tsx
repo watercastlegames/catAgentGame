@@ -75,8 +75,6 @@ const BEACH_OFFICE_HUT_MODEL_URL =
   "/models/beach-office-hut-meshy6-web-v1.glb";
 const PALM_TREE_MODEL_URL =
   "/models/palm-tree-meshy6-web-v1.glb";
-const NORTHERN_PALM_TRUNK_COLOR = new THREE.Color(0xb8794f);
-const NORTHERN_PALM_TRUNK_SHADER_VERSION = "north-palms-brown-v1";
 const DESK_KEYCAP_TEXTURE_URLS = [
   "/art/desk-keycap-1-top-v1.png",
   "/art/desk-keycap-2-top-v1.png",
@@ -193,14 +191,14 @@ const PALM_TREE_PLACEMENTS: IslandPropPlacement[] = [
   {
     id: "palm-tree-northwest",
     position: new THREE.Vector3(-3.55, 0, -4.85),
-    rotationY: 0.36,
+    rotationY: 0.78,
     scale: 1.12,
   },
   {
     id: "palm-tree-northeast",
     position: new THREE.Vector3(3.55, 0, -4.55),
-    rotationY: -0.42,
-    scale: 1.04,
+    rotationY: 0.78,
+    scale: 1.12,
   },
   {
     id: "palm-tree-southwest",
@@ -1261,92 +1259,6 @@ function createMeshyPropTemplate(
   return template;
 }
 
-function applyNorthernPalmTrunkBrown(root: THREE.Object3D) {
-  root.traverse((object) => {
-    if (!(object instanceof THREE.Mesh)) return;
-
-    const sourceMaterials = Array.isArray(object.material)
-      ? object.material
-      : [object.material];
-    const styledMaterials = sourceMaterials.map((sourceMaterial) => {
-      const material = sourceMaterial.clone();
-      if (
-        !(
-          material instanceof THREE.MeshStandardMaterial ||
-          material instanceof THREE.MeshPhysicalMaterial ||
-          material instanceof THREE.MeshBasicMaterial ||
-          material instanceof THREE.MeshToonMaterial
-        )
-      ) {
-        return material;
-      }
-
-      const originalOnBeforeCompile =
-        material.onBeforeCompile.bind(material);
-      material.onBeforeCompile = (shader, renderer) => {
-        originalOnBeforeCompile(shader, renderer);
-        shader.uniforms.palmTrunkColor = {
-          value: NORTHERN_PALM_TRUNK_COLOR.clone(),
-        };
-        shader.vertexShader = shader.vertexShader
-          .replace(
-            "#include <common>",
-            [
-              "#include <common>",
-              "varying vec3 vPalmModelPosition;",
-            ].join("\n"),
-          )
-          .replace(
-            "#include <begin_vertex>",
-            [
-              "#include <begin_vertex>",
-              "vPalmModelPosition = position;",
-            ].join("\n"),
-          );
-        shader.fragmentShader = shader.fragmentShader
-          .replace(
-            "#include <common>",
-            [
-              "#include <common>",
-              "uniform vec3 palmTrunkColor;",
-              "varying vec3 vPalmModelPosition;",
-            ].join("\n"),
-          )
-          .replace(
-            "#include <map_fragment>",
-            [
-              "#include <map_fragment>",
-              "float palmTrunkHeightMask = 1.0 - smoothstep(-0.18, -0.04, vPalmModelPosition.y);",
-              "float palmTrunkRadius = length(vPalmModelPosition.xz);",
-              "float palmTrunkRadiusMask = 1.0 - smoothstep(0.20, 0.28, palmTrunkRadius);",
-              "float palmTrunkMask = palmTrunkHeightMask * palmTrunkRadiusMask;",
-              "float palmTrunkTone = clamp(dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114)) * 1.5, 0.55, 1.05);",
-              "vec3 palmTrunkBrown = palmTrunkColor * palmTrunkTone;",
-              "diffuseColor.rgb = mix(diffuseColor.rgb, palmTrunkBrown, palmTrunkMask * 0.96);",
-            ].join("\n"),
-          )
-          .replace(
-            "#include <emissivemap_fragment>",
-            [
-              "#include <emissivemap_fragment>",
-              "totalEmissiveRadiance += palmTrunkColor * palmTrunkMask * 0.16;",
-            ].join("\n"),
-          );
-      };
-      material.customProgramCacheKey = () =>
-        NORTHERN_PALM_TRUNK_SHADER_VERSION;
-      material.userData.palmTrunkColor =
-        NORTHERN_PALM_TRUNK_COLOR.getHex();
-      material.needsUpdate = true;
-      return material;
-    });
-
-    object.material = Array.isArray(object.material)
-      ? styledMaterials
-      : styledMaterials[0];
-  });
-}
-
 function createMeshyPropShadow(
   name: string,
   radius: number,
@@ -1610,9 +1522,6 @@ export default function AgentWorld3D({
           }
 
           const visual = palmTemplate.clone(true);
-          if (placement.position.z < 0) {
-            applyNorthernPalmTrunkBrown(visual);
-          }
           visual.scale.setScalar(3.05 * placement.scale);
           visual.position.y = -0.24;
           palm.add(visual);
