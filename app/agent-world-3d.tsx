@@ -24,7 +24,8 @@ type AgentWorld3DProps = {
   statusLabel: string;
 };
 
-const CODING_DESK_TARGET = new THREE.Vector3(2.08, 0, -0.82);
+const CODING_DESK_TARGET = new THREE.Vector3(2.08, 0, -1.18);
+const DESK_KNEADING_EXIT_POSITION = new THREE.Vector3(2.08, 0, -0.82);
 const WORLD_TARGETS: Record<AgentWorldLocation, THREE.Vector3> = {
   entrance: new THREE.Vector3(-2.6, 0, 4.7),
   general: new THREE.Vector3(-0.7, 0, -4.5),
@@ -59,8 +60,9 @@ const TASK_MOVE_SPEED = 1.35;
 const AMBIENT_ARRIVAL_DISTANCE = 0.045;
 const TASK_ARRIVAL_DISTANCE = 0.025;
 const DESK_KNEADING_ANIMATION_KEY = "desk-knead";
-const DESK_KNEADING_ANIMATION_SUFFIX = "|Caress_idle";
+const DESK_KNEADING_ANIMATION_SUFFIX = "|Caress_sitting";
 const DESK_KNEADING_DURATION_SECONDS = 7;
+const DESK_CONTACT_MARGIN = 0.2;
 const DESK_KEYCAP_PRESS_DEPTH = 0.052;
 const DESK_KEYCAP_PRESS_HZ = 1.05;
 const CAT_MODEL_URL =
@@ -287,6 +289,19 @@ function isInsideObstacle(
     point.x < obstacle.maxX &&
     point.z > obstacle.minZ &&
     point.z < obstacle.maxZ
+  );
+}
+
+function isTouchingObstacle(
+  point: THREE.Vector3,
+  obstacle: SceneObstacle,
+  margin: number,
+) {
+  return (
+    point.x >= obstacle.minX - margin &&
+    point.x <= obstacle.maxX + margin &&
+    point.z >= obstacle.minZ - margin &&
+    point.z <= obstacle.maxZ + margin
   );
 }
 
@@ -1560,6 +1575,7 @@ export default function AgentWorld3D({
     let ambientPointIndex = -1;
     let kneadingElapsed = 0;
     let kneadingBlend = 0;
+    let wasKneadingLastFrame = false;
     let wasAutonomous = AUTONOMOUS_STATUSES.has(motionRef.current.status);
     let modelProgress = 0;
     let animationsProgress = 0;
@@ -2042,6 +2058,21 @@ export default function AgentWorld3D({
         }
       }
 
+      if (
+        !isKneading &&
+        wasKneadingLastFrame &&
+        isInsideObstacle(currentPosition, DESK_OBSTACLE)
+      ) {
+        currentPosition.copy(DESK_KNEADING_EXIT_POSITION);
+        activeAvoidanceWaypoint = null;
+        lastNavigationTarget.copy(currentPosition);
+      }
+      const wantsDeskInteraction =
+        (isAutonomous &&
+          ambientDestination === "desk" &&
+          ambientPhase === "walking") ||
+        (!isAutonomous && motionRef.current.location === "coding");
+
       const walkAction = animationActions.get("walk");
       if (walkAction && isMoving) {
         walkAction.timeScale = isAutonomous ? 0.62 : 0.92;
@@ -2148,18 +2179,49 @@ export default function AgentWorld3D({
             stepDistance / remainingDistance,
           );
         }
-        const wouldCollide = SCENE_OBSTACLES.some((obstacle) =>
-          isInsideObstacle(nextPosition, obstacle),
-        );
-        if (!wouldCollide) {
-          currentPosition.copy(nextPosition);
-        } else {
-          activeAvoidanceWaypoint = findAvoidanceWaypoint(
-            currentPosition,
-            desiredPosition,
+        const touchesDesk =
+          wantsDeskInteraction &&
+          isTouchingObstacle(
+            nextPosition,
+            DESK_OBSTACLE,
+            DESK_CONTACT_MARGIN,
           );
+        if (touchesDesk) {
+          currentPosition.copy(CODING_DESK_TARGET);
+          desiredPosition.copy(currentPosition);
+          movementGoal.copy(currentPosition);
+          activeAvoidanceWaypoint = null;
+          isMoving = false;
+          isKneading = true;
+          kneadingElapsed = 0;
+          playAnimation(DESK_KNEADING_ANIMATION_KEY, 0.24);
+          if (isAutonomous) {
+            ambientPhase = "kneading";
+            ambientTimer = DESK_KNEADING_DURATION_SECONDS;
+            setAmbientLabel("책상 안쪽에 앉아 키캡 꾹꾹이 중");
+          }
+        } else {
+          const wouldCollide = SCENE_OBSTACLES.some((obstacle) =>
+            isInsideObstacle(nextPosition, obstacle),
+          );
+          if (!wouldCollide) {
+            currentPosition.copy(nextPosition);
+          } else {
+            activeAvoidanceWaypoint = findAvoidanceWaypoint(
+              currentPosition,
+              desiredPosition,
+            );
+          }
         }
       }
+      if (
+        isKneading &&
+        !isInsideObstacle(currentPosition, DESK_OBSTACLE)
+      ) {
+        currentPosition.copy(CODING_DESK_TARGET);
+        activeAvoidanceWaypoint = null;
+      }
+      wasKneadingLastFrame = isKneading;
       characterRoot.position.x = currentPosition.x;
       characterRoot.position.z = currentPosition.z;
       characterVisual.position.y = 0;
