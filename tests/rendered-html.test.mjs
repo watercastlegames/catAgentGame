@@ -145,7 +145,7 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /몸을 일으키고 산책을 준비하는 중/);
   assert.match(world3d, /해변을 천천히 산책하는 중/);
   assert.match(world3d, /간식을 먹고 우유를 마시는 중/);
-  assert.match(world3d, /beach-island-ocean-v3\.png/);
+  assert.match(world3d, /beach-island-ocean-v4-style-locked\.png/);
   assert.match(world3d, /ocean-water-tile-v1\.png/);
   assert.match(world3d, /extended-ocean-floor/);
   assert.match(world3d, /new THREE\.PlaneGeometry\(42, 42\)/);
@@ -170,11 +170,15 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /TENT_WORKSTATION_OBSTACLE/);
   assert.match(world3d, /ROUND_LAPTOP_STATION_OBSTACLE/);
   assert.match(world3d, /FOLDING_LAPTOP_STATION_OBSTACLE/);
+  assert.match(world3d, /CAMPING_SUPPLY_CLUSTER_OBSTACLE/);
+  assert.match(world3d, /CAMPING_LANTERN_OBSTACLE/);
   assert.doesNotMatch(world3d, /BEACH_BENCH_OBSTACLE/);
   assert.match(world3d, /office: new THREE\.Vector3\(-2\.05, 0, -2\.48\)/);
   assert.match(world3d, /createPalmFrondGeometry/);
   assert.match(world3d, /createPalmTree/);
   assert.match(world3d, /createRockCluster/);
+  assert.match(world3d, /createCampingSupplyCluster/);
+  assert.match(world3d, /createCampingLantern/);
   assert.doesNotMatch(world3d, /createBeachOfficeBench/);
   assert.match(world3d, /createMeshyPropTemplate/);
   assert.match(world3d, /ensurePalmLeafSwayMorphTargets/);
@@ -230,7 +234,10 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
 
   await Promise.all([
     access(
-      new URL("../public/art/beach-island-ocean-v3.png", import.meta.url),
+      new URL(
+        "../public/art/beach-island-ocean-v4-style-locked.png",
+        import.meta.url,
+      ),
     ),
     access(
       new URL("../public/art/ocean-water-tile-v1.png", import.meta.url),

@@ -30,6 +30,8 @@ const ROUND_LAPTOP_STATION_POSITION = new THREE.Vector3(-2.2, 0, -0.42);
 const FOLDING_LAPTOP_STATION_POSITION = new THREE.Vector3(2.18, 0, -0.18);
 const LOW_MONITOR_STATION_POSITION = new THREE.Vector3(2.12, 0, 3.42);
 const LOW_MONITOR_STATION_ROTATION_Y = -0.06;
+const CAMPING_SUPPLY_CLUSTER_POSITION = new THREE.Vector3(-2.72, 0, 3.42);
+const CAMPING_LANTERN_POSITION = new THREE.Vector3(-3.42, 0, -1.82);
 const CODING_DESK_TARGET = new THREE.Vector3(2.12, 0, 4.12);
 const DESK_KNEADING_EXIT_POSITION = new THREE.Vector3(2.12, 0, 4.62);
 const WORLD_TARGETS: Record<AgentWorldLocation, THREE.Vector3> = {
@@ -314,6 +316,20 @@ const FOLDING_LAPTOP_STATION_OBSTACLE: SceneObstacle = {
   minZ: -1.12,
   maxZ: 0.88,
 };
+const CAMPING_SUPPLY_CLUSTER_OBSTACLE: SceneObstacle = {
+  id: "camping-supply-cluster",
+  minX: -3.48,
+  maxX: -1.84,
+  minZ: 2.82,
+  maxZ: 4.08,
+};
+const CAMPING_LANTERN_OBSTACLE: SceneObstacle = {
+  id: "camping-lantern",
+  minX: -3.76,
+  maxX: -3.08,
+  minZ: -2.16,
+  maxZ: -1.48,
+};
 const MESHY_WORKSTATION_PLACEMENTS: MeshyWorkstationPlacement[] = [
   {
     id: TENT_WORKSTATION_OBSTACLE.id,
@@ -359,6 +375,8 @@ const SCENE_OBSTACLES = [
   TENT_WORKSTATION_OBSTACLE,
   ROUND_LAPTOP_STATION_OBSTACLE,
   FOLDING_LAPTOP_STATION_OBSTACLE,
+  CAMPING_SUPPLY_CLUSTER_OBSTACLE,
+  CAMPING_LANTERN_OBSTACLE,
 ];
 const NON_DESK_OBSTACLES = SCENE_OBSTACLES.filter(
   (obstacle) => obstacle !== DESK_OBSTACLE,
@@ -1118,6 +1136,238 @@ function createRockCluster(
   return cluster;
 }
 
+function createCampingSupplyCluster(watercolorGrain: THREE.Texture) {
+  const supplies = new THREE.Group();
+  supplies.name = CAMPING_SUPPLY_CLUSTER_OBSTACLE.id;
+  supplies.position.copy(CAMPING_SUPPLY_CLUSTER_POSITION);
+  supplies.rotation.y = 0.12;
+  supplies.userData.isNavigationObstacle = true;
+  supplies.userData.collisionBounds = {
+    ...CAMPING_SUPPLY_CLUSTER_OBSTACLE,
+  };
+
+  const createMaterial = (color: number) =>
+    new THREE.MeshToonMaterial({
+      color,
+      map: watercolorGrain,
+    });
+  const wickerMaterial = createMaterial(0xb98a50);
+  const wickerDarkMaterial = createMaterial(0x8e623e);
+  const blanketCreamMaterial = createMaterial(0xf2e4cc);
+  const blanketCoralMaterial = createMaterial(0xd98270);
+  const coolerMaterial = createMaterial(0xd97b6d);
+  const coolerLightMaterial = createMaterial(0xf1e9dc);
+  const coolerHandleMaterial = createMaterial(0xb4aaa0);
+  const mugMaterial = createMaterial(0x79aeb1);
+  const coffeeMaterial = createMaterial(0x6d4936);
+
+  const shadowMaterial = new THREE.MeshBasicMaterial({
+    color: 0x6a5946,
+    transparent: true,
+    opacity: 0.12,
+    depthWrite: false,
+  });
+  disableOutline(shadowMaterial);
+  const shadow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.96, 40),
+    shadowMaterial,
+  );
+  shadow.name = "camping-supply-cluster-contact-shadow";
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.set(0, 0.008, 0.02);
+  shadow.scale.set(1.25, 0.72, 1);
+  supplies.add(shadow);
+
+  const basket = new THREE.Mesh(
+    new RoundedBoxGeometry(0.92, 0.42, 0.64, 3, 0.12),
+    wickerMaterial,
+  );
+  basket.name = "camping-wicker-basket";
+  basket.position.set(-0.38, 0.24, -0.02);
+  supplies.add(basket);
+
+  for (const y of [0.11, 0.25, 0.38]) {
+    const basketBand = new THREE.Mesh(
+      new RoundedBoxGeometry(0.97, 0.035, 0.68, 2, 0.012),
+      wickerDarkMaterial,
+    );
+    basketBand.name = "camping-wicker-basket-band";
+    basketBand.position.set(-0.38, y, -0.02);
+    supplies.add(basketBand);
+  }
+
+  const basketHandle = new THREE.Mesh(
+    new THREE.TorusGeometry(0.39, 0.045, 8, 32, Math.PI),
+    wickerDarkMaterial,
+  );
+  basketHandle.name = "camping-wicker-basket-handle";
+  basketHandle.position.set(-0.38, 0.48, -0.03);
+  supplies.add(basketHandle);
+
+  const blanket = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22, 0.22, 0.62, 24),
+    blanketCreamMaterial,
+  );
+  blanket.name = "camping-rolled-blanket";
+  blanket.position.set(-0.38, 0.52, 0.02);
+  blanket.rotation.z = Math.PI / 2;
+  supplies.add(blanket);
+
+  for (const x of [-0.58, -0.38, -0.18]) {
+    const blanketStripe = new THREE.Mesh(
+      new THREE.TorusGeometry(0.222, 0.042, 7, 22),
+      blanketCoralMaterial,
+    );
+    blanketStripe.name = "camping-rolled-blanket-stripe";
+    blanketStripe.position.set(x, 0.52, 0.02);
+    blanketStripe.rotation.y = Math.PI / 2;
+    supplies.add(blanketStripe);
+  }
+
+  const coolerBody = new THREE.Mesh(
+    new RoundedBoxGeometry(0.76, 0.54, 0.58, 3, 0.1),
+    coolerMaterial,
+  );
+  coolerBody.name = "camping-coral-cooler";
+  coolerBody.position.set(0.5, 0.3, 0.08);
+  supplies.add(coolerBody);
+
+  const coolerLid = new THREE.Mesh(
+    new RoundedBoxGeometry(0.82, 0.15, 0.64, 3, 0.1),
+    coolerLightMaterial,
+  );
+  coolerLid.name = "camping-cooler-cream-lid";
+  coolerLid.position.set(0.5, 0.61, 0.08);
+  supplies.add(coolerLid);
+
+  const coolerHandle = new THREE.Mesh(
+    new THREE.TorusGeometry(0.37, 0.035, 7, 28, Math.PI),
+    coolerHandleMaterial,
+  );
+  coolerHandle.name = "camping-cooler-handle";
+  coolerHandle.position.set(0.5, 0.58, 0.06);
+  coolerHandle.rotation.y = Math.PI / 2;
+  supplies.add(coolerHandle);
+
+  const mug = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.12, 0.11, 0.25, 20),
+    mugMaterial,
+  );
+  mug.name = "camping-enamel-mug";
+  mug.position.set(0.96, 0.14, 0.18);
+  supplies.add(mug);
+
+  const mugHandle = new THREE.Mesh(
+    new THREE.TorusGeometry(0.09, 0.025, 7, 20),
+    mugMaterial,
+  );
+  mugHandle.name = "camping-enamel-mug-handle";
+  mugHandle.position.set(1.08, 0.16, 0.18);
+  supplies.add(mugHandle);
+
+  const coffee = new THREE.Mesh(
+    new THREE.CircleGeometry(0.1, 20),
+    coffeeMaterial,
+  );
+  coffee.name = "camping-enamel-mug-coffee";
+  coffee.rotation.x = -Math.PI / 2;
+  coffee.position.set(0.96, 0.27, 0.18);
+  supplies.add(coffee);
+
+  return supplies;
+}
+
+function createCampingLantern(watercolorGrain: THREE.Texture) {
+  const lantern = new THREE.Group();
+  lantern.name = CAMPING_LANTERN_OBSTACLE.id;
+  lantern.position.copy(CAMPING_LANTERN_POSITION);
+  lantern.rotation.y = -0.18;
+  lantern.userData.isNavigationObstacle = true;
+  lantern.userData.collisionBounds = { ...CAMPING_LANTERN_OBSTACLE };
+
+  const brassMaterial = new THREE.MeshToonMaterial({
+    color: 0xc58d42,
+    map: watercolorGrain,
+  });
+  const darkBrassMaterial = new THREE.MeshToonMaterial({
+    color: 0x8c633d,
+    map: watercolorGrain,
+  });
+  const glowMaterial = new THREE.MeshToonMaterial({
+    color: 0xffe6a8,
+    emissive: 0xffb74d,
+    emissiveIntensity: 0.18,
+    map: watercolorGrain,
+    transparent: true,
+    opacity: 0.92,
+  });
+
+  const shadowMaterial = new THREE.MeshBasicMaterial({
+    color: 0x6a5946,
+    transparent: true,
+    opacity: 0.12,
+    depthWrite: false,
+  });
+  disableOutline(shadowMaterial);
+  const shadow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.38, 32),
+    shadowMaterial,
+  );
+  shadow.name = "camping-lantern-contact-shadow";
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.008;
+  shadow.scale.set(1.18, 0.72, 1);
+  lantern.add(shadow);
+
+  for (const [name, radius, height, y, material] of [
+    ["base", 0.31, 0.12, 0.08, darkBrassMaterial],
+    ["base-ring", 0.25, 0.1, 0.17, brassMaterial],
+    ["top-ring", 0.23, 0.1, 0.78, brassMaterial],
+    ["cap", 0.17, 0.14, 0.89, darkBrassMaterial],
+  ] as const) {
+    const part = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius * 0.88, radius, height, 20),
+      material,
+    );
+    part.name = `camping-lantern-${name}`;
+    part.position.y = y;
+    lantern.add(part);
+  }
+
+  const glass = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.17, 0.2, 0.52, 20),
+    glowMaterial,
+  );
+  glass.name = "camping-lantern-glass";
+  glass.position.y = 0.49;
+  lantern.add(glass);
+
+  for (const x of [-0.23, 0.23]) {
+    const rail = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.018, 0.018, 0.58, 7),
+      darkBrassMaterial,
+    );
+    rail.name = "camping-lantern-side-rail";
+    rail.position.set(x, 0.5, 0);
+    lantern.add(rail);
+  }
+
+  const handle = new THREE.Mesh(
+    new THREE.TorusGeometry(0.27, 0.025, 7, 30, Math.PI),
+    darkBrassMaterial,
+  );
+  handle.name = "camping-lantern-carry-handle";
+  handle.position.y = 0.93;
+  lantern.add(handle);
+
+  const pointLight = new THREE.PointLight(0xffcb6f, 0.32, 2.8, 2);
+  pointLight.name = "camping-lantern-soft-light";
+  pointLight.position.y = 0.52;
+  lantern.add(pointLight);
+
+  return lantern;
+}
+
 type BeachOfficeTextureSet = {
   watercolorGrain: THREE.Texture;
   wood: THREE.Texture;
@@ -1663,7 +1913,7 @@ export default function AgentWorld3D({
     scene.add(outerOcean);
 
     const groundTexture = textureLoader.load(
-      "/art/beach-island-ocean-v3.png",
+      "/art/beach-island-ocean-v4-style-locked.png",
       () => {
         if (!disposed) setLoadingProgress((value) => Math.max(value, 22));
       },
@@ -1884,6 +2134,10 @@ float shoreOverlayWaterSignal( vec3 color ) {
         createRockCluster(islandPropsWatercolorTexture, placement),
       );
     });
+    scene.add(
+      createCampingSupplyCluster(islandPropsWatercolorTexture),
+      createCampingLantern(islandPropsWatercolorTexture),
+    );
     const palmLeafSwayTargets: PalmLeafSwayTarget[] = [];
 
     const meshyPropLoader = new GLTFLoader();
@@ -2808,7 +3062,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
         // eslint-disable-next-line @next/next/no-img-element
         <img
           className="world-3d-fallback"
-          src="/art/beach-island-ocean-v3.png"
+          src="/art/beach-island-ocean-v4-style-locked.png"
           alt="동물 에이전트가 일하는 해변 사무실 배경"
           width="1024"
           height="1536"
