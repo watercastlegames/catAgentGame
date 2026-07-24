@@ -43,9 +43,10 @@ test("server-renders the Agent Forest integration UI", async () => {
 });
 
 test("ships local bridge hooks, responsive styles, and 2.5D assets", async () => {
-  const [page, world3d, css, layout, packageJson] = await Promise.all([
+  const [page, world3d, navigation, css, layout, packageJson] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/agent-world-3d.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/navigation.mjs", import.meta.url), "utf8"),
     readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
     readFile(new URL("../package.json", import.meta.url), "utf8"),
@@ -97,9 +98,15 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.doesNotMatch(world3d, /SpriteMaterial/);
   assert.match(world3d, /isNavigationObstacle/);
   assert.match(world3d, /SCENE_OBSTACLES/);
-  assert.match(world3d, /segmentIntersectsObstacle/);
-  assert.match(world3d, /findAvoidanceWaypoint/);
-  assert.match(world3d, /activeAvoidanceWaypoint/);
+  assert.match(world3d, /findAvoidancePath2D/);
+  assert.match(world3d, /findAvoidancePath/);
+  assert.match(world3d, /avoidanceWaypoints/);
+  assert.match(navigation, /candidateRoutes/);
+  assert.match(navigation, /segmentIntersectsObstacle2D/);
+  assert.match(world3d, /OBSTACLE_WAYPOINT_MARGIN = 0\.28/);
+  assert.match(world3d, /OBSTACLE_WAYPOINT_REACHED_DISTANCE/);
+  assert.match(world3d, /movementForwardFactor/);
+  assert.match(world3d, /turnDelta/);
   assert.match(world3d, /wouldCollide/);
   assert.match(world3d, /\|Idle_1/);
   assert.match(world3d, /\|Walk_F/);

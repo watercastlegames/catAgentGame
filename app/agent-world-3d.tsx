@@ -7,6 +7,7 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+import { findAvoidancePath2D } from "./navigation.mjs";
 
 export type AgentWorldLocation =
   | "entrance"
@@ -269,7 +270,11 @@ const SCENE_OBSTACLES = [
   ...ROCK_CLUSTER_OBSTACLES,
   BEACH_OFFICE_HUT_OBSTACLE,
 ];
-const OBSTACLE_WAYPOINT_MARGIN = 0.16;
+const NON_DESK_OBSTACLES = SCENE_OBSTACLES.filter(
+  (obstacle) => obstacle !== DESK_OBSTACLE,
+);
+const OBSTACLE_WAYPOINT_MARGIN = 0.28;
+const OBSTACLE_WAYPOINT_REACHED_DISTANCE = 0.055;
 
 function randomBetween(min: number, max: number) {
   return min + Math.random() * (max - min);
@@ -305,99 +310,18 @@ function isTouchingObstacle(
   );
 }
 
-function segmentIntersectsObstacle(
-  start: THREE.Vector3,
-  end: THREE.Vector3,
-  obstacle: SceneObstacle,
-) {
-  if (isInsideObstacle(start, obstacle) || isInsideObstacle(end, obstacle)) {
-    return true;
-  }
-
-  let minimumTime = 0;
-  let maximumTime = 1;
-  const axes = [
-    {
-      start: start.x,
-      delta: end.x - start.x,
-      minimum: obstacle.minX,
-      maximum: obstacle.maxX,
-    },
-    {
-      start: start.z,
-      delta: end.z - start.z,
-      minimum: obstacle.minZ,
-      maximum: obstacle.maxZ,
-    },
-  ];
-
-  for (const axis of axes) {
-    if (Math.abs(axis.delta) < 1e-6) {
-      if (axis.start <= axis.minimum || axis.start >= axis.maximum) {
-        return false;
-      }
-      continue;
-    }
-
-    const inverseDelta = 1 / axis.delta;
-    let nearTime = (axis.minimum - axis.start) * inverseDelta;
-    let farTime = (axis.maximum - axis.start) * inverseDelta;
-    if (nearTime > farTime) {
-      [nearTime, farTime] = [farTime, nearTime];
-    }
-    minimumTime = Math.max(minimumTime, nearTime);
-    maximumTime = Math.min(maximumTime, farTime);
-    if (minimumTime > maximumTime) return false;
-  }
-
-  return maximumTime > 0 && minimumTime < 1;
-}
-
-function findAvoidanceWaypoint(
+function findAvoidancePath(
   start: THREE.Vector3,
   destination: THREE.Vector3,
+  obstacles: SceneObstacle[],
+  margin = OBSTACLE_WAYPOINT_MARGIN,
 ) {
-  let bestWaypoint: THREE.Vector3 | null = null;
-  let bestCost = Number.POSITIVE_INFINITY;
-
-  for (const obstacle of SCENE_OBSTACLES) {
-    if (!segmentIntersectsObstacle(start, destination, obstacle)) continue;
-
-    const candidates = [
-      new THREE.Vector3(
-        obstacle.minX - OBSTACLE_WAYPOINT_MARGIN,
-        0,
-        obstacle.minZ - OBSTACLE_WAYPOINT_MARGIN,
-      ),
-      new THREE.Vector3(
-        obstacle.maxX + OBSTACLE_WAYPOINT_MARGIN,
-        0,
-        obstacle.minZ - OBSTACLE_WAYPOINT_MARGIN,
-      ),
-      new THREE.Vector3(
-        obstacle.minX - OBSTACLE_WAYPOINT_MARGIN,
-        0,
-        obstacle.maxZ + OBSTACLE_WAYPOINT_MARGIN,
-      ),
-      new THREE.Vector3(
-        obstacle.maxX + OBSTACLE_WAYPOINT_MARGIN,
-        0,
-        obstacle.maxZ + OBSTACLE_WAYPOINT_MARGIN,
-      ),
-    ];
-
-    for (const candidate of candidates) {
-      if (segmentIntersectsObstacle(start, candidate, obstacle)) continue;
-      const cost =
-        start.distanceTo(candidate) + candidate.distanceTo(destination);
-      if (cost < bestCost) {
-        bestCost = cost;
-        bestWaypoint = candidate;
-      }
-    }
-  }
-
-  return bestWaypoint;
+  return findAvoidancePath2D(
+    start,
+    destination,
+    obstacles,
+    margin,
+  ).map((point) => new THREE.Vector3(point.x, 0, point.z));
 }
 
 function disableOutline(material: THREE.Material) {
@@ -1750,7 +1674,7 @@ export default function AgentWorld3D({
     const movementDirection = new THREE.Vector3();
     const nextPosition = new THREE.Vector3();
     const lastNavigationTarget = currentPosition.clone();
-    let activeAvoidanceWaypoint: THREE.Vector3 | null = null;
+    const avoidanceWaypoints: THREE.Vector3[] = [];
     const clock = new THREE.Clock();
 
     const updateSize = () => {
@@ -1906,6 +1830,7 @@ export default function AgentWorld3D({
       let isMoving = false;
       let isKneading = false;
       let movementSpeed = TASK_MOVE_SPEED;
+      let movementForwardFactor = 1;
 
       if (isAutonomous && !wasAutonomous) {
         ambientPhase = "resting";
@@ -2064,7 +1989,7 @@ export default function AgentWorld3D({
         isInsideObstacle(currentPosition, DESK_OBSTACLE)
       ) {
         currentPosition.copy(DESK_KNEADING_EXIT_POSITION);
-        activeAvoidanceWaypoint = null;
+        avoidanceWaypoints.length = 0;
         lastNavigationTarget.copy(currentPosition);
       }
       const wantsDeskInteraction =
@@ -2072,34 +1997,39 @@ export default function AgentWorld3D({
           ambientDestination === "desk" &&
           ambientPhase === "walking") ||
         (!isAutonomous && motionRef.current.location === "coding");
+      const navigationObstacles = wantsDeskInteraction
+        ? NON_DESK_OBSTACLES
+        : SCENE_OBSTACLES;
 
       const walkAction = animationActions.get("walk");
-      if (walkAction && isMoving) {
-        walkAction.timeScale = isAutonomous ? 0.62 : 0.92;
-      }
 
       movementGoal.copy(desiredPosition);
       if (isMoving) {
         if (lastNavigationTarget.distanceToSquared(desiredPosition) > 0.01) {
           lastNavigationTarget.copy(desiredPosition);
-          activeAvoidanceWaypoint = null;
+          avoidanceWaypoints.length = 0;
         }
-        if (
-          activeAvoidanceWaypoint &&
-          currentPosition.distanceTo(activeAvoidanceWaypoint) <=
-            TASK_ARRIVAL_DISTANCE
+        while (
+          avoidanceWaypoints.length > 0 &&
+          currentPosition.distanceTo(avoidanceWaypoints[0]) <=
+            OBSTACLE_WAYPOINT_REACHED_DISTANCE
         ) {
-          activeAvoidanceWaypoint = null;
+          avoidanceWaypoints.shift();
         }
-        activeAvoidanceWaypoint ??= findAvoidanceWaypoint(
-          currentPosition,
-          desiredPosition,
-        );
-        if (activeAvoidanceWaypoint) {
-          movementGoal.copy(activeAvoidanceWaypoint);
+        if (avoidanceWaypoints.length === 0) {
+          avoidanceWaypoints.push(
+            ...findAvoidancePath(
+              currentPosition,
+              desiredPosition,
+              navigationObstacles,
+            ),
+          );
+        }
+        if (avoidanceWaypoints[0]) {
+          movementGoal.copy(avoidanceWaypoints[0]);
         }
       } else {
-        activeAvoidanceWaypoint = null;
+        avoidanceWaypoints.length = 0;
         lastNavigationTarget.copy(desiredPosition);
       }
 
@@ -2128,12 +2058,28 @@ export default function AgentWorld3D({
           movementDirection.x,
           movementDirection.z,
         );
+        const turnDelta = Math.abs(
+          Math.atan2(
+            Math.sin(targetYaw - characterYaw),
+            Math.cos(targetYaw - characterYaw),
+          ),
+        );
+        movementForwardFactor = THREE.MathUtils.clamp(
+          1 - turnDelta / (Math.PI * 0.58),
+          0.08,
+          1,
+        );
         characterYaw = lerpAngle(
           characterYaw,
           targetYaw,
-          1 - Math.exp(-delta * 5),
+          1 - Math.exp(-delta * 7),
         );
         characterModel.rotation.y = characterYaw;
+      }
+      if (walkAction && isMoving) {
+        const baseTimeScale = isAutonomous ? 0.62 : 0.92;
+        walkAction.timeScale =
+          baseTimeScale * (0.58 + movementForwardFactor * 0.42);
       }
 
       mixer?.update(delta);
@@ -2170,7 +2116,8 @@ export default function AgentWorld3D({
       if (isMoving) {
         const remainingDistance =
           currentPosition.distanceTo(movementGoal);
-        const stepDistance = movementSpeed * delta;
+        const stepDistance =
+          movementSpeed * movementForwardFactor * delta;
         if (remainingDistance <= stepDistance) {
           nextPosition.copy(movementGoal);
         } else {
@@ -2190,7 +2137,7 @@ export default function AgentWorld3D({
           currentPosition.copy(CODING_DESK_TARGET);
           desiredPosition.copy(currentPosition);
           movementGoal.copy(currentPosition);
-          activeAvoidanceWaypoint = null;
+          avoidanceWaypoints.length = 0;
           isMoving = false;
           isKneading = true;
           kneadingElapsed = 0;
@@ -2207,10 +2154,18 @@ export default function AgentWorld3D({
           if (!wouldCollide) {
             currentPosition.copy(nextPosition);
           } else {
-            activeAvoidanceWaypoint = findAvoidanceWaypoint(
-              currentPosition,
-              desiredPosition,
+            avoidanceWaypoints.length = 0;
+            avoidanceWaypoints.push(
+              ...findAvoidancePath(
+                currentPosition,
+                desiredPosition,
+                navigationObstacles,
+                OBSTACLE_WAYPOINT_MARGIN * 1.35,
+              ),
             );
+            if (avoidanceWaypoints[0]) {
+              movementGoal.copy(avoidanceWaypoints[0]);
+            }
           }
         }
       }
@@ -2219,7 +2174,7 @@ export default function AgentWorld3D({
         !isInsideObstacle(currentPosition, DESK_OBSTACLE)
       ) {
         currentPosition.copy(CODING_DESK_TARGET);
-        activeAvoidanceWaypoint = null;
+        avoidanceWaypoints.length = 0;
       }
       wasKneadingLastFrame = isKneading;
       characterRoot.position.x = currentPosition.x;
