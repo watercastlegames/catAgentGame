@@ -1583,10 +1583,17 @@ float shoreWaterSignal( vec3 color ) {
   );
   float waterSurface = max( stillWater, movingWater );
   float surfaceRipple =
-    sin( vMapUv.x * 54.0 + oceanTideTime * 1.08 ) *
-    sin( vMapUv.y * 41.0 - oceanTideTime * 0.82 );
+    sin(
+      ( vMapUv.x + vMapUv.y ) * 38.0 +
+      oceanTideTime * 1.08
+    ) * 0.64 +
+    sin(
+      vMapUv.x * -29.0 +
+      vMapUv.y * 44.0 -
+      oceanTideTime * 0.74
+    ) * 0.36;
   sampledDiffuseColor.rgb +=
-    vec3( 0.012, 0.026, 0.034 ) *
+    vec3( 0.02, 0.041, 0.052 ) *
     surfaceRipple *
     waterSurface;
   float foamPulse = ( tideBreath * 0.5 + 0.5 ) * shoreFoam;
@@ -1604,7 +1611,7 @@ float shoreWaterSignal( vec3 color ) {
       );
     };
     groundMaterial.customProgramCacheKey = () =>
-      "shore-tide-breathing-v3";
+      "shore-tide-breathing-v4";
     disableOutline(groundMaterial);
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(10, 15),
