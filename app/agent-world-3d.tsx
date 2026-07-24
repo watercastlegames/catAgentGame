@@ -187,6 +187,13 @@ type IslandPropPlacement = {
   scale: number;
 };
 
+type PalmLeafSwayTarget = {
+  mesh: THREE.Mesh;
+  phase: number;
+};
+
+const PALM_LEAF_SWAY_MORPH_VERSION = "palm-leaf-sway-morph-v1";
+
 const PALM_TREE_PLACEMENTS: IslandPropPlacement[] = [
   {
     id: "palm-tree-northwest",
@@ -1281,6 +1288,83 @@ function createMeshyPropTemplate(
   return template;
 }
 
+function smoothstep(edge0: number, edge1: number, value: number) {
+  const progress = THREE.MathUtils.clamp(
+    (value - edge0) / (edge1 - edge0),
+    0,
+    1,
+  );
+  return progress * progress * (3 - 2 * progress);
+}
+
+function ensurePalmLeafSwayMorphTargets(geometry: THREE.BufferGeometry) {
+  if (
+    geometry.userData.palmLeafSwayMorphVersion ===
+    PALM_LEAF_SWAY_MORPH_VERSION
+  ) {
+    return true;
+  }
+
+  const position = geometry.getAttribute("position");
+  if (!(position instanceof THREE.BufferAttribute)) return false;
+
+  const swayAcross = new Float32Array(position.count * 3);
+  const swayDepth = new Float32Array(position.count * 3);
+  for (let index = 0; index < position.count; index += 1) {
+    const x = position.getX(index);
+    const y = position.getY(index);
+    const z = position.getZ(index);
+    const radius = Math.hypot(x, z);
+    const crownMask = smoothstep(-0.22, 0.08, y);
+    const branchMask = smoothstep(0.08, 0.38, radius);
+    const tipFactor = THREE.MathUtils.clamp(radius / 0.85, 0, 1);
+    const leafMask =
+      crownMask * branchMask * (0.35 + tipFactor * 0.65);
+    const angle = Math.atan2(z, x);
+    const offset = index * 3;
+
+    swayAcross[offset] =
+      leafMask * (0.017 + tipFactor * 0.012) *
+      (0.84 + Math.sin(angle * 5) * 0.16);
+    swayAcross[offset + 1] =
+      leafMask * Math.sin(x * 7 + z * 5) * 0.004;
+    swayAcross[offset + 2] =
+      leafMask * Math.sin(y * 5 + angle * 2) * 0.005;
+
+    swayDepth[offset] =
+      leafMask * Math.cos(y * 4 + angle * 3) * 0.006;
+    swayDepth[offset + 1] =
+      leafMask * Math.cos(x * 5 - z * 6) * 0.004;
+    swayDepth[offset + 2] =
+      leafMask * (0.014 + tipFactor * 0.01) *
+      (0.84 + Math.cos(angle * 6) * 0.16);
+  }
+
+  geometry.morphAttributes.position = [
+    new THREE.Float32BufferAttribute(swayAcross, 3),
+    new THREE.Float32BufferAttribute(swayDepth, 3),
+  ];
+  geometry.morphTargetsRelative = true;
+  geometry.userData.palmLeafSwayMorphVersion =
+    PALM_LEAF_SWAY_MORPH_VERSION;
+  return true;
+}
+
+function registerPalmLeafSway(
+  root: THREE.Object3D,
+  phase: number,
+  targets: PalmLeafSwayTarget[],
+) {
+  root.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+    if (!ensurePalmLeafSwayMorphTargets(object.geometry)) return;
+
+    object.updateMorphTargets();
+    if (!object.morphTargetInfluences) return;
+    targets.push({ mesh: object, phase });
+  });
+}
+
 function createMeshyPropShadow(
   name: string,
   radius: number,
@@ -1522,6 +1606,7 @@ export default function AgentWorld3D({
       watercolorGrain: islandPropsWatercolorTexture,
       wood: deskWoodTexture,
     };
+    const palmLeafSwayTargets: PalmLeafSwayTarget[] = [];
 
     const meshyPropLoader = new GLTFLoader();
     meshyPropLoader.setMeshoptDecoder(MeshoptDecoder);
@@ -1537,7 +1622,7 @@ export default function AgentWorld3D({
           new THREE.Color(0xa5ad8a),
           maximumAnisotropy,
         );
-        PALM_TREE_PLACEMENTS.forEach((placement) => {
+        PALM_TREE_PLACEMENTS.forEach((placement, index) => {
           const palm = new THREE.Group();
           palm.name = `${placement.id}-meshy6`;
           palm.position.copy(placement.position);
@@ -1551,6 +1636,11 @@ export default function AgentWorld3D({
           }
 
           const visual = palmTemplate.clone(true);
+          registerPalmLeafSway(
+            visual,
+            (index / PALM_TREE_PLACEMENTS.length) * Math.PI * 2,
+            palmLeafSwayTargets,
+          );
           visual.scale.setScalar(3.05 * placement.scale);
           visual.position.y = -0.24;
           palm.add(visual);
@@ -1812,6 +1902,7 @@ export default function AgentWorld3D({
     const lastNavigationTarget = currentPosition.clone();
     const avoidanceWaypoints: THREE.Vector3[] = [];
     const clock = new THREE.Clock();
+    let palmLeafSwayTime = 0;
 
     const updateSize = () => {
       const width = Math.max(host.clientWidth, 1);
@@ -1960,6 +2051,15 @@ export default function AgentWorld3D({
 
     renderer.setAnimationLoop(() => {
       const delta = Math.min(clock.getDelta(), 0.05);
+      palmLeafSwayTime += delta;
+      palmLeafSwayTargets.forEach(({ mesh, phase }) => {
+        if (!mesh.morphTargetInfluences) return;
+        mesh.morphTargetInfluences[0] =
+          Math.sin(palmLeafSwayTime * 0.72 + phase) * 0.72 +
+          Math.sin(palmLeafSwayTime * 1.18 + phase * 1.7) * 0.16;
+        mesh.morphTargetInfluences[1] =
+          Math.sin(palmLeafSwayTime * 0.94 + phase * 1.35) * 0.52;
+      });
       const isAutonomous =
         mixer !== null &&
         AUTONOMOUS_STATUSES.has(motionRef.current.status);
