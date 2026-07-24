@@ -350,6 +350,7 @@ function disposeMaterial(material: THREE.Material) {
 type DeskTextureSet = {
   wood: THREE.Texture;
   watercolorGrain: THREE.Texture;
+  groundArea: THREE.Texture;
   keycapTops: THREE.Texture[];
 };
 
@@ -487,9 +488,6 @@ function createIllustratedDesk(textures: DeskTextureSet) {
   const mouseMaterial = createToonMaterial(0xb8b7b6);
   const cupMaterial = createToonMaterial(0xe6aa72);
   const coffeeMaterial = createToonMaterial(0x704833);
-  const matMaterial = createToonMaterial(0xc98d58);
-  const matBorderMaterial = createToonMaterial(0xa9654b);
-  const matStripeMaterial = createToonMaterial(0xe8c38c);
   const keyMaterials = [
     createToonMaterial(0xf2a160),
     createToonMaterial(0x9d8c9f),
@@ -514,100 +512,25 @@ function createIllustratedDesk(textures: DeskTextureSet) {
     return part;
   };
 
-  const groundArea = new THREE.Group();
-  groundArea.name = "coding-desk-ground-area";
-  groundArea.position.z = 0.32;
+  const groundAreaMaterial = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    map: textures.groundArea,
+    transparent: true,
+    alphaTest: 0.02,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    toneMapped: false,
+  });
+  disableOutline(groundAreaMaterial);
+  const groundArea = new THREE.Mesh(
+    new THREE.PlaneGeometry(4.7, 3.12),
+    groundAreaMaterial,
+  );
+  groundArea.name = "coding-desk-ground-illustration";
+  groundArea.rotation.x = -Math.PI / 2;
+  groundArea.position.set(0, 0.012, 0.32);
+  groundArea.renderOrder = 1;
   deskGroup.add(groundArea);
-
-  const flattenedSandMaterial = new THREE.MeshBasicMaterial({
-    color: 0xd7b984,
-    map: textures.watercolorGrain,
-    transparent: true,
-    opacity: 0.42,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
-  disableOutline(flattenedSandMaterial);
-  const flattenedSand = new THREE.Mesh(
-    new THREE.CircleGeometry(2.28, 64),
-    flattenedSandMaterial,
-  );
-  flattenedSand.name = "coding-desk-flattened-sand";
-  flattenedSand.rotation.x = -Math.PI / 2;
-  flattenedSand.position.y = 0.005;
-  flattenedSand.scale.set(1, 0.68, 1);
-  flattenedSand.renderOrder = 1;
-  groundArea.add(flattenedSand);
-
-  const flattenedRimMaterial = new THREE.MeshBasicMaterial({
-    color: 0x8e694f,
-    transparent: true,
-    opacity: 0.2,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
-  disableOutline(flattenedRimMaterial);
-  const flattenedRim = new THREE.Mesh(
-    new THREE.RingGeometry(2.16, 2.31, 64),
-    flattenedRimMaterial,
-  );
-  flattenedRim.name = "coding-desk-flattened-sand-rim";
-  flattenedRim.rotation.x = -Math.PI / 2;
-  flattenedRim.position.y = 0.007;
-  flattenedRim.scale.set(1, 0.68, 1);
-  flattenedRim.renderOrder = 2;
-  groundArea.add(flattenedRim);
-
-  addRoundedPart(
-    "coding-desk-picnic-mat",
-    new THREE.Vector3(3.55, 0.035, 2.28),
-    new THREE.Vector3(0, 0.034, 0.32),
-    matMaterial,
-    0.08,
-  );
-
-  for (const zOffset of [-1.02, 1.02]) {
-    addRoundedPart(
-      "coding-desk-picnic-mat-border",
-      new THREE.Vector3(3.38, 0.016, 0.11),
-      new THREE.Vector3(0, 0.058, 0.32 + zOffset),
-      matBorderMaterial,
-      0.025,
-    );
-  }
-
-  for (const zOffset of [-0.66, -0.33, 0, 0.33, 0.66]) {
-    addRoundedPart(
-      "coding-desk-picnic-mat-weave",
-      new THREE.Vector3(3.25, 0.012, 0.035),
-      new THREE.Vector3(0, 0.057, 0.32 + zOffset),
-      matStripeMaterial,
-      0.012,
-    );
-  }
-
-  for (const x of [-0.58, 0.58]) {
-    addRoundedPart(
-      "coding-desk-picnic-mat-accent",
-      new THREE.Vector3(0.1, 0.014, 2.04),
-      new THREE.Vector3(x, 0.058, 0.32),
-      matBorderMaterial,
-      0.022,
-    );
-  }
-
-  for (const z of [-0.93, 1.57]) {
-    for (let index = 0; index < 10; index += 1) {
-      const fringe = addRoundedPart(
-        "coding-desk-picnic-mat-fringe",
-        new THREE.Vector3(0.065, 0.014, 0.22),
-        new THREE.Vector3(-1.48 + index * 0.33, 0.043, z),
-        index % 2 === 0 ? matMaterial : matStripeMaterial,
-        0.02,
-      );
-      fringe.rotation.y = index % 2 === 0 ? -0.08 : 0.08;
-    }
-  }
 
   const deskShadowMaterial = new THREE.MeshBasicMaterial({
     color: 0x6f5040,
@@ -622,8 +545,9 @@ function createIllustratedDesk(textures: DeskTextureSet) {
   );
   deskShadow.name = "coding-desk-contact-shadow";
   deskShadow.rotation.x = -Math.PI / 2;
-  deskShadow.position.set(0, 0.006, 0.05);
+  deskShadow.position.set(0, 0.018, 0.05);
   deskShadow.scale.set(1.2, 0.62, 1);
+  deskShadow.renderOrder = 2;
   deskGroup.add(deskShadow);
 
   addRoundedPart(
@@ -1541,6 +1465,12 @@ export default function AgentWorld3D({
     deskWatercolorGrainTexture.repeat.set(1.35, 1.35);
     deskWatercolorGrainTexture.anisotropy = maximumAnisotropy;
 
+    const deskGroundAreaTexture = textureLoader.load(
+      "/art/coding-desk-ground-illustration-v1.png",
+    );
+    deskGroundAreaTexture.colorSpace = THREE.SRGBColorSpace;
+    deskGroundAreaTexture.anisotropy = maximumAnisotropy;
+
     const deskKeycapTopTextures = DESK_KEYCAP_TEXTURE_URLS.map((url) => {
       const texture = textureLoader.load(url);
       texture.colorSpace = THREE.SRGBColorSpace;
@@ -1552,6 +1482,7 @@ export default function AgentWorld3D({
       {
         wood: deskWoodTexture,
         watercolorGrain: deskWatercolorGrainTexture,
+        groundArea: deskGroundAreaTexture,
         keycapTops: deskKeycapTopTextures,
       },
     );
