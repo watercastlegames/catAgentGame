@@ -1,0 +1,1881 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#203326">
+  <title>Agent Forest — 원화 그대로 구현하는 이미지·애니메이션 제작 설계서</title>
+  <style>
+    :root {
+      --forest-950: #152119;
+      --forest-900: #203326;
+      --forest-800: #36533c;
+      --forest-700: #4c6b4e;
+      --forest-600: #6f8b62;
+      --leaf: #a9bd72;
+      --lime: #dce7a8;
+      --paper: #fffaf0;
+      --cream: #f7efdc;
+      --sand: #ead8b9;
+      --brown: #694f44;
+      --brown-soft: #8a6d5a;
+      --ink: #302a25;
+      --muted: #766e62;
+      --mint: #9ed9c5;
+      --blue: #a9cfde;
+      --coral: #e9a097;
+      --gold: #e4be72;
+      --line: rgba(77, 83, 66, .17);
+      --shadow: 0 24px 70px rgba(25, 40, 28, .18);
+      --shadow-soft: 0 12px 34px rgba(25, 40, 28, .1);
+      --radius-xl: 30px;
+      --radius-lg: 22px;
+      --radius-md: 15px;
+      --content: 1220px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 14% 0, rgba(220, 231, 168, .43), transparent 28rem),
+        linear-gradient(180deg, #edf1d7 0, #f7f0df 34rem, #f1ebdc 100%);
+      font-family: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      line-height: 1.68;
+      word-break: keep-all;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body::before {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      background-image:
+        linear-gradient(rgba(54, 83, 60, .032) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(54, 83, 60, .032) 1px, transparent 1px);
+      background-size: 34px 34px;
+      content: "";
+      pointer-events: none;
+      mask-image: linear-gradient(#000, transparent 88%);
+    }
+
+    img { display: block; max-width: 100%; }
+    button, input { font: inherit; }
+    a { color: inherit; }
+
+    .scroll-progress {
+      position: fixed;
+      inset: 0 auto auto 0;
+      z-index: 100;
+      width: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--mint), var(--leaf), var(--gold));
+      box-shadow: 0 0 18px rgba(155, 216, 199, .72);
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 40;
+      border-bottom: 1px solid rgba(255, 255, 255, .58);
+      background: rgba(247, 240, 223, .82);
+      backdrop-filter: blur(18px);
+    }
+
+    .topbar-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: min(calc(100% - 30px), var(--content));
+      min-height: 62px;
+      margin: 0 auto;
+      gap: 18px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--forest-900);
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: -.02em;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 35px;
+      height: 35px;
+      place-items: center;
+      border-radius: 12px;
+      color: var(--cream);
+      background: var(--forest-900);
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14);
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 39px;
+      padding: 0 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--forest-900);
+      background: rgba(255, 250, 240, .8);
+      box-shadow: 0 5px 15px rgba(25, 40, 28, .06);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 850;
+      text-decoration: none;
+    }
+
+    .button.primary {
+      border-color: var(--forest-900);
+      color: var(--cream);
+      background: var(--forest-900);
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 76px 20px 70px;
+      color: var(--cream);
+      background:
+        radial-gradient(circle at 84% 12%, rgba(169, 189, 114, .24), transparent 24rem),
+        radial-gradient(circle at 14% 90%, rgba(158, 217, 197, .13), transparent 25rem),
+        linear-gradient(140deg, var(--forest-950), var(--forest-800));
+    }
+
+    .hero::after {
+      position: absolute;
+      right: -7rem;
+      bottom: -12rem;
+      width: 31rem;
+      height: 31rem;
+      border: 1px solid rgba(255, 255, 255, .08);
+      border-radius: 44% 56% 68% 32% / 56% 42% 58% 44%;
+      content: "";
+      transform: rotate(14deg);
+    }
+
+    .hero-grid {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: minmax(0, 1.04fr) minmax(350px, .96fr);
+      width: min(100%, var(--content));
+      margin: 0 auto;
+      gap: 66px;
+      align-items: center;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      margin: 0 0 18px;
+      color: var(--lime);
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: .13em;
+      gap: 9px;
+    }
+
+    .eyebrow::before {
+      width: 27px;
+      height: 2px;
+      border-radius: 99px;
+      background: currentColor;
+      content: "";
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(43px, 5.7vw, 78px);
+      line-height: 1.03;
+      letter-spacing: -.065em;
+    }
+
+    h1 span {
+      display: block;
+      margin-top: 15px;
+      color: var(--lime);
+      font-size: .43em;
+      line-height: 1.25;
+      letter-spacing: -.04em;
+    }
+
+    .hero-copy {
+      max-width: 660px;
+      margin: 25px 0 0;
+      color: rgba(247, 239, 220, .75);
+      font-size: 16px;
+    }
+
+    .hero-rule {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      margin-top: 29px;
+      padding: 17px;
+      border: 1px solid rgba(255, 255, 255, .13);
+      border-radius: 17px;
+      background: rgba(255, 255, 255, .07);
+      gap: 13px;
+    }
+
+    .hero-rule b {
+      display: grid;
+      width: 44px;
+      height: 44px;
+      place-items: center;
+      border-radius: 14px;
+      color: var(--forest-900);
+      background: var(--lime);
+      font-size: 18px;
+    }
+
+    .hero-rule strong, .hero-rule small { display: block; }
+    .hero-rule strong { color: var(--cream); font-size: 13px; }
+    .hero-rule small { margin-top: 3px; color: rgba(247, 239, 220, .58); font-size: 11px; }
+
+    .hero-visual {
+      position: relative;
+      width: min(100%, 440px);
+      margin: 0 auto;
+    }
+
+    .hero-visual-frame {
+      position: relative;
+      overflow: hidden;
+      width: 70%;
+      margin: 0 auto;
+      border: 1px solid rgba(255, 255, 255, .18);
+      border-radius: 26px;
+      background: #607c4e;
+      box-shadow: 0 30px 80px rgba(0, 0, 0, .27);
+    }
+
+    .hero-visual-frame img {
+      width: 100%;
+      height: auto;
+    }
+
+    .layer-tag {
+      position: absolute;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      min-height: 35px;
+      padding: 0 12px;
+      border: 1px solid rgba(255, 255, 255, .65);
+      border-radius: 999px;
+      color: var(--forest-900);
+      background: rgba(255, 250, 240, .92);
+      box-shadow: 0 10px 28px rgba(0, 0, 0, .17);
+      font-size: 10px;
+      font-weight: 900;
+      backdrop-filter: blur(8px);
+    }
+
+    .layer-tag::before {
+      width: 8px;
+      height: 8px;
+      margin-right: 7px;
+      border-radius: 50%;
+      background: var(--tag-color, var(--leaf));
+      content: "";
+    }
+
+    .tag-bg { top: 10%; left: 0; --tag-color: var(--leaf); }
+    .tag-prop { top: 36%; right: 0; --tag-color: var(--blue); }
+    .tag-agent { top: 60%; left: 2%; --tag-color: var(--coral); }
+    .tag-office { right: 1%; bottom: 9%; --tag-color: var(--gold); }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 214px minmax(0, 1fr);
+      width: min(calc(100% - 38px), var(--content));
+      margin: 0 auto;
+      gap: 52px;
+    }
+
+    .toc {
+      position: sticky;
+      top: 90px;
+      align-self: start;
+      padding: 34px 0;
+    }
+
+    .toc strong {
+      display: block;
+      margin-bottom: 13px;
+      color: var(--forest-800);
+      font-size: 11px;
+      letter-spacing: .13em;
+    }
+
+    .toc a {
+      display: block;
+      padding: 6px 0 6px 12px;
+      border-left: 2px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      text-decoration: none;
+    }
+
+    .toc a:hover {
+      border-color: var(--forest-700);
+      color: var(--forest-800);
+    }
+
+    main {
+      min-width: 0;
+      padding: 78px 0 118px;
+    }
+
+    section {
+      margin-bottom: 105px;
+      scroll-margin-top: 86px;
+    }
+
+    .section-no {
+      display: inline-grid;
+      width: 38px;
+      height: 38px;
+      margin-bottom: 17px;
+      place-items: center;
+      border-radius: 13px;
+      color: var(--forest-800);
+      background: var(--lime);
+      font-family: Georgia, serif;
+      font-size: 15px;
+      font-weight: 850;
+    }
+
+    h2 {
+      max-width: 790px;
+      margin: 0;
+      color: var(--forest-900);
+      font-size: clamp(29px, 4vw, 47px);
+      line-height: 1.2;
+      letter-spacing: -.045em;
+    }
+
+    .section-lead {
+      max-width: 780px;
+      margin: 17px 0 33px;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .decision-banner {
+      display: grid;
+      grid-template-columns: 78px 1fr;
+      padding: 27px;
+      border: 1px solid rgba(54, 83, 60, .18);
+      border-radius: var(--radius-lg);
+      background: linear-gradient(145deg, rgba(220, 231, 168, .58), rgba(255, 250, 240, .9));
+      box-shadow: var(--shadow-soft);
+      gap: 19px;
+      align-items: center;
+    }
+
+    .decision-icon {
+      display: grid;
+      width: 68px;
+      height: 68px;
+      place-items: center;
+      border-radius: 22px;
+      color: var(--cream);
+      background: var(--forest-800);
+      font-size: 29px;
+    }
+
+    .decision-banner h3 { margin: 0; color: var(--forest-900); font-size: 20px; }
+    .decision-banner p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: rgba(255, 250, 240, .82);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .card h3 {
+      display: flex;
+      align-items: center;
+      margin: 0 0 9px;
+      color: var(--forest-900);
+      font-size: 16px;
+      gap: 9px;
+    }
+
+    .card p, .card li { color: var(--muted); font-size: 13px; }
+    .card p { margin: 0; }
+    .card ul { margin: 10px 0 0; padding-left: 19px; }
+
+    .mini-icon {
+      display: inline-grid;
+      flex: 0 0 auto;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border-radius: 11px;
+      color: var(--forest-900);
+      background: var(--sand);
+    }
+
+    .warn-card {
+      border-color: rgba(233, 160, 151, .46);
+      background: rgba(255, 245, 239, .86);
+    }
+
+    .warn-card h3 { color: #70433d; }
+
+    .blueprint-grid {
+      display: grid;
+      grid-template-columns: minmax(300px, .92fr) minmax(330px, 1.08fr);
+      gap: 22px;
+      align-items: start;
+    }
+
+    .blueprint {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, .62);
+      border-radius: 25px;
+      background: var(--forest-800);
+      box-shadow: var(--shadow);
+    }
+
+    .blueprint img {
+      width: 100%;
+      filter: saturate(.92) brightness(.76);
+    }
+
+    .map-marker {
+      position: absolute;
+      top: var(--y);
+      left: var(--x);
+      z-index: 2;
+      display: grid;
+      width: 31px;
+      height: 31px;
+      place-items: center;
+      border: 2px solid rgba(255, 255, 255, .88);
+      border-radius: 50%;
+      color: #fff;
+      background: var(--marker, var(--forest-700));
+      box-shadow:
+        0 0 0 7px color-mix(in srgb, var(--marker), transparent 72%),
+        0 7px 18px rgba(0, 0, 0, .22);
+      font-size: 10px;
+      font-weight: 900;
+      transform: translate(-50%, -50%);
+    }
+
+    .map-marker b {
+      position: absolute;
+      top: 36px;
+      left: 50%;
+      padding: 4px 7px;
+      border-radius: 7px;
+      color: var(--forest-900);
+      background: rgba(255, 250, 240, .93);
+      font-size: 8px;
+      white-space: nowrap;
+      transform: translateX(-50%);
+    }
+
+    .coordinate-panel {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: rgba(255, 250, 240, .84);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .coordinate-header {
+      padding: 20px;
+      color: var(--cream);
+      background: var(--forest-900);
+    }
+
+    .coordinate-header strong { display: block; font-size: 16px; }
+    .coordinate-header span { color: rgba(247, 239, 220, .65); font-size: 11px; }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--forest-900); background: rgba(220, 231, 168, .35); font-size: 10px; font-weight: 900; }
+    td { color: var(--muted); }
+    tr:last-child td { border-bottom: 0; }
+    code { color: var(--forest-800); font: .93em Consolas, "SFMono-Regular", monospace; }
+
+    .layer-stack {
+      display: grid;
+      margin-top: 18px;
+      perspective: 900px;
+      gap: 9px;
+    }
+
+    .layer {
+      display: grid;
+      grid-template-columns: 56px 130px 1fr;
+      align-items: center;
+      min-height: 65px;
+      padding: 11px 15px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: rgba(255, 250, 240, .88);
+      box-shadow: 0 8px 22px rgba(25, 40, 28, .06);
+      gap: 12px;
+      transform: translateX(var(--offset, 0));
+    }
+
+    .layer:nth-child(1) { --offset: 0; }
+    .layer:nth-child(2) { --offset: 7px; }
+    .layer:nth-child(3) { --offset: 14px; }
+    .layer:nth-child(4) { --offset: 21px; }
+    .layer:nth-child(5) { --offset: 28px; }
+    .layer:nth-child(6) { --offset: 35px; }
+
+    .layer-no {
+      color: var(--forest-600);
+      font: 850 12px Georgia, serif;
+    }
+
+    .layer strong { color: var(--forest-900); font-size: 12px; }
+    .layer span:last-child { color: var(--muted); font-size: 11px; }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 9px;
+    }
+
+    .pipeline-step {
+      position: relative;
+      min-height: 150px;
+      padding: 18px 14px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 250, 240, .84);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .pipeline-step:not(:last-child)::after {
+      position: absolute;
+      top: 50%;
+      right: -10px;
+      z-index: 3;
+      color: var(--forest-600);
+      content: "›";
+      font-size: 24px;
+      font-weight: 900;
+      transform: translateY(-55%);
+    }
+
+    .pipeline-step b {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      margin-bottom: 14px;
+      place-items: center;
+      border-radius: 11px;
+      color: var(--cream);
+      background: var(--forest-700);
+      font-size: 11px;
+    }
+
+    .pipeline-step strong { display: block; color: var(--forest-900); font-size: 13px; }
+    .pipeline-step span { display: block; margin-top: 6px; color: var(--muted); font-size: 10px; }
+
+    .gate {
+      display: grid;
+      grid-template-columns: 55px 1fr;
+      margin-top: 19px;
+      padding: 22px;
+      border: 1px solid rgba(69, 101, 74, .25);
+      border-radius: 18px;
+      background: rgba(220, 231, 168, .38);
+      gap: 14px;
+    }
+
+    .gate-icon {
+      display: grid;
+      width: 48px;
+      height: 48px;
+      place-items: center;
+      border-radius: 15px;
+      color: var(--cream);
+      background: var(--forest-800);
+      font-size: 20px;
+    }
+
+    .gate strong { display: block; color: var(--forest-900); font-size: 14px; }
+    .gate p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+
+    .sprite-sheet {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 310px;
+      gap: 18px;
+    }
+
+    .sprite-spec {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: rgba(255, 250, 240, .84);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .sprite-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px;
+      color: var(--cream);
+      background: var(--forest-900);
+    }
+
+    .sprite-head strong { font-size: 15px; }
+    .sprite-head span { color: var(--lime); font: 850 11px Consolas, monospace; }
+
+    .sprite-cells {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      padding: 15px;
+      gap: 8px;
+    }
+
+    .sprite-cell {
+      display: grid;
+      aspect-ratio: 1;
+      padding: 7px;
+      place-items: center;
+      border: 1px dashed rgba(54, 83, 60, .23);
+      border-radius: 13px;
+      color: var(--forest-800);
+      background:
+        linear-gradient(45deg, rgba(54, 83, 60, .035) 25%, transparent 25%, transparent 75%, rgba(54, 83, 60, .035) 75%),
+        linear-gradient(45deg, rgba(54, 83, 60, .035) 25%, transparent 25%, transparent 75%, rgba(54, 83, 60, .035) 75%);
+      background-position: 0 0, 7px 7px;
+      background-size: 14px 14px;
+      font-size: 28px;
+    }
+
+    .sprite-cell small { align-self: end; color: var(--muted); font-size: 7px; }
+
+    .spec-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .spec-item {
+      padding: 15px 17px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: rgba(255, 250, 240, .82);
+    }
+
+    .spec-item b { display: block; color: var(--forest-900); font-size: 12px; }
+    .spec-item span { color: var(--muted); font-size: 10px; }
+
+    .state-flow {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      padding: 27px;
+      border-radius: var(--radius-lg);
+      color: var(--cream);
+      background:
+        radial-gradient(circle at 90% 8%, rgba(169, 189, 114, .2), transparent 19rem),
+        var(--forest-900);
+      box-shadow: var(--shadow);
+      gap: 8px;
+    }
+
+    .state {
+      padding: 8px 11px;
+      border: 1px solid rgba(255, 255, 255, .13);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .07);
+      font-size: 9px;
+      font-weight: 900;
+      letter-spacing: .03em;
+    }
+
+    .state-arrow { color: var(--lime); font-weight: 900; }
+
+    .station-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 15px;
+    }
+
+    .station {
+      position: relative;
+      overflow: hidden;
+      min-height: 180px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: rgba(255, 250, 240, .82);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .station::after {
+      position: absolute;
+      right: -22px;
+      bottom: -32px;
+      color: rgba(54, 83, 60, .06);
+      content: attr(data-emoji);
+      font-size: 110px;
+      transform: rotate(-7deg);
+    }
+
+    .station h3 { position: relative; z-index: 1; margin: 0; color: var(--forest-900); font-size: 17px; }
+    .station p { position: relative; z-index: 1; margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+    .station ul { position: relative; z-index: 1; margin: 12px 0 0; padding-left: 18px; color: var(--muted); font-size: 11px; }
+
+    .office-detail {
+      display: grid;
+      grid-template-columns: minmax(250px, .8fr) minmax(0, 1.2fr);
+      margin-top: 15px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xl);
+      background: rgba(255, 250, 240, .84);
+      box-shadow: var(--shadow);
+    }
+
+    .office-image {
+      position: relative;
+      overflow: hidden;
+      min-height: 430px;
+      background: var(--forest-800);
+    }
+
+    .office-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: 80% 92%;
+      transform: scale(1.65);
+      transform-origin: 77% 88%;
+    }
+
+    .office-copy { padding: 30px; }
+    .office-copy h3 { margin: 0; color: var(--forest-900); font-size: 21px; }
+    .office-copy p { color: var(--muted); font-size: 13px; }
+
+    .office-layers {
+      display: grid;
+      margin-top: 17px;
+      gap: 8px;
+    }
+
+    .office-layer {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: rgba(220, 231, 168, .21);
+      gap: 10px;
+    }
+
+    .office-layer b {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      place-items: center;
+      border-radius: 11px;
+      color: var(--cream);
+      background: var(--forest-700);
+      font-size: 10px;
+    }
+
+    .office-layer strong { display: block; color: var(--forest-900); font-size: 11px; }
+    .office-layer span { color: var(--muted); font-size: 9px; }
+
+    .architecture {
+      padding: 27px;
+      border-radius: var(--radius-xl);
+      color: var(--cream);
+      background:
+        radial-gradient(circle at 85% 12%, rgba(169, 189, 114, .22), transparent 20rem),
+        linear-gradient(145deg, var(--forest-950), var(--forest-800));
+      box-shadow: var(--shadow);
+    }
+
+    .architecture-row {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      align-items: stretch;
+      gap: 8px;
+    }
+
+    .arch-node {
+      position: relative;
+      display: grid;
+      min-height: 110px;
+      padding: 14px 11px;
+      place-content: center;
+      border: 1px solid rgba(255, 255, 255, .12);
+      border-radius: 15px;
+      text-align: center;
+      background: rgba(255, 255, 255, .065);
+    }
+
+    .arch-node:not(:last-child)::after {
+      position: absolute;
+      top: 50%;
+      right: -9px;
+      z-index: 2;
+      color: var(--lime);
+      content: "›";
+      font-size: 22px;
+      font-weight: 900;
+      transform: translateY(-55%);
+    }
+
+    .arch-node strong { color: var(--lime); font-size: 12px; }
+    .arch-node span { margin-top: 5px; color: rgba(247, 239, 220, .61); font-size: 9px; }
+
+    .architecture-note {
+      margin: 18px 0 0;
+      color: rgba(247, 239, 220, .58);
+      font-size: 10px;
+      text-align: center;
+    }
+
+    .code-block {
+      overflow: auto;
+      margin-top: 17px;
+      padding: 21px;
+      border-radius: 17px;
+      color: #deebce;
+      background: #17251b;
+      box-shadow: var(--shadow-soft);
+      font: 11px/1.7 Consolas, "SFMono-Regular", monospace;
+      white-space: pre;
+    }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .phase {
+      padding: 20px 17px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 250, 240, .83);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .phase::before {
+      display: block;
+      width: 35px;
+      height: 5px;
+      margin-bottom: 17px;
+      border-radius: 99px;
+      background: var(--forest-600);
+      content: "";
+    }
+
+    .phase:nth-child(2)::before { background: var(--mint); }
+    .phase:nth-child(3)::before { background: var(--blue); }
+    .phase:nth-child(4)::before { background: var(--coral); }
+    .phase:nth-child(5)::before { background: var(--gold); }
+    .phase small { color: var(--forest-600); font-size: 9px; font-weight: 900; }
+    .phase h3 { margin: 5px 0 7px; color: var(--forest-900); font-size: 14px; }
+    .phase p { margin: 0; color: var(--muted); font-size: 10px; }
+
+    .folder-tree {
+      padding: 23px;
+      border-radius: 18px;
+      color: #deebce;
+      background: #17251b;
+      box-shadow: var(--shadow-soft);
+      font: 11px/1.68 Consolas, "SFMono-Regular", monospace;
+      white-space: pre;
+    }
+
+    .truth-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .truth-card {
+      min-height: 170px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 250, 240, .82);
+    }
+
+    .truth-card b {
+      display: grid;
+      width: 35px;
+      height: 35px;
+      margin-bottom: 15px;
+      place-items: center;
+      border-radius: 12px;
+      color: var(--forest-900);
+      background: var(--lime);
+    }
+
+    .truth-card strong { display: block; color: var(--forest-900); font-size: 13px; }
+    .truth-card p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+
+    .checklist-shell {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-xl);
+      background: rgba(255, 250, 240, .86);
+      box-shadow: var(--shadow);
+    }
+
+    .checklist-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 24px;
+      color: var(--cream);
+      background: var(--forest-900);
+      gap: 18px;
+    }
+
+    .checklist-head h3 { margin: 0; font-size: 17px; }
+    .checklist-head p { margin: 3px 0 0; color: rgba(247, 239, 220, .58); font-size: 10px; }
+
+    .progress-ring {
+      display: grid;
+      width: 58px;
+      height: 58px;
+      place-items: center;
+      border: 5px solid rgba(255, 255, 255, .1);
+      border-top-color: var(--lime);
+      border-radius: 50%;
+      color: var(--lime);
+      font-size: 11px;
+      font-weight: 900;
+    }
+
+    .check-groups {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      padding: 21px;
+      gap: 18px;
+    }
+
+    .check-group {
+      padding: 17px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(220, 231, 168, .13);
+    }
+
+    .check-group h4 { margin: 0 0 11px; color: var(--forest-900); font-size: 13px; }
+
+    .check-row {
+      display: grid;
+      grid-template-columns: 20px 1fr;
+      align-items: start;
+      margin-top: 8px;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 11px;
+      gap: 8px;
+    }
+
+    .check-row input {
+      width: 16px;
+      height: 16px;
+      margin: 2px 0 0;
+      accent-color: var(--forest-700);
+    }
+
+    .check-row:has(input:checked) span {
+      color: var(--forest-700);
+      text-decoration: line-through;
+      opacity: .7;
+    }
+
+    .acceptance {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .accept {
+      padding: 21px;
+      border: 1px solid var(--line);
+      border-radius: 17px;
+      background: rgba(255, 250, 240, .82);
+    }
+
+    .accept strong { display: block; color: var(--forest-900); font-size: 13px; }
+    .accept p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
+
+    .final {
+      position: relative;
+      overflow: hidden;
+      padding: 40px;
+      border-radius: var(--radius-xl);
+      color: var(--cream);
+      background:
+        radial-gradient(circle at 90% 0, rgba(220, 231, 168, .27), transparent 19rem),
+        var(--forest-900);
+      box-shadow: var(--shadow);
+    }
+
+    .final::after {
+      position: absolute;
+      right: 31px;
+      bottom: -22px;
+      color: rgba(255, 255, 255, .065);
+      content: "🐾";
+      font-size: 135px;
+      transform: rotate(-11deg);
+    }
+
+    .final h2 { position: relative; z-index: 1; color: var(--cream); }
+    .final p { position: relative; z-index: 1; max-width: 750px; color: rgba(247, 239, 220, .68); }
+
+    .final-steps {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 24px;
+      gap: 9px;
+    }
+
+    .final-step {
+      padding: 16px;
+      border: 1px solid rgba(255, 255, 255, .11);
+      border-radius: 15px;
+      background: rgba(255, 255, 255, .06);
+    }
+
+    .final-step b { display: block; color: var(--lime); font-size: 12px; }
+    .final-step span { color: rgba(247, 239, 220, .58); font-size: 9px; }
+
+    footer {
+      padding: 32px 18px 46px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      text-align: center;
+      font-size: 10px;
+    }
+
+    @media (max-width: 1020px) {
+      .hero-grid { grid-template-columns: 1fr; gap: 42px; }
+      .hero-visual { max-width: 390px; }
+      .layout { display: block; }
+      .toc { display: none; }
+      main { padding-top: 62px; }
+      .blueprint-grid, .sprite-sheet, .office-detail { grid-template-columns: 1fr; }
+      .blueprint { max-width: 540px; }
+      .pipeline, .timeline { grid-template-columns: repeat(3, 1fr); }
+      .pipeline-step:nth-child(3)::after { display: none; }
+      .architecture-row { grid-template-columns: 1fr; }
+      .arch-node { min-height: 75px; }
+      .arch-node:not(:last-child)::after { top: auto; right: 50%; bottom: -18px; transform: translateX(50%) rotate(90deg); }
+      .office-image { min-height: 520px; }
+    }
+
+    @media (max-width: 700px) {
+      .topbar-inner { min-height: 56px; }
+      .brand span:last-child { display: none; }
+      .button.print { display: none; }
+      .hero { padding: 60px 17px 56px; }
+      .hero h1 { font-size: 45px; }
+      .layout { width: min(calc(100% - 28px), var(--content)); }
+      main { padding: 50px 0 82px; }
+      section { margin-bottom: 78px; }
+      .cards, .station-grid, .truth-grid, .check-groups, .acceptance, .final-steps { grid-template-columns: 1fr; }
+      .pipeline, .timeline { grid-template-columns: 1fr; }
+      .pipeline-step:not(:last-child)::after { top: auto; right: 50%; bottom: -19px; display: block; transform: translateX(50%) rotate(90deg); }
+      .decision-banner { grid-template-columns: 1fr; }
+      .layer { grid-template-columns: 45px 105px 1fr; padding: 10px; transform: none; }
+      .sprite-cells { grid-template-columns: repeat(2, 1fr); }
+      .office-image { min-height: 420px; }
+      .checklist-head { align-items: flex-start; }
+      .final { padding: 29px 23px; }
+      .final::after { display: none; }
+      th, td { min-width: 110px; }
+    }
+
+    @media print {
+      @page { size: A4; margin: 14mm; }
+      body { background: #fff; font-size: 9pt; }
+      body::before, .scroll-progress, .topbar, .toc { display: none !important; }
+      .hero { margin-bottom: 14mm; padding: 16mm 12mm; print-color-adjust: exact; }
+      .hero-grid { display: block; }
+      .hero-visual { display: none; }
+      .layout { display: block; width: 100%; }
+      main { padding: 0; }
+      section { margin-bottom: 14mm; }
+      .card, .blueprint, .coordinate-panel, .pipeline-step, .sprite-spec, .spec-item, .station, .office-detail, .architecture, .phase, .truth-card, .checklist-shell, .accept, .final { break-inside: avoid; box-shadow: none; }
+      .architecture, .state-flow, .final, .checklist-head { print-color-adjust: exact; }
+      .check-row input { appearance: none; width: 12px; height: 12px; border: 1px solid #666; }
+    }
+  </style>
+</head>
+<body>
+  <div class="scroll-progress" id="scrollProgress" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="brand-mark">🐾</span>
+        <span>Agent Forest · 원화 재현 애니메이션 설계서</span>
+      </div>
+      <div class="top-actions">
+        <a class="button" href="#checklist">제작 체크리스트</a>
+        <button class="button print" type="button" onclick="window.print()">PDF로 인쇄</button>
+        <a class="button primary" href="#start">착수 순서</a>
+      </div>
+    </div>
+  </header>
+
+  <header class="hero">
+    <div class="hero-grid">
+      <div>
+        <p class="eyebrow">EXACT VISUAL RECONSTRUCTION PLAN · v1.0</p>
+        <h1>
+          원화를 그대로 살리고
+          <span>배경·캐릭터·책상·개인 사무실만 움직이게 만드는 설계</span>
+        </h1>
+        <p class="hero-copy">
+          새로운 숲 테마를 다시 디자인하는 계획이 아닙니다. 현재 1696×2528 원본의 화면 비율,
+          숲 테두리, 부서 배치, 책상과 무대, 보고 대기열, 오른쪽 아래 개인 사무실의 표현을
+          기준 좌표로 고정하고 각각을 독립 레이어로 복원하는 제작 계획입니다.
+        </p>
+        <div class="hero-rule">
+          <b>1</b>
+          <div>
+            <strong>애니메이션보다 먼저 “정지 화면 원본 재현”을 통과해야 합니다.</strong>
+            <small>모든 레이어를 다시 조립했을 때 기존 원화와 거의 같아 보이지 않으면 움직임 작업을 시작하지 않습니다.</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-visual" aria-label="원화의 레이어 분해 개념">
+        <div class="hero-visual-frame">
+          <img src="assets/concept-base.jpg" alt="Agent Forest 기본 원화">
+        </div>
+        <span class="layer-tag tag-bg">숲·잔디 배경</span>
+        <span class="layer-tag tag-prop">책상·무대·가구</span>
+        <span class="layer-tag tag-agent">고양이 캐릭터</span>
+        <span class="layer-tag tag-office">개인 사무실</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="toc" aria-label="문서 목차">
+      <strong>CONTENTS</strong>
+      <a href="#principle">01 구현 원칙</a>
+      <a href="#blueprint">02 원화 좌표 설계</a>
+      <a href="#layers">03 레이어 분해</a>
+      <a href="#production">04 이미지 제작 공정</a>
+      <a href="#characters">05 캐릭터 규격</a>
+      <a href="#stations">06 책상·부서·사무실</a>
+      <a href="#runtime">07 애니메이션 엔진</a>
+      <a href="#truth">08 실제 AI 상태 표현</a>
+      <a href="#schedule">09 일정과 관문</a>
+      <a href="#structure">10 파일 구조</a>
+      <a href="#checklist">11 제작 체크리스트</a>
+      <a href="#start">12 착수 순서</a>
+    </aside>
+
+    <main>
+      <section id="principle">
+        <span class="section-no">01</span>
+        <h2>구현 원칙: 재해석하지 않고 분해한 뒤 다시 조립합니다</h2>
+        <p class="section-lead">
+          현재 이미지는 완성 원화로서는 좋지만 모든 물체와 캐릭터가 한 장에 합쳐져 있습니다.
+          실제 움직임을 만들려면 보이는 모양과 위치는 그대로 유지하면서 내부 구조만 게임용으로 바꿔야 합니다.
+        </p>
+
+        <div class="decision-banner">
+          <span class="decision-icon">≋</span>
+          <div>
+            <h3>선택 방식: 2.5D 레이어 월드 + 프레임 스프라이트</h3>
+            <p>
+              숲과 가구는 여러 장의 고정 레이어로, 고양이는 투명 스프라이트로, 승인 모달과 부서 표지판은 HTML UI로 만듭니다.
+              Phaser가 이동·깊이·애니메이션을 담당하고 React는 현재 작업 패널과 승인 화면을 유지합니다.
+            </p>
+          </div>
+        </div>
+
+        <div class="cards" style="margin-top:16px">
+          <article class="card">
+            <h3><span class="mini-icon">✓</span>그대로 유지할 것</h3>
+            <ul>
+              <li>1696×2528 세로 화면 비율과 전체 구도</li>
+              <li>숲 테두리와 중앙 잔디 공간의 색감·명암</li>
+              <li>General·Coding·Design·Music의 상대 위치</li>
+              <li>왼쪽 보고 대기열과 오른쪽 아래 개인 사무실</li>
+              <li>둥근 선, 저채도 파스텔, 손그림 느낌과 고양이 비율</li>
+            </ul>
+          </article>
+          <article class="card warn-card">
+            <h3><span class="mini-icon">!</span>하면 안 되는 것</h3>
+            <ul>
+              <li>현재 JPG에서 고양이만 대충 잘라 움직이기</li>
+              <li>빈 공간 복원 없이 물체를 제거해 잔디가 뚫리게 만들기</li>
+              <li>부서 위치를 반응형이라는 이유로 임의 재배치하기</li>
+              <li>글자와 승인 버튼을 다시 배경 이미지에 구워 넣기</li>
+              <li>원화 검증 없이 캐릭터 전체 세트를 한 번에 생산하기</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section id="blueprint">
+        <span class="section-no">02</span>
+        <h2>원본 이미지를 월드 좌표계로 고정합니다</h2>
+        <p class="section-lead">
+          제작 마스터는 기존 원본 PNG의 1696×2528을 사용합니다. 모든 레이어는 이 크기와 원점을 공유하므로
+          분해 후 다시 합쳐도 위치가 변하지 않습니다. 실행 화면에서는 같은 좌표계를 비율에 맞춰 축소합니다.
+        </p>
+
+        <div class="blueprint-grid">
+          <figure class="blueprint" style="margin:0">
+            <img src="assets/concept-base.jpg" alt="원화 기준 위치 지도">
+            <span class="map-marker" style="--x:50%;--y:23%;--marker:#d3af6c">G<b>General</b></span>
+            <span class="map-marker" style="--x:72%;--y:34%;--marker:#82b2c5">C<b>Coding</b></span>
+            <span class="map-marker" style="--x:52%;--y:62%;--marker:#d9908a">D<b>Design</b></span>
+            <span class="map-marker" style="--x:76%;--y:52%;--marker:#91aa69">M<b>Music</b></span>
+            <span class="map-marker" style="--x:24%;--y:68%;--marker:#9c7c68">Q<b>Report Queue</b></span>
+            <span class="map-marker" style="--x:72%;--y:84%;--marker:#b78556">O<b>Personal Office</b></span>
+            <span class="map-marker" style="--x:33%;--y:90%;--marker:#6f8b62">E<b>Entrance</b></span>
+          </figure>
+
+          <div class="coordinate-panel">
+            <div class="coordinate-header">
+              <strong>고정 앵커 좌표</strong>
+              <span>기존 앱의 LOCATIONS 값과 원본 마스터 좌표를 연결</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>영역</th><th>비율 좌표</th><th>1696×2528 기준</th><th>용도</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>General</td><td><code>50%, 23%</code></td><td>848, 581</td><td>업무 접수·회의</td></tr>
+                  <tr><td>Coding</td><td><code>72%, 34%</code></td><td>1,221, 860</td><td>코드·도구 실행</td></tr>
+                  <tr><td>Design</td><td><code>52%, 62%</code></td><td>882, 1,567</td><td>이미지 제작</td></tr>
+                  <tr><td>Music</td><td><code>76%, 52%</code></td><td>1,289, 1,315</td><td>음악·음성 작업</td></tr>
+                  <tr><td>보고 대기열</td><td><code>24%, 68%</code></td><td>407, 1,719</td><td>완료·승인 대기</td></tr>
+                  <tr><td>개인 사무실</td><td><code>72%, 84%</code></td><td>1,221, 2,124</td><td>사용자 감독·승인</td></tr>
+                  <tr><td>입구</td><td><code>33%, 90%</code></td><td>560, 2,275</td><td>에이전트 등장·퇴장</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="gate">
+          <span class="gate-icon">⌖</span>
+          <div>
+            <strong>좌표 보정 원칙</strong>
+            <p>
+              위 좌표는 현재 프로토타입의 기준점입니다. 실제 레이어가 준비되면 캐릭터의 발 위치와 의자 좌석점을 기준으로
+              ±2% 안에서만 미세 조정합니다. 부서 자체를 다른 곳으로 옮기지는 않습니다.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section id="layers">
+        <span class="section-no">03</span>
+        <h2>한 장의 원화를 여섯 깊이 레이어로 재구성합니다</h2>
+        <p class="section-lead">
+          모든 레이어는 1696×2528 투명 캔버스에 원래 위치 그대로 저장합니다. 실행 시에는 y 좌표 기반 정렬을 더해
+          고양이가 책상 앞·뒤와 사무실 벽 안쪽을 자연스럽게 오갈 수 있게 합니다.
+        </p>
+
+        <div class="layer-stack">
+          <div class="layer"><span class="layer-no">L00</span><strong>Clean Ground</strong><span>고양이·가구·글자가 없는 잔디와 중앙 공터. 제거된 부분의 잔디 무늬까지 복원.</span></div>
+          <div class="layer"><span class="layer-no">L10</span><strong>Back Forest</strong><span>상단·좌우 숲 테두리, 뒤쪽 관목과 나무. 월드의 고정 배경.</span></div>
+          <div class="layer"><span class="layer-no">L20</span><strong>Station Back</strong><span>책상 뒷면, 모니터, 무대 뒤쪽, 개인 사무실 뒷벽·책장.</span></div>
+          <div class="layer"><span class="layer-no">L30</span><strong>Agents &amp; Props</strong><span>실제 고양이 스프라이트, 들고 있는 보고서, 붓·키보드·악기 등의 동적 소품.</span></div>
+          <div class="layer"><span class="layer-no">L40</span><strong>Station Front</strong><span>책상 앞판, 의자 앞쪽, 무대 모서리, 개인 사무실 전면 벽. 캐릭터를 가리는 전경.</span></div>
+          <div class="layer"><span class="layer-no">L50</span><strong>UI &amp; Effects</strong><span>부서 표지판, 상태 말풍선, 음표·모니터 빛, 승인 모달. 텍스트는 HTML로 유지.</span></div>
+        </div>
+
+        <div class="cards" style="margin-top:18px">
+          <article class="card">
+            <h3><span class="mini-icon">◫</span>정적인 장식 캐릭터</h3>
+            <p>
+              원화의 풍성함을 유지하기 위해 부서 주변의 일부 고양이는 짧은 대기 루프를 하는 “오피스 장식 인원”으로 둘 수 있습니다.
+              이름·상태 배지가 없으므로 실제 AI 에이전트로 오해되지 않게 합니다.
+            </p>
+          </article>
+          <article class="card">
+            <h3><span class="mini-icon">●</span>실제 AI 캐릭터</h3>
+            <p>
+              실제 Codex 세션과 연결된 고양이만 이름, 상태점, 작업 말풍선을 표시합니다. 왼쪽 보고 대기열은 장식으로 채우지 않고
+              실제 완료·승인 대기 건수와 1:1로 대응시킵니다.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="production">
+        <span class="section-no">04</span>
+        <h2>원화의 표현을 보존하는 이미지 제작 공정</h2>
+        <p class="section-lead">
+          숨겨진 잔디와 가구 뒷면은 원본에 존재하지 않으므로 단순 자르기만으로는 만들 수 없습니다.
+          마스크 복원과 수작업 보정을 함께 사용하고, 매 단계마다 원본과 겹쳐 비교합니다.
+        </p>
+
+        <div class="pipeline">
+          <article class="pipeline-step">
+            <b>01</b>
+            <strong>원본 잠금</strong>
+            <span>1696×2528 PNG를 기준 파일로 복사하고 색상 프로필·비율·구도를 변경하지 않습니다.</span>
+          </article>
+          <article class="pipeline-step">
+            <b>02</b>
+            <strong>마스크 분할</strong>
+            <span>숲, 잔디, 가구, 캐릭터, 전경, UI를 영역별 마스크로 표시합니다.</span>
+          </article>
+          <article class="pipeline-step">
+            <b>03</b>
+            <strong>빈 공간 복원</strong>
+            <span>고양이와 가구 뒤에 가려졌던 잔디·벽·바닥을 인페인팅 후 손으로 보정합니다.</span>
+          </article>
+          <article class="pipeline-step">
+            <b>04</b>
+            <strong>레이어 재조립</strong>
+            <span>모든 분리 파일을 원래 좌표에 올려 정지 화면이 원본과 같은지 A/B 비교합니다.</span>
+          </article>
+          <article class="pipeline-step">
+            <b>05</b>
+            <strong>움직임 제작</strong>
+            <span>정지 화면 재현 승인 후에만 고양이·모니터·악기·말풍선 애니메이션을 추가합니다.</span>
+          </article>
+        </div>
+
+        <div class="gate">
+          <span class="gate-icon">A/B</span>
+          <div>
+            <strong>필수 관문: Static Reconstruction Gate</strong>
+            <p>
+              레이어 조립 결과를 원본 위에 50% 투명도로 겹쳤을 때 부서 위치, 숲 경계, 가구 실루엣, 개인 사무실 크기가 흔들리지 않아야 합니다.
+              원본과 나란히 보았을 때 “다른 그림”처럼 느껴지면 해당 레이어를 다시 만듭니다.
+            </p>
+          </div>
+        </div>
+
+        <div class="cards" style="margin-top:18px">
+          <article class="card">
+            <h3><span class="mini-icon">✎</span>권장 제작 도구</h3>
+            <p>Photoshop·Affinity Photo·Krita 중 하나로 마스크와 레이어를 관리합니다. AI 편집은 빈 공간 복원 초안에만 쓰고 테두리와 색감은 수작업으로 맞춥니다.</p>
+          </article>
+          <article class="card">
+            <h3><span class="mini-icon">◉</span>색감 기준</h3>
+            <p>원본에서 숲·잔디·목재·고양이 털 팔레트를 추출해 고정합니다. 새 에셋은 같은 팔레트와 좌상단 광원, 갈색 외곽선 굵기를 지켜야 합니다.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="characters">
+        <span class="section-no">05</span>
+        <h2>고양이는 원화와 같은 체형의 프레임 스프라이트로 만듭니다</h2>
+        <p class="section-lead">
+          기존 고양이를 잘라 팔다리만 회전시키면 종이 인형처럼 보입니다. 원화의 둥근 체형과 손그림 느낌을 지키기 위해
+          이동과 주요 업무는 프레임 애니메이션으로, 눈 깜빡임·몸 들썩임은 가벼운 보간으로 처리합니다.
+        </p>
+
+        <div class="sprite-sheet">
+          <div class="sprite-spec">
+            <div class="sprite-head">
+              <strong>Base Cat Sprite Sheet</strong>
+              <span>256×256 / FRAME</span>
+            </div>
+            <div class="sprite-cells">
+              <div class="sprite-cell">🐱<small>FRONT</small></div>
+              <div class="sprite-cell">🐈<small>BACK</small></div>
+              <div class="sprite-cell">🐈<small>LEFT</small></div>
+              <div class="sprite-cell">🐈<small>RIGHT</small></div>
+              <div class="sprite-cell">⌨️<small>TYPE</small></div>
+              <div class="sprite-cell">📄<small>REPORT</small></div>
+              <div class="sprite-cell">💬<small>THINK</small></div>
+              <div class="sprite-cell">✨<small>DONE</small></div>
+            </div>
+          </div>
+
+          <div class="spec-list">
+            <div class="spec-item"><b>마스터 프레임</b><span>512×512 투명 PNG. 실행용은 256×256로 축소.</span></div>
+            <div class="spec-item"><b>기준점</b><span>모든 프레임의 발 중앙을 동일한 origin(0.5, 1.0)에 고정.</span></div>
+            <div class="spec-item"><b>걷기</b><span>4방향 × 6프레임, 8~10fps. 보고서는 별도 손 소품 레이어.</span></div>
+            <div class="spec-item"><b>업무 루프</b><span>타이핑·그리기·읽기·연주 각 4~8프레임.</span></div>
+            <div class="spec-item"><b>변형 방식</b><span>한 기본 체형에 털색·옷·모자 오버레이를 조합해 일관성 유지.</span></div>
+          </div>
+        </div>
+
+        <div class="table-wrap" style="margin-top:18px;border:1px solid var(--line);border-radius:18px;background:rgba(255,250,240,.84);box-shadow:var(--shadow-soft)">
+          <table>
+            <thead>
+              <tr><th>상태</th><th>MVP 프레임</th><th>표현</th><th>원화와 연결되는 장면</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>idle</code></td><td>4</td><td>눈 깜빡임, 꼬리 흔들기</td><td>부서 주변에서 대기하는 고양이</td></tr>
+              <tr><td><code>walk</code></td><td>4방향×6</td><td>짧은 보폭, 몸통 들썩임</td><td>입구·부서·보고 대기열 이동</td></tr>
+              <tr><td><code>briefing</code></td><td>4</td><td>태블릿·문서 확인, 고개 끄덕임</td><td>General 원탁 회의</td></tr>
+              <tr><td><code>working</code></td><td>부서별 6</td><td>타이핑·붓질·연주</td><td>Coding·Design·Music 작업대</td></tr>
+              <tr><td><code>reporting</code></td><td>walk+소품</td><td>보고서를 들고 걷기</td><td>왼쪽 세로 보고 대기열</td></tr>
+              <tr><td><code>waiting</code></td><td>4</td><td>보고서를 든 채 발끝 움직임</td><td>개인 사무실 앞 승인 대기</td></tr>
+              <tr><td><code>complete</code></td><td>6</td><td>짧은 환호·반짝임</td><td>확인 버튼 처리 후</td></tr>
+              <tr><td><code>failed</code></td><td>4</td><td>귀 처짐·경고 말풍선</td><td>도구 실패·연결 오류</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="state-flow" style="margin-top:18px">
+          <span class="state">ENTERING</span><span class="state-arrow">→</span>
+          <span class="state">GENERAL</span><span class="state-arrow">→</span>
+          <span class="state">MOVING</span><span class="state-arrow">→</span>
+          <span class="state">WORKING</span><span class="state-arrow">→</span>
+          <span class="state">REPORT QUEUE</span><span class="state-arrow">→</span>
+          <span class="state">PERSONAL OFFICE</span><span class="state-arrow">→</span>
+          <span class="state">APPROVED / REVIEW</span>
+        </div>
+      </section>
+
+      <section id="stations">
+        <span class="section-no">06</span>
+        <h2>책상과 부서 공간도 원화의 모양 그대로 분리합니다</h2>
+        <p class="section-lead">
+          가구를 새로 배치하지 않습니다. 원화의 가구 실루엣을 유지한 채 캐릭터가 앞뒤로 들어갈 수 있도록
+          각 작업대를 Back·Seat·Front 세 부분으로 나눕니다.
+        </p>
+
+        <div class="station-grid">
+          <article class="station" data-emoji="◯">
+            <h3>General · 원탁과 회의 테이블</h3>
+            <p>상단 원탁과 왼쪽 회의 테이블의 위치와 크기를 유지합니다.</p>
+            <ul>
+              <li>테이블 뒷면 / 좌석 앵커 / 테이블 앞면 분리</li>
+              <li>문서 넘김, 태블릿 확인, 대화 점 말풍선</li>
+              <li>매니저가 중앙에서 부서 배정을 시작</li>
+            </ul>
+          </article>
+          <article class="station" data-emoji="⌨">
+            <h3>Coding · 상단·중앙 책상</h3>
+            <p>두 Coding 작업 공간 모두 보존하되 실제 에이전트는 빈 좌석을 선택합니다.</p>
+            <ul>
+              <li>책상, 모니터, 키보드, 의자, 가방 개별 레이어</li>
+              <li>모니터 빛·코드 스크롤·키보드 손 동작</li>
+              <li>책상 앞판이 앉은 고양이의 하체를 자연스럽게 가림</li>
+            </ul>
+          </article>
+          <article class="station" data-emoji="🎨">
+            <h3>Design · 중앙 작업 플랫폼</h3>
+            <p>파란 타원 작업면, 팔레트, 붓통과 목재 단상을 그대로 유지합니다.</p>
+            <ul>
+              <li>단상 / 작업면 / 팔레트 / 붓 / 캐릭터 분리</li>
+              <li>붓질, 물감 번짐, 완성 이미지 반짝임</li>
+              <li>작업 산출물 썸네일을 종이 위에 동적으로 표시 가능</li>
+            </ul>
+          </article>
+          <article class="station" data-emoji="♪">
+            <h3>Music · 오른쪽 무대</h3>
+            <p>원화의 기타·첼로·악보대와 무대 모서리를 그대로 복원합니다.</p>
+            <ul>
+              <li>무대 뒤 / 악기 캐릭터 / 무대 앞판 분리</li>
+              <li>악기별 짧은 연주 루프와 HTML/CSS 음표 효과</li>
+              <li>실제 오디오 작업 중에만 작업 애니메이션 재생</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="office-detail">
+          <div class="office-image">
+            <img src="assets/concept-base.jpg" alt="원화 오른쪽 아래의 개인 사무실">
+          </div>
+          <div class="office-copy">
+            <h3>개인 사무실은 하나의 그림이 아니라 네 겹의 컷어웨이 공간으로 만듭니다</h3>
+            <p>
+              현재 원화의 오른쪽 아래 사무실 크기, 목재 벽, 책장, 책상, 모니터, 의자와 원형 러그를 그대로 유지합니다.
+              사용자를 상징하는 매니저 고양이는 의자에 앉거나 책상 앞으로 나와 보고를 받습니다.
+            </p>
+            <div class="office-layers">
+              <div class="office-layer"><b>01</b><div><strong>Back Room</strong><span>뒷벽, 책장, 게시판, 바닥과 러그</span></div></div>
+              <div class="office-layer"><b>02</b><div><strong>Desk Back</strong><span>모니터, 책, 전화, 책상 상판과 의자 뒤쪽</span></div></div>
+              <div class="office-layer"><b>03</b><div><strong>Boss Agent</strong><span>앉기, 보고서 읽기, 승인·재검토·반려 반응</span></div></div>
+              <div class="office-layer"><b>04</b><div><strong>Front Occluder</strong><span>책상 앞판, 오른쪽·왼쪽 전면 벽과 바닥 모서리</span></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cards" style="margin-top:18px">
+          <article class="card">
+            <h3><span class="mini-icon">▣</span>승인 화면</h3>
+            <p>2번 원화의 어두운 배경, 큰 매니저 고양이, 크림색 보고 모달과 민트·파랑·코랄 버튼 표현을 React 모달로 그대로 재현합니다.</p>
+          </article>
+          <article class="card">
+            <h3><span class="mini-icon">A</span>텍스트 처리</h3>
+            <p>“보고합니다”, 작업 결과, 부서명은 이미지가 아니라 HTML 텍스트로 표시합니다. 그래야 실제 Codex 결과와 다국어가 들어가도 선명합니다.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="runtime">
+        <span class="section-no">07</span>
+        <h2>Phaser는 월드만, React는 업무 UI만 담당합니다</h2>
+        <p class="section-lead">
+          현재 구현된 Codex 브리지와 이벤트 규격은 그대로 사용합니다. 기존 배경 이미지 영역만 Phaser 캔버스로 교체하고,
+          작업 입력·로그·승인 모달은 현재 React 코드를 유지합니다.
+        </p>
+
+        <div class="architecture">
+          <div class="architecture-row">
+            <div class="arch-node"><strong>Codex Bridge</strong><span>현재 JSONL·SSE 연동 유지</span></div>
+            <div class="arch-node"><strong>Event Mapper</strong><span>AI 이벤트 → 캐릭터 상태</span></div>
+            <div class="arch-node"><strong>React Store</strong><span>작업·승인·상태 공유</span></div>
+            <div class="arch-node"><strong>Phaser World</strong><span>배경·가구·이동·깊이 정렬</span></div>
+            <div class="arch-node"><strong>React Overlay</strong><span>부서표지·말풍선·승인 모달</span></div>
+          </div>
+          <p class="architecture-note">AI 실행부를 바꾸지 않고 시각 렌더러만 교체하므로 현재 연동 성공 결과를 그대로 보존할 수 있습니다.</p>
+        </div>
+
+        <div class="code-block">const world = {
+  masterSize: { width: 1696, height: 2528 },
+  scaleMode: "FIT",
+  crop: false,
+  agentOrigin: { x: 0.5, y: 1.0 },
+  depthRule: (sprite) =&gt; sprite.y,
+  stations: {
+    general: { x: 848,  y: 581 },
+    coding:  { x: 1221, y: 860 },
+    design:  { x: 882,  y: 1567 },
+    music:   { x: 1289, y: 1315 },
+    queue:   { x: 407,  y: 1719 },
+    office:  { x: 1221, y: 2124 }
+  }
+};</div>
+
+        <div class="cards" style="margin-top:18px">
+          <article class="card">
+            <h3><span class="mini-icon">↝</span>이동</h3>
+            <p>격자 타일맵 대신 원화 위에 숨겨진 웨이포인트 경로를 놓습니다. 고양이는 숲과 가구를 관통하지 않고 원화 속 열린 잔디 길을 따라 이동합니다.</p>
+          </article>
+          <article class="card">
+            <h3><span class="mini-icon">↕</span>깊이</h3>
+            <p>고양이의 발 y좌표를 depth로 사용하고 책상 앞판·사무실 벽은 별도 고정 depth를 지정해 원화와 같은 앞뒤 관계를 만듭니다.</p>
+          </article>
+          <article class="card">
+            <h3><span class="mini-icon">▦</span>텍스처</h3>
+            <p>배경은 WebP, 투명 캐릭터와 전경은 PNG 또는 무손실 WebP atlas로 내보냅니다. 한 atlas는 최대 2048×2048로 제한합니다.</p>
+          </article>
+          <article class="card">
+            <h3><span class="mini-icon">60</span>성능</h3>
+            <p>데스크톱 60fps, 저사양 모바일 30fps, 동시에 실제 움직이는 에이전트 8개를 기본 예산으로 잡습니다.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="truth">
+        <span class="section-no">08</span>
+        <h2>원화의 풍성함과 실제 AI 상태의 진실성을 함께 유지합니다</h2>
+        <p class="section-lead">
+          화면을 원화처럼 풍성하게 보이게 하려고 실제로 실행되지 않는 AI를 “작업 중”으로 표시하면 안 됩니다.
+          장식용 동작과 실제 Codex 이벤트를 시각적으로 구분합니다.
+        </p>
+
+        <div class="truth-grid">
+          <article class="truth-card">
+            <b>1</b>
+            <strong>실제 에이전트</strong>
+            <p>이름표, 상태점, 작업 말풍선이 있고 Codex의 thread·turn·tool 이벤트와 1:1로 움직입니다.</p>
+          </article>
+          <article class="truth-card">
+            <b>2</b>
+            <strong>장식용 오피스 고양이</strong>
+            <p>원화 분위기를 유지하는 짧은 대기 루프만 재생하며 이름·업무·진행률을 표시하지 않습니다.</p>
+          </article>
+          <article class="truth-card">
+            <b>3</b>
+            <strong>보고 대기열</strong>
+            <p>장식 캐릭터를 넣지 않습니다. 줄의 길이는 실제 완료 또는 승인 대기 작업 수와 정확히 일치합니다.</p>
+          </article>
+        </div>
+
+        <div class="table-wrap" style="margin-top:18px;border:1px solid var(--line);border-radius:18px;background:rgba(255,250,240,.84);box-shadow:var(--shadow-soft)">
+          <table>
+            <thead>
+              <tr><th>Codex 이벤트</th><th>월드 행동</th><th>위치</th><th>애니메이션</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>task.queued</code></td><td>매니저에게 업무 접수</td><td>General</td><td>문서 확인·고개 끄덕임</td></tr>
+              <tr><td><code>thread.started</code></td><td>담당 고양이 생성</td><td>입구→General</td><td>등장·걷기</td></tr>
+              <tr><td><code>turn.started</code></td><td>담당 부서 이동</td><td>General→부서</td><td>4방향 걷기</td></tr>
+              <tr><td><code>item.started</code></td><td>실제 도구 작업</td><td>부서 작업대</td><td>타이핑·그리기·연주</td></tr>
+              <tr><td><code>item.completed</code></td><td>보고서 작성·이동</td><td>부서→대기열</td><td>보고서 들고 걷기</td></tr>
+              <tr><td><code>turn.completed</code></td><td>사용자 승인 요청</td><td>개인 사무실</td><td>보고 자세·승인 모달</td></tr>
+              <tr><td><code>turn.failed</code></td><td>문제 보고</td><td>현재 위치</td><td>귀 처짐·경고 말풍선</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="schedule">
+        <span class="section-no">09</span>
+        <h2>5단계 일정과 각 단계의 중단·승인 관문</h2>
+        <p class="section-lead">
+          1인 제작 기준 약 4~5주입니다. 전체 고양이를 먼저 만드는 대신 한 부서의 완전한 루프로 품질과 기술을 검증한 뒤 확장합니다.
+        </p>
+
+        <div class="timeline">
+          <article class="phase">
+            <small>PHASE 0 · 1~2일</small>
+            <h3>원본·스타일 잠금</h3>
+            <p>원본 PNG 확보, 좌표·팔레트·선 굵기·광원 기준서 작성.</p>
+          </article>
+          <article class="phase">
+            <small>PHASE 1 · 4~6일</small>
+            <h3>정지 화면 복원</h3>
+            <p>Clean Ground, 숲, 가구, 사무실을 분리하고 재조립 A/B 검증.</p>
+          </article>
+          <article class="phase">
+            <small>PHASE 2 · 5~7일</small>
+            <h3>Coding POC</h3>
+            <p>고양이 한 마리의 입장·걷기·타이핑·보고·승인 전체 루프.</p>
+          </article>
+          <article class="phase">
+            <small>PHASE 3 · 7~10일</small>
+            <h3>전체 부서 확장</h3>
+            <p>General·Design·Music와 개인 사무실 반응, 캐릭터 변형 추가.</p>
+          </article>
+          <article class="phase">
+            <small>PHASE 4 · 4~6일</small>
+            <h3>통합·최적화</h3>
+            <p>실제 Codex 이벤트, 모바일 성능, 복구·오류·승인 흐름 검증.</p>
+          </article>
+        </div>
+
+        <div class="cards" style="margin-top:18px">
+          <article class="card">
+            <h3><span class="mini-icon">G1</span>관문 1</h3>
+            <p>분리 레이어를 모두 꺼내고 다시 켰을 때 원화와 구도·크기·색감이 동일하게 느껴지는지 승인합니다.</p>
+          </article>
+          <article class="card">
+            <h3><span class="mini-icon">G2</span>관문 2</h3>
+            <p>Coding 고양이 한 마리가 원화 스타일을 깨지 않고 책상 앞뒤를 이동해 실제 Codex 완료 보고까지 수행해야 전체 제작을 시작합니다.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="structure">
+        <span class="section-no">10</span>
+        <h2>원본과 실행용 파일을 분리하는 폴더 구조</h2>
+        <p class="section-lead">
+          편집 가능한 원본은 <code>art-source</code>에, 브라우저에서 사용하는 최적화 파일만 <code>public/art</code>에 둡니다.
+          모든 파일명에 부서·레이어·상태를 넣어 자동 로딩과 교체가 가능하게 합니다.
+        </p>
+
+        <div class="folder-tree">catAgentGame/
+├─ art-source/
+│  ├─ reference/
+│  │  ├─ agent-forest-master-1696x2528.png
+│  │  └─ approval-master-1696x2528.png
+│  ├─ world/
+│  │  ├─ world-clean-ground.psd
+│  │  ├─ world-forest-back.psd
+│  │  └─ world-foreground.psd
+│  ├─ stations/
+│  │  ├─ general-table.psd
+│  │  ├─ coding-desk-top.psd
+│  │  ├─ coding-desk-center.psd
+│  │  ├─ design-platform.psd
+│  │  ├─ music-stage.psd
+│  │  └─ personal-office.psd
+│  └─ characters/
+│     ├─ cat-base-model-sheet.psd
+│     └─ cat-role-overlays.psd
+├─ public/art/
+│  ├─ world/
+│  │  ├─ ground.webp
+│  │  ├─ forest-back.webp
+│  │  └─ foreground.webp
+│  ├─ stations/{department}/
+│  │  ├─ back.webp
+│  │  ├─ front.webp
+│  │  └─ props-atlas.png
+│  └─ agents/
+│     ├─ cat-base-atlas.png
+│     ├─ cat-base-atlas.json
+│     └─ role-overlays.png
+└─ app/game/
+   ├─ AgentForestScene.ts
+   ├─ AgentSprite.ts
+   ├─ animation-map.ts
+   ├─ world-anchors.json
+   └─ navigation-paths.json</div>
+      </section>
+
+      <section id="checklist">
+        <span class="section-no">11</span>
+        <h2>실제 제작 체크리스트</h2>
+        <p class="section-lead">
+          아래 항목은 브라우저에 자동 저장됩니다. 정지 화면 복원 항목이 모두 끝나기 전에는 캐릭터 전체 제작으로 넘어가지 않습니다.
+        </p>
+
+        <div class="checklist-shell">
+          <div class="checklist-head">
+            <div>
+              <h3>Production Readiness</h3>
+              <p>완료한 항목을 체크하면 이 문서에 진행률이 저장됩니다.</p>
+            </div>
+            <div class="progress-ring" id="checkProgress">0%</div>
+          </div>
+          <div class="check-groups">
+            <div class="check-group">
+              <h4>A. 원본·정지 화면</h4>
+              <label class="check-row"><input type="checkbox" data-check="a1"><span>1696×2528 원본 PNG를 프로젝트에 보존</span></label>
+              <label class="check-row"><input type="checkbox" data-check="a2"><span>숲·잔디·가구·캐릭터·UI 마스크 작성</span></label>
+              <label class="check-row"><input type="checkbox" data-check="a3"><span>고양이와 가구가 없는 Clean Ground 완성</span></label>
+              <label class="check-row"><input type="checkbox" data-check="a4"><span>부서별 Back·Front 레이어 분리</span></label>
+              <label class="check-row"><input type="checkbox" data-check="a5"><span>개인 사무실 4개 깊이 레이어 분리</span></label>
+              <label class="check-row"><input type="checkbox" data-check="a6"><span>재조립 화면 원본 A/B 승인</span></label>
+            </div>
+            <div class="check-group">
+              <h4>B. 캐릭터 POC</h4>
+              <label class="check-row"><input type="checkbox" data-check="b1"><span>기본 고양이 모델 시트와 팔레트 잠금</span></label>
+              <label class="check-row"><input type="checkbox" data-check="b2"><span>4방향 걷기 6프레임 제작</span></label>
+              <label class="check-row"><input type="checkbox" data-check="b3"><span>Coding 타이핑 루프 제작</span></label>
+              <label class="check-row"><input type="checkbox" data-check="b4"><span>보고서 소품과 승인 대기 자세 제작</span></label>
+              <label class="check-row"><input type="checkbox" data-check="b5"><span>원화 속 고양이와 나란히 스타일 검증</span></label>
+            </div>
+            <div class="check-group">
+              <h4>C. 엔진 통합</h4>
+              <label class="check-row"><input type="checkbox" data-check="c1"><span>Phaser Scale.FIT 1696×2528 월드 생성</span></label>
+              <label class="check-row"><input type="checkbox" data-check="c2"><span>웨이포인트와 가구 충돌 경로 작성</span></label>
+              <label class="check-row"><input type="checkbox" data-check="c3"><span>발 좌표 기반 depth 정렬 적용</span></label>
+              <label class="check-row"><input type="checkbox" data-check="c4"><span>React 상태와 Phaser 캐릭터 상태 연결</span></label>
+              <label class="check-row"><input type="checkbox" data-check="c5"><span>현재 Codex SSE 이벤트 전체 연결</span></label>
+            </div>
+            <div class="check-group">
+              <h4>D. 품질·성능</h4>
+              <label class="check-row"><input type="checkbox" data-check="d1"><span>데스크톱 60fps·모바일 30fps 확인</span></label>
+              <label class="check-row"><input type="checkbox" data-check="d2"><span>에이전트 8개 동시 이동 테스트</span></label>
+              <label class="check-row"><input type="checkbox" data-check="d3"><span>새로고침 후 상태 복원 확인</span></label>
+              <label class="check-row"><input type="checkbox" data-check="d4"><span>승인·재검토·반려 애니메이션 확인</span></label>
+              <label class="check-row"><input type="checkbox" data-check="d5"><span>원화와 최종 화면 나란히 시각 승인</span></label>
+            </div>
+          </div>
+        </div>
+
+        <div class="acceptance" style="margin-top:18px">
+          <article class="accept"><strong>시각 합격</strong><p>스크린샷을 원화와 나란히 봤을 때 숲·부서·가구·사무실의 크기와 위치가 다른 그림처럼 느껴지지 않습니다.</p></article>
+          <article class="accept"><strong>동작 합격</strong><p>Coding 고양이가 입구에서 등장해 책상에 앉고 실제 Codex 작업 후 보고서를 들고 사무실로 이동합니다.</p></article>
+          <article class="accept"><strong>진실성 합격</strong><p>작업 중 애니메이션은 실제 이벤트가 있을 때만 재생되고 보고 대기열 수가 실제 승인 대기 수와 일치합니다.</p></article>
+          <article class="accept"><strong>성능 합격</strong><p>900px 세로 월드에서 초기 이미지 용량 3MB 이하, 데스크톱 60fps, 모바일 최소 30fps를 유지합니다.</p></article>
+        </div>
+      </section>
+
+      <section id="start">
+        <div class="final">
+          <span class="section-no">12</span>
+          <h2>착수 순서: 전체 제작이 아니라 “원본 복원 + Coding 한 마리”부터</h2>
+          <p>
+            첫 번째 결과물은 완성 게임이 아닙니다. 원화에서 고양이를 모두 제거한 Clean Ground, Coding 책상의 앞·뒤 레이어,
+            원화 스타일의 Coding 고양이 한 마리를 제작한 뒤 현재 Codex 이벤트로 전체 루프를 검증합니다.
+            이 결과가 원화와 자연스럽게 섞이면 같은 규격으로 General·Design·Music와 개인 사무실을 확장합니다.
+          </p>
+          <div class="final-steps">
+            <div class="final-step"><b>1. Static Reconstruction</b><span>모든 정적 요소를 다시 합쳐 원화와 동일하게 만들기</span></div>
+            <div class="final-step"><b>2. Coding Vertical Slice</b><span>입장→타이핑→보고→승인 한 마리 전체 루프</span></div>
+            <div class="final-step"><b>3. Full Office Expansion</b><span>검증된 규격으로 나머지 부서와 캐릭터 확장</span></div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    Agent Forest · Exact Visual Reconstruction &amp; Animation Production Plan · 2026-07-24
+  </footer>
+
+  <script>
+    const scrollProgress = document.getElementById("scrollProgress");
+    const updateScroll = () => {
+      const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+      scrollProgress.style.width = `${scrollable > 0 ? (window.scrollY / scrollable) * 100 : 0}%`;
+    };
+    addEventListener("scroll", updateScroll, { passive: true });
+    updateScroll();
+
+    const checkboxes = [...document.querySelectorAll("[data-check]")];
+    const checkProgress = document.getElementById("checkProgress");
+    const storageKey = "agent-forest-exact-animation-plan-v1";
+
+    const readSaved = () => {
+      try {
+        return JSON.parse(localStorage.getItem(storageKey) || "{}");
+      } catch {
+        return {};
+      }
+    };
+
+    const saved = readSaved();
+    checkboxes.forEach((checkbox) => {
+      checkbox.checked = Boolean(saved[checkbox.dataset.check]);
+    });
+
+    const updateChecklist = () => {
+      const state = {};
+      let completed = 0;
+      checkboxes.forEach((checkbox) => {
+        state[checkbox.dataset.check] = checkbox.checked;
+        if (checkbox.checked) completed += 1;
+      });
+      const percent = Math.round((completed / checkboxes.length) * 100);
+      checkProgress.textContent = `${percent}%`;
+      checkProgress.style.transform = `rotate(${Math.min(percent * 1.8, 180)}deg)`;
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(state));
+      } catch {
+        // The document remains usable when storage is unavailable.
+      }
+    };
+
+    checkboxes.forEach((checkbox) => {
+      checkbox.addEventListener("change", updateChecklist);
+    });
+    updateChecklist();
+  </script>
+</body>
+</html>

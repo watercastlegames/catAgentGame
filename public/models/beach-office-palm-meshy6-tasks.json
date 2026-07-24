@@ -1,0 +1,40 @@
+{
+  "ai_model": "latest",
+  "resolved_model": "meshy-6",
+  "task_type": "image-to-3d",
+  "target_format": "glb",
+  "hd_texture": true,
+  "remove_lighting": true,
+  "total_consumed_credits": 60,
+  "assets": [
+    {
+      "name": "beach-office-hut",
+      "task_id": "019f934f-2df4-7b4e-a02c-acad8a684519",
+      "consumed_credits": 30,
+      "source_image": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\beach-office-hut-meshy-reference-v1.png",
+      "preview_image": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\beach-office-hut-meshy6-preview-v1.png",
+      "original_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-source\\beach-office-hut-meshy6-v1.glb",
+      "web_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\public\\models\\beach-office-hut-meshy6-web-v1.glb",
+      "web_file_size_bytes": 2027420,
+      "web_triangle_count": 168914
+    },
+    {
+      "name": "palm-tree",
+      "task_id": "019f934f-38b5-7b4e-b0d2-ff954af2e4bc",
+      "consumed_credits": 30,
+      "source_image": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\palm-tree-meshy-reference-v1.png",
+      "preview_image": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\palm-tree-meshy6-preview-v1.png",
+      "original_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-source\\palm-tree-meshy6-v1.glb",
+      "web_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\public\\models\\palm-tree-meshy6-web-v1.glb",
+      "web_file_size_bytes": 1643072,
+      "web_triangle_count": 129104
+    }
+  ],
+  "web_optimization": {
+    "geometry_compression": "meshopt",
+    "texture_format": "webp",
+    "texture_size": 2048,
+    "validation_errors": 0,
+    "validation_warnings": 0
+  }
+}

@@ -1,0 +1,56 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/.vinext/
+/out/
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.bridge.*.log
+.bridge.pid
+.devserver.*.log
+.devserver.pid
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+next-env.d.ts
+/dist/
+/.wrangler/
+/outputs/
+/work/
+
+# Local generation sources and exports are not needed by the deployed site.
+/assets/
+/output/
+
+# Keep generated character variants locally; the current site uses the Cats Pack.
+/public/models/raccoon-*.glb
+/public/models/raccoon-*.png
+/public/models/raccoon-*.json
+/public/models/hybrid-coach-01-rigged.glb

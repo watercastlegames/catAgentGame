@@ -1,0 +1,2153 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import * as THREE from "three";
+import { OutlineEffect } from "three/addons/effects/OutlineEffect.js";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+
+export type AgentWorldLocation =
+  | "entrance"
+  | "general"
+  | "coding"
+  | "design"
+  | "music"
+  | "queue"
+  | "office";
+
+type AgentWorld3DProps = {
+  agentName: string;
+  location: AgentWorldLocation;
+  status: string;
+  statusLabel: string;
+};
+
+const WORLD_TARGETS: Record<AgentWorldLocation, THREE.Vector3> = {
+  entrance: new THREE.Vector3(-2.6, 0, 4.7),
+  general: new THREE.Vector3(-0.7, 0, -4.5),
+  coding: new THREE.Vector3(2.1, 0, -0.45),
+  design: new THREE.Vector3(-1.3, 0, 1.1),
+  music: new THREE.Vector3(2.8, 0, 1.6),
+  queue: new THREE.Vector3(-2.8, 0, 2.4),
+  office: new THREE.Vector3(2.25, 0, 6.72),
+};
+
+const LOCATION_LABELS: Record<AgentWorldLocation, string> = {
+  entrance: "입구",
+  general: "General",
+  coding: "Coding Desk",
+  design: "Design",
+  music: "Music",
+  queue: "보고 대기열",
+  office: "Personal Office",
+};
+
+const ILLUSTRATION_OUTLINE_COLOR = new THREE.Color(0x6f5040);
+const ILLUSTRATION_OUTLINE_THICKNESS = 0.005;
+const ILLUSTRATION_OUTLINE_ALPHA = 0.8;
+const CHARACTER_HEIGHT = 0.86;
+const DEFAULT_CHARACTER_YAW = 0.6;
+const WORLD_INTERACTION_LIMIT_RATIO = 0.2;
+const WORLD_YAW_LIMIT = Math.PI * WORLD_INTERACTION_LIMIT_RATIO;
+const WORLD_ZOOM_MIN = 1 - WORLD_INTERACTION_LIMIT_RATIO;
+const WORLD_ZOOM_MAX = 1 + WORLD_INTERACTION_LIMIT_RATIO;
+const AMBIENT_MOVE_SPEED = 0.46;
+const TASK_MOVE_SPEED = 1.35;
+const AMBIENT_ARRIVAL_DISTANCE = 0.045;
+const TASK_ARRIVAL_DISTANCE = 0.025;
+const CAT_MODEL_URL =
+  "/models/PolyArt/Animals/Cats/FBX/Lowpoly_Cat_Blue.fbx";
+const CAT_ANIMATIONS_URL =
+  "/models/PolyArt/Animals/Cats/FBX/Lowpoly_Cat_Animations_IP.fbx";
+const BEACH_OFFICE_HUT_MODEL_URL =
+  "/models/beach-office-hut-meshy6-web-v1.glb";
+const PALM_TREE_MODEL_URL =
+  "/models/palm-tree-meshy6-web-v1.glb";
+const DESK_KEYCAP_TEXTURE_URLS = [
+  "/art/desk-keycap-1-top-v1.png",
+  "/art/desk-keycap-2-top-v1.png",
+  "/art/desk-keycap-3-top-v1.png",
+  "/art/desk-keycap-4-top-v1.png",
+];
+const AUTONOMOUS_STATUSES = new Set(["idle", "completed", "failed"]);
+
+type AmbientAnimation = {
+  key: string;
+  suffix: string;
+  label: string;
+  minSeconds: number;
+  maxSeconds: number;
+  timeScale: number;
+};
+
+const AMBIENT_ANIMATIONS: AmbientAnimation[] = [
+  {
+    key: "idle-look",
+    suffix: "|Idle_1",
+    label: "주변을 구경하는 중",
+    minSeconds: 4.5,
+    maxSeconds: 7.5,
+    timeScale: 0.82,
+  },
+  {
+    key: "idle-relax",
+    suffix: "|Idle_2",
+    label: "느긋하게 쉬는 중",
+    minSeconds: 4,
+    maxSeconds: 7,
+    timeScale: 0.78,
+  },
+  {
+    key: "idle-play",
+    suffix: "|Caress_idle",
+    label: "혼자 장난치는 중",
+    minSeconds: 4,
+    maxSeconds: 6.5,
+    timeScale: 0.85,
+  },
+  {
+    key: "sit",
+    suffix: "|Sitting_Idle",
+    label: "앉아서 쉬는 중",
+    minSeconds: 5,
+    maxSeconds: 8,
+    timeScale: 0.8,
+  },
+  {
+    key: "sit-play",
+    suffix: "|Sitting_idle_2",
+    label: "앉아서 노는 중",
+    minSeconds: 4.5,
+    maxSeconds: 7,
+    timeScale: 0.9,
+  },
+  {
+    key: "sit-groom",
+    suffix: "|Sitting_idle_3",
+    label: "털을 정리하는 중",
+    minSeconds: 5,
+    maxSeconds: 8,
+    timeScale: 0.82,
+  },
+  {
+    key: "lie",
+    suffix: "|Lie_Idle",
+    label: "모래 위에 누워 쉬는 중",
+    minSeconds: 6,
+    maxSeconds: 10,
+    timeScale: 0.72,
+  },
+  {
+    key: "eat-drink",
+    suffix: "|EatDrink",
+    label: "간식을 먹고 우유를 마시는 중",
+    minSeconds: 5,
+    maxSeconds: 8,
+    timeScale: 0.8,
+  },
+];
+
+const AMBIENT_WANDER_POINTS = [
+  new THREE.Vector3(-2.25, 0, -2.6),
+  new THREE.Vector3(-0.35, 0, -3.65),
+  new THREE.Vector3(4.0, 0, -2.55),
+  new THREE.Vector3(1.75, 0, 0.25),
+  new THREE.Vector3(0.5, 0, 2.65),
+  new THREE.Vector3(-1.45, 0, 1.9),
+  new THREE.Vector3(-2.3, 0, 0.25),
+];
+
+type SceneObstacle = {
+  id: string;
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+};
+
+const DESK_POSITION = new THREE.Vector3(2, 0, -1.78);
+const DESK_MODEL_SCALE = 0.82 / 1.5;
+const DESK_ROTATION_Y = -0.18;
+const DESK_OBSTACLE: SceneObstacle = {
+  id: "coding-desk",
+  minX: 0.9,
+  maxX: 3.1,
+  minZ: -2.45,
+  maxZ: -1.05,
+};
+
+type IslandPropPlacement = {
+  id: string;
+  position: THREE.Vector3;
+  rotationY: number;
+  scale: number;
+};
+
+const PALM_TREE_PLACEMENTS: IslandPropPlacement[] = [
+  {
+    id: "palm-tree-northwest",
+    position: new THREE.Vector3(-3.55, 0, -4.85),
+    rotationY: 0.36,
+    scale: 1.12,
+  },
+  {
+    id: "palm-tree-northeast",
+    position: new THREE.Vector3(3.55, 0, -4.55),
+    rotationY: -0.42,
+    scale: 1.04,
+  },
+  {
+    id: "palm-tree-southwest",
+    position: new THREE.Vector3(-3.75, 0, 3.95),
+    rotationY: 0.78,
+    scale: 0.96,
+  },
+];
+
+const ROCK_CLUSTER_PLACEMENTS: IslandPropPlacement[] = [
+  {
+    id: "shore-rocks-west",
+    position: new THREE.Vector3(-3.85, 0, -0.8),
+    rotationY: 0.2,
+    scale: 0.92,
+  },
+  {
+    id: "shore-rocks-east",
+    position: new THREE.Vector3(3.82, 0, 1.65),
+    rotationY: -0.35,
+    scale: 0.84,
+  },
+  {
+    id: "shore-rocks-south",
+    position: new THREE.Vector3(3.25, 0, 5.45),
+    rotationY: 0.52,
+    scale: 0.78,
+  },
+  {
+    id: "shore-rocks-north",
+    position: new THREE.Vector3(-2.7, 0, -5.7),
+    rotationY: -0.16,
+    scale: 0.72,
+  },
+];
+
+const PALM_TREE_OBSTACLES: SceneObstacle[] = PALM_TREE_PLACEMENTS.map(
+  ({ id, position, scale }) => {
+    const radius = 0.42 * scale;
+    return {
+      id,
+      minX: position.x - radius,
+      maxX: position.x + radius,
+      minZ: position.z - radius,
+      maxZ: position.z + radius,
+    };
+  },
+);
+const ROCK_CLUSTER_OBSTACLES: SceneObstacle[] =
+  ROCK_CLUSTER_PLACEMENTS.map(({ id, position, scale }) => {
+    const radius = 0.5 * scale;
+    return {
+      id,
+      minX: position.x - radius,
+      maxX: position.x + radius,
+      minZ: position.z - radius,
+      maxZ: position.z + radius,
+    };
+  });
+const BEACH_OFFICE_HUT_OBSTACLE: SceneObstacle = {
+  id: "beach-office-hut",
+  minX: 0.55,
+  maxX: 4.35,
+  minZ: 3.72,
+  maxZ: 6.55,
+};
+const SCENE_OBSTACLES = [
+  DESK_OBSTACLE,
+  ...PALM_TREE_OBSTACLES,
+  ...ROCK_CLUSTER_OBSTACLES,
+  BEACH_OFFICE_HUT_OBSTACLE,
+];
+const OBSTACLE_WAYPOINT_MARGIN = 0.16;
+
+function randomBetween(min: number, max: number) {
+  return min + Math.random() * (max - min);
+}
+
+function lerpAngle(from: number, to: number, amount: number) {
+  const delta = Math.atan2(Math.sin(to - from), Math.cos(to - from));
+  return from + delta * amount;
+}
+
+function isInsideObstacle(
+  point: THREE.Vector3,
+  obstacle: SceneObstacle,
+) {
+  return (
+    point.x > obstacle.minX &&
+    point.x < obstacle.maxX &&
+    point.z > obstacle.minZ &&
+    point.z < obstacle.maxZ
+  );
+}
+
+function segmentIntersectsObstacle(
+  start: THREE.Vector3,
+  end: THREE.Vector3,
+  obstacle: SceneObstacle,
+) {
+  if (isInsideObstacle(start, obstacle) || isInsideObstacle(end, obstacle)) {
+    return true;
+  }
+
+  let minimumTime = 0;
+  let maximumTime = 1;
+  const axes = [
+    {
+      start: start.x,
+      delta: end.x - start.x,
+      minimum: obstacle.minX,
+      maximum: obstacle.maxX,
+    },
+    {
+      start: start.z,
+      delta: end.z - start.z,
+      minimum: obstacle.minZ,
+      maximum: obstacle.maxZ,
+    },
+  ];
+
+  for (const axis of axes) {
+    if (Math.abs(axis.delta) < 1e-6) {
+      if (axis.start <= axis.minimum || axis.start >= axis.maximum) {
+        return false;
+      }
+      continue;
+    }
+
+    const inverseDelta = 1 / axis.delta;
+    let nearTime = (axis.minimum - axis.start) * inverseDelta;
+    let farTime = (axis.maximum - axis.start) * inverseDelta;
+    if (nearTime > farTime) {
+      [nearTime, farTime] = [farTime, nearTime];
+    }
+    minimumTime = Math.max(minimumTime, nearTime);
+    maximumTime = Math.min(maximumTime, farTime);
+    if (minimumTime > maximumTime) return false;
+  }
+
+  return maximumTime > 0 && minimumTime < 1;
+}
+
+function findAvoidanceWaypoint(
+  start: THREE.Vector3,
+  destination: THREE.Vector3,
+) {
+  let bestWaypoint: THREE.Vector3 | null = null;
+  let bestCost = Number.POSITIVE_INFINITY;
+
+  for (const obstacle of SCENE_OBSTACLES) {
+    if (!segmentIntersectsObstacle(start, destination, obstacle)) continue;
+
+    const candidates = [
+      new THREE.Vector3(
+        obstacle.minX - OBSTACLE_WAYPOINT_MARGIN,
+        0,
+        obstacle.minZ - OBSTACLE_WAYPOINT_MARGIN,
+      ),
+      new THREE.Vector3(
+        obstacle.maxX + OBSTACLE_WAYPOINT_MARGIN,
+        0,
+        obstacle.minZ - OBSTACLE_WAYPOINT_MARGIN,
+      ),
+      new THREE.Vector3(
+        obstacle.minX - OBSTACLE_WAYPOINT_MARGIN,
+        0,
+        obstacle.maxZ + OBSTACLE_WAYPOINT_MARGIN,
+      ),
+      new THREE.Vector3(
+        obstacle.maxX + OBSTACLE_WAYPOINT_MARGIN,
+        0,
+        obstacle.maxZ + OBSTACLE_WAYPOINT_MARGIN,
+      ),
+    ];
+
+    for (const candidate of candidates) {
+      if (segmentIntersectsObstacle(start, candidate, obstacle)) continue;
+      const cost =
+        start.distanceTo(candidate) + candidate.distanceTo(destination);
+      if (cost < bestCost) {
+        bestCost = cost;
+        bestWaypoint = candidate;
+      }
+    }
+  }
+
+  return bestWaypoint;
+}
+
+function disableOutline(material: THREE.Material) {
+  material.userData.outlineParameters = { visible: false };
+}
+
+function disposeMaterial(material: THREE.Material) {
+  const textureKeys = [
+    "map",
+    "normalMap",
+    "roughnessMap",
+    "metalnessMap",
+    "emissiveMap",
+    "aoMap",
+    "alphaMap",
+  ] as const;
+
+  for (const key of textureKeys) {
+    const texture = (material as THREE.MeshStandardMaterial)[key];
+    if (texture instanceof THREE.Texture) texture.dispose();
+  }
+  material.dispose();
+}
+
+type DeskTextureSet = {
+  wood: THREE.Texture;
+  watercolorGrain: THREE.Texture;
+  keycapTops: THREE.Texture[];
+};
+
+function createIllustratedDesk(textures: DeskTextureSet) {
+  const deskGroup = new THREE.Group();
+  deskGroup.name = DESK_OBSTACLE.id;
+  deskGroup.position.copy(DESK_POSITION);
+  deskGroup.rotation.y = DESK_ROTATION_Y;
+  deskGroup.scale.setScalar(DESK_MODEL_SCALE);
+  deskGroup.userData.isNavigationObstacle = true;
+  deskGroup.userData.collisionBounds = {
+    minX: DESK_OBSTACLE.minX,
+    maxX: DESK_OBSTACLE.maxX,
+    minZ: DESK_OBSTACLE.minZ,
+    maxZ: DESK_OBSTACLE.maxZ,
+  };
+
+  const createToonMaterial = (color: number) =>
+    new THREE.MeshToonMaterial({
+      color,
+      map: textures.watercolorGrain,
+    });
+  const woodMaterial = new THREE.MeshToonMaterial({
+    color: 0xffffff,
+    map: textures.wood,
+  });
+  const monitorFrameMaterial = createToonMaterial(0x756b68);
+  const monitorScreenMaterial = createToonMaterial(0x9a9994);
+  const monitorStandMaterial = createToonMaterial(0xafa6a0);
+  const keypadBaseMaterial = createToonMaterial(0xf2eadf);
+  const mousePadMaterial = createToonMaterial(0x968883);
+  const mouseMaterial = createToonMaterial(0xb8b7b6);
+  const cupMaterial = createToonMaterial(0xe6aa72);
+  const coffeeMaterial = createToonMaterial(0x704833);
+  const keyMaterials = [
+    createToonMaterial(0xf2a160),
+    createToonMaterial(0x9d8c9f),
+    createToonMaterial(0xef858a),
+    createToonMaterial(0xf0c175),
+  ];
+
+  const addRoundedPart = (
+    name: string,
+    size: THREE.Vector3,
+    position: THREE.Vector3,
+    material: THREE.Material,
+    radius: number,
+  ) => {
+    const part = new THREE.Mesh(
+      new RoundedBoxGeometry(size.x, size.y, size.z, 3, radius),
+      material,
+    );
+    part.name = name;
+    part.position.copy(position);
+    deskGroup.add(part);
+    return part;
+  };
+
+  const deskShadowMaterial = new THREE.MeshBasicMaterial({
+    color: 0x6f5040,
+    transparent: true,
+    opacity: 0.14,
+    depthWrite: false,
+  });
+  disableOutline(deskShadowMaterial);
+  const deskShadow = new THREE.Mesh(
+    new THREE.CircleGeometry(1.35, 48),
+    deskShadowMaterial,
+  );
+  deskShadow.name = "coding-desk-contact-shadow";
+  deskShadow.rotation.x = -Math.PI / 2;
+  deskShadow.position.set(0, 0.006, 0.05);
+  deskShadow.scale.set(1.2, 0.62, 1);
+  deskGroup.add(deskShadow);
+
+  addRoundedPart(
+    "coding-desk-top",
+    new THREE.Vector3(3.1, 0.14, 1.5),
+    new THREE.Vector3(0, 0.82, 0),
+    woodMaterial,
+    0.06,
+  );
+
+  for (const x of [-1.34, 1.34]) {
+    for (const z of [-0.58, 0.58]) {
+      addRoundedPart(
+        "coding-desk-leg",
+        new THREE.Vector3(0.17, 0.76, 0.17),
+        new THREE.Vector3(x, 0.41, z),
+        woodMaterial,
+        0.055,
+      );
+    }
+  }
+
+  addRoundedPart(
+    "coding-desk-monitor-frame",
+    new THREE.Vector3(1.18, 0.72, 0.11),
+    new THREE.Vector3(-0.48, 1.4, -0.42),
+    monitorFrameMaterial,
+    0.055,
+  );
+  addRoundedPart(
+    "coding-desk-monitor-screen",
+    new THREE.Vector3(1.01, 0.56, 0.025),
+    new THREE.Vector3(-0.48, 1.4, -0.35),
+    monitorScreenMaterial,
+    0.035,
+  );
+  addRoundedPart(
+    "coding-desk-monitor-stem",
+    new THREE.Vector3(0.15, 0.43, 0.13),
+    new THREE.Vector3(-0.48, 1.08, -0.43),
+    monitorStandMaterial,
+    0.035,
+  );
+  addRoundedPart(
+    "coding-desk-monitor-base",
+    new THREE.Vector3(0.58, 0.08, 0.34),
+    new THREE.Vector3(-0.48, 0.94, -0.39),
+    monitorStandMaterial,
+    0.035,
+  );
+
+  const keypadX = 0.12;
+  addRoundedPart(
+    "coding-desk-four-key-keypad-base",
+    new THREE.Vector3(1.08, 0.08, 0.38),
+    new THREE.Vector3(keypadX, 0.94, 0.18),
+    keypadBaseMaterial,
+    0.045,
+  );
+  keyMaterials.forEach((material, index) => {
+    const keyX = keypadX - 0.375 + index * 0.25;
+    addRoundedPart(
+      `coding-desk-keycap-${index + 1}`,
+      new THREE.Vector3(0.21, 0.11, 0.25),
+      new THREE.Vector3(keyX, 1.035, 0.18),
+      material,
+      0.04,
+    );
+
+    for (const earOffset of [-0.052, 0.052]) {
+      const ear = new THREE.Mesh(
+        new THREE.ConeGeometry(0.034, 0.065, 3),
+        material,
+      );
+      ear.name = `coding-desk-keycap-${index + 1}-cat-ear`;
+      ear.position.set(keyX + earOffset, 1.11, 0.14);
+      ear.rotation.y = Math.PI / 2;
+      deskGroup.add(ear);
+    }
+
+    const keycapTopMaterial = new THREE.MeshBasicMaterial({
+      map: textures.keycapTops[index],
+      depthTest: true,
+      depthWrite: false,
+      toneMapped: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+    disableOutline(keycapTopMaterial);
+    const keycapTop = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.18, 0.205),
+      keycapTopMaterial,
+    );
+    keycapTop.name = `coding-desk-keycap-${index + 1}-top-texture`;
+    keycapTop.rotation.x = -Math.PI / 2;
+    keycapTop.position.set(keyX, 1.093, 0.18);
+    keycapTop.renderOrder = 4;
+    deskGroup.add(keycapTop);
+  });
+
+  addRoundedPart(
+    "coding-desk-mouse-pad",
+    new THREE.Vector3(0.58, 0.025, 0.46),
+    new THREE.Vector3(1.03, 0.905, 0.18),
+    mousePadMaterial,
+    0.06,
+  );
+  addRoundedPart(
+    "coding-desk-mouse",
+    new THREE.Vector3(0.2, 0.09, 0.27),
+    new THREE.Vector3(1.03, 0.97, 0.18),
+    mouseMaterial,
+    0.075,
+  );
+
+  const cup = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.14, 0.12, 0.27, 24),
+    cupMaterial,
+  );
+  cup.name = "coding-desk-coffee-cup";
+  cup.position.set(-1.02, 1.035, 0.27);
+  deskGroup.add(cup);
+
+  const cupHandle = new THREE.Mesh(
+    new THREE.TorusGeometry(0.11, 0.027, 8, 20),
+    cupMaterial,
+  );
+  cupHandle.name = "coding-desk-coffee-cup-handle";
+  cupHandle.position.set(-0.86, 1.04, 0.27);
+  cupHandle.scale.y = 1.12;
+  deskGroup.add(cupHandle);
+
+  const coffee = new THREE.Mesh(
+    new THREE.CircleGeometry(0.112, 24),
+    coffeeMaterial,
+  );
+  coffee.name = "coding-desk-coffee";
+  coffee.rotation.x = -Math.PI / 2;
+  coffee.position.set(-1.02, 1.174, 0.27);
+  deskGroup.add(coffee);
+
+  return deskGroup;
+}
+
+function createPalmFrondGeometry(
+  length: number,
+  width: number,
+  droop: number,
+) {
+  const segmentCount = 7;
+  const positions: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+
+  for (let index = 0; index <= segmentCount; index += 1) {
+    const progress = index / segmentCount;
+    const halfWidth = Math.sin(progress * Math.PI) * width;
+    const height =
+      Math.sin(progress * Math.PI) * 0.07 - droop * progress * progress;
+    const forward = length * progress;
+    positions.push(forward, height, -halfWidth);
+    positions.push(forward, height, halfWidth);
+    uvs.push(progress, 0, progress, 1);
+
+    if (index < segmentCount) {
+      const current = index * 2;
+      indices.push(
+        current,
+        current + 2,
+        current + 1,
+        current + 2,
+        current + 3,
+        current + 1,
+      );
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function createPalmTree(
+  watercolorGrain: THREE.Texture,
+  placement: IslandPropPlacement,
+) {
+  const palm = new THREE.Group();
+  palm.name = placement.id;
+  palm.position.copy(placement.position);
+  palm.rotation.y = placement.rotationY;
+  palm.scale.setScalar(placement.scale);
+  palm.userData.isNavigationObstacle = true;
+
+  const obstacle = PALM_TREE_OBSTACLES.find(
+    (candidate) => candidate.id === placement.id,
+  );
+  if (obstacle) palm.userData.collisionBounds = { ...obstacle };
+
+  const trunkMaterial = new THREE.MeshToonMaterial({
+    color: 0xb8794f,
+    map: watercolorGrain,
+  });
+  const trunkBandMaterial = new THREE.MeshToonMaterial({
+    color: 0x8f5e42,
+    map: watercolorGrain,
+  });
+  const leafMaterial = new THREE.MeshToonMaterial({
+    color: 0x718d62,
+    map: watercolorGrain,
+    side: THREE.DoubleSide,
+  });
+  const leafVeinMaterial = new THREE.MeshToonMaterial({
+    color: 0x667e58,
+    map: watercolorGrain,
+  });
+  const coconutMaterial = new THREE.MeshToonMaterial({
+    color: 0x936846,
+    map: watercolorGrain,
+  });
+
+  const shadowMaterial = new THREE.MeshBasicMaterial({
+    color: 0x5f6247,
+    transparent: true,
+    opacity: 0.13,
+    depthWrite: false,
+  });
+  disableOutline(shadowMaterial);
+  const shadow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.55, 36),
+    shadowMaterial,
+  );
+  shadow.name = `${placement.id}-contact-shadow`;
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.007;
+  shadow.scale.set(1.35, 0.72, 1);
+  palm.add(shadow);
+
+  const trunkSegmentHeight = 0.34;
+  for (let index = 0; index < 5; index += 1) {
+    const progress = index / 4;
+    const trunkSegment = new THREE.Mesh(
+      new THREE.CylinderGeometry(
+        0.095 - progress * 0.012,
+        0.13 - progress * 0.01,
+        trunkSegmentHeight,
+        9,
+      ),
+      trunkMaterial,
+    );
+    trunkSegment.name = `${placement.id}-trunk-${index + 1}`;
+    trunkSegment.position.set(
+      Math.sin(index * 0.72) * 0.025,
+      0.17 + index * 0.3,
+      Math.cos(index * 0.66) * 0.018,
+    );
+    trunkSegment.rotation.z = -0.018 + index * 0.012;
+    palm.add(trunkSegment);
+
+    if (index < 4) {
+      const band = new THREE.Mesh(
+        new THREE.TorusGeometry(0.112 - progress * 0.012, 0.012, 6, 14),
+        trunkBandMaterial,
+      );
+      band.name = `${placement.id}-trunk-band-${index + 1}`;
+      band.rotation.x = Math.PI / 2;
+      band.position.set(
+        trunkSegment.position.x,
+        0.31 + index * 0.3,
+        trunkSegment.position.z,
+      );
+      palm.add(band);
+    }
+  }
+
+  const frondGeometry = createPalmFrondGeometry(1.24, 0.22, 0.25);
+  for (let index = 0; index < 10; index += 1) {
+    const frond = new THREE.Mesh(
+      frondGeometry,
+      leafMaterial,
+    );
+    frond.name = `${placement.id}-frond-${index + 1}`;
+    frond.position.set(0.025, 1.56, 0);
+    frond.rotation.y = (index / 10) * Math.PI * 2;
+    frond.rotation.z = index % 2 === 0 ? 0.04 : -0.025;
+    frond.scale.setScalar(0.94 + (index % 2) * 0.04);
+    palm.add(frond);
+
+    const vein = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.012, 0.02, 1.18, 6),
+      leafVeinMaterial,
+    );
+    vein.name = `${placement.id}-frond-vein-${index + 1}`;
+    vein.position.set(0.58, 1.53, 0);
+    vein.rotation.y = (index / 10) * Math.PI * 2;
+    vein.rotation.z = Math.PI / 2 + 0.1;
+    palm.add(vein);
+  }
+
+  for (let index = 0; index < 3; index += 1) {
+    const coconut = new THREE.Mesh(
+      new THREE.SphereGeometry(0.095, 10, 7),
+      coconutMaterial,
+    );
+    const angle = (index / 3) * Math.PI * 2 + 0.35;
+    coconut.name = `${placement.id}-coconut-${index + 1}`;
+    coconut.position.set(
+      Math.cos(angle) * 0.11,
+      1.48 - index * 0.018,
+      Math.sin(angle) * 0.11,
+    );
+    palm.add(coconut);
+  }
+
+  return palm;
+}
+
+function createRockCluster(
+  watercolorGrain: THREE.Texture,
+  placement: IslandPropPlacement,
+) {
+  const cluster = new THREE.Group();
+  cluster.name = placement.id;
+  cluster.position.copy(placement.position);
+  cluster.rotation.y = placement.rotationY;
+  cluster.scale.setScalar(placement.scale);
+  cluster.userData.isNavigationObstacle = true;
+
+  const obstacle = ROCK_CLUSTER_OBSTACLES.find(
+    (candidate) => candidate.id === placement.id,
+  );
+  if (obstacle) cluster.userData.collisionBounds = { ...obstacle };
+
+  const rockMaterials = [
+    new THREE.MeshToonMaterial({
+      color: 0xb8aa98,
+      map: watercolorGrain,
+    }),
+    new THREE.MeshToonMaterial({
+      color: 0x9f9a91,
+      map: watercolorGrain,
+    }),
+    new THREE.MeshToonMaterial({
+      color: 0xc6b59d,
+      map: watercolorGrain,
+    }),
+  ];
+  const rockSpecs = [
+    {
+      position: new THREE.Vector3(-0.18, 0.16, 0.02),
+      scale: new THREE.Vector3(1.3, 0.78, 1),
+      rotation: new THREE.Euler(0.08, 0.24, -0.05),
+    },
+    {
+      position: new THREE.Vector3(0.17, 0.12, 0.1),
+      scale: new THREE.Vector3(0.82, 0.62, 0.72),
+      rotation: new THREE.Euler(-0.04, -0.42, 0.1),
+    },
+    {
+      position: new THREE.Vector3(0.02, 0.09, -0.18),
+      scale: new THREE.Vector3(0.62, 0.48, 0.7),
+      rotation: new THREE.Euler(0.12, 0.64, -0.08),
+    },
+  ];
+
+  const shadowMaterial = new THREE.MeshBasicMaterial({
+    color: 0x6f6252,
+    transparent: true,
+    opacity: 0.12,
+    depthWrite: false,
+  });
+  disableOutline(shadowMaterial);
+  const shadow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.46, 32),
+    shadowMaterial,
+  );
+  shadow.name = `${placement.id}-contact-shadow`;
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.006;
+  shadow.scale.set(1.2, 0.65, 1);
+  cluster.add(shadow);
+
+  rockSpecs.forEach((spec, index) => {
+    const rock = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(0.25, 1),
+      rockMaterials[index],
+    );
+    rock.name = `${placement.id}-rock-${index + 1}`;
+    rock.position.copy(spec.position);
+    rock.scale.copy(spec.scale);
+    rock.rotation.copy(spec.rotation);
+    cluster.add(rock);
+  });
+
+  return cluster;
+}
+
+type BeachOfficeTextureSet = {
+  watercolorGrain: THREE.Texture;
+  wood: THREE.Texture;
+};
+
+function createBeachOfficeHut(textures: BeachOfficeTextureSet) {
+  const hut = new THREE.Group();
+  hut.name = BEACH_OFFICE_HUT_OBSTACLE.id;
+  hut.position.set(2.35, 0, 5.12);
+  hut.rotation.y = THREE.MathUtils.degToRad(-70);
+  hut.scale.setScalar(0.78);
+  hut.userData.isNavigationObstacle = true;
+  hut.userData.collisionBounds = { ...BEACH_OFFICE_HUT_OBSTACLE };
+
+  const createMaterial = (color: number) =>
+    new THREE.MeshToonMaterial({
+      color,
+      map: textures.watercolorGrain,
+    });
+  const woodMaterial = new THREE.MeshToonMaterial({
+    color: 0xffffff,
+    map: textures.wood,
+  });
+  const paleWoodMaterial = createMaterial(0xc99666);
+  const wallMaterial = createMaterial(0xd9ad7d);
+  const thatchMaterial = createMaterial(0xc79a5f);
+  const thatchEdgeMaterial = createMaterial(0xa97745);
+  const darkWoodMaterial = createMaterial(0x8a6248);
+  const screenMaterial = createMaterial(0x9ed4d5);
+  const chairMaterial = createMaterial(0xb97b69);
+  const chairFrameMaterial = createMaterial(0x786866);
+  const rugMaterial = createMaterial(0xa8b879);
+  const keyboardMaterial = createMaterial(0xe8ded0);
+  const bookMaterials = [
+    createMaterial(0xc37767),
+    createMaterial(0x7c9b7b),
+    createMaterial(0xd0af6e),
+    createMaterial(0x8290a1),
+  ];
+
+  const addBox = (
+    name: string,
+    size: THREE.Vector3,
+    position: THREE.Vector3,
+    material: THREE.Material,
+    radius = 0.025,
+  ) => {
+    const mesh = new THREE.Mesh(
+      new RoundedBoxGeometry(size.x, size.y, size.z, 2, radius),
+      material,
+    );
+    mesh.name = name;
+    mesh.position.copy(position);
+    hut.add(mesh);
+    return mesh;
+  };
+
+  const shadowMaterial = new THREE.MeshBasicMaterial({
+    color: 0x765b46,
+    transparent: true,
+    opacity: 0.12,
+    depthWrite: false,
+  });
+  disableOutline(shadowMaterial);
+  const shadow = new THREE.Mesh(
+    new THREE.CircleGeometry(2.0, 48),
+    shadowMaterial,
+  );
+  shadow.name = "beach-office-hut-contact-shadow";
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.set(0, 0.006, 0.08);
+  shadow.scale.set(1.12, 0.72, 1);
+  hut.add(shadow);
+
+  addBox(
+    "beach-office-deck",
+    new THREE.Vector3(3.45, 0.18, 2.35),
+    new THREE.Vector3(0, 0.12, 0),
+    woodMaterial,
+    0.05,
+  );
+  for (let plank = -2; plank <= 2; plank += 1) {
+    addBox(
+      `beach-office-deck-plank-${plank + 3}`,
+      new THREE.Vector3(0.025, 0.018, 2.12),
+      new THREE.Vector3(plank * 0.64, 0.222, 0),
+      darkWoodMaterial,
+      0.006,
+    );
+  }
+
+  addBox(
+    "beach-office-back-wall",
+    new THREE.Vector3(3.18, 1.72, 0.14),
+    new THREE.Vector3(0, 1.08, -1.02),
+    wallMaterial,
+    0.035,
+  );
+  addBox(
+    "beach-office-side-wall",
+    new THREE.Vector3(0.14, 1.72, 2.06),
+    new THREE.Vector3(1.52, 1.08, -0.02),
+    wallMaterial,
+    0.035,
+  );
+  for (const x of [-1.53, 1.53]) {
+    for (const z of [-0.98, 0.98]) {
+      addBox(
+        "beach-office-support-post",
+        new THREE.Vector3(0.13, 1.92, 0.13),
+        new THREE.Vector3(x, 1.12, z),
+        darkWoodMaterial,
+        0.035,
+      );
+    }
+  }
+
+  const backRoof = new THREE.Mesh(
+    new RoundedBoxGeometry(3.7, 0.18, 1.08, 3, 0.07),
+    thatchMaterial,
+  );
+  backRoof.name = "beach-office-thatched-roof-back-cutaway";
+  backRoof.position.set(0, 2.25, -0.72);
+  backRoof.rotation.x = -0.16;
+  hut.add(backRoof);
+
+  const sideRoof = new THREE.Mesh(
+    new RoundedBoxGeometry(1.02, 0.18, 2.42, 3, 0.07),
+    thatchMaterial,
+  );
+  sideRoof.name = "beach-office-thatched-roof-side-cutaway";
+  sideRoof.position.set(1.34, 2.18, 0.1);
+  sideRoof.rotation.z = 0.15;
+  hut.add(sideRoof);
+
+  for (const x of [-1.45, -0.95, -0.45, 0.05, 0.55, 1.05, 1.45]) {
+    addBox(
+      "beach-office-thatch-fringe",
+      new THREE.Vector3(0.12, 0.16, 0.32),
+      new THREE.Vector3(x, 2.12, -0.18),
+      thatchEdgeMaterial,
+      0.025,
+    );
+  }
+
+  const rug = new THREE.Mesh(
+    new THREE.CircleGeometry(0.88, 40),
+    rugMaterial,
+  );
+  rug.name = "beach-office-interior-rug";
+  rug.rotation.x = -Math.PI / 2;
+  rug.position.set(0.38, 0.225, 0.28);
+  rug.scale.set(1.12, 0.82, 1);
+  hut.add(rug);
+
+  addBox(
+    "beach-office-worktop",
+    new THREE.Vector3(2.25, 0.14, 0.68),
+    new THREE.Vector3(-0.25, 0.83, -0.59),
+    paleWoodMaterial,
+    0.045,
+  );
+  for (const x of [-1.2, 0.7]) {
+    addBox(
+      "beach-office-desk-leg",
+      new THREE.Vector3(0.13, 0.72, 0.13),
+      new THREE.Vector3(x, 0.47, -0.59),
+      darkWoodMaterial,
+      0.03,
+    );
+  }
+  addBox(
+    "beach-office-monitor",
+    new THREE.Vector3(0.9, 0.58, 0.1),
+    new THREE.Vector3(-0.48, 1.25, -0.69),
+    darkWoodMaterial,
+    0.05,
+  );
+  addBox(
+    "beach-office-monitor-screen",
+    new THREE.Vector3(0.75, 0.44, 0.025),
+    new THREE.Vector3(-0.48, 1.25, -0.63),
+    screenMaterial,
+    0.035,
+  );
+  addBox(
+    "beach-office-monitor-stand",
+    new THREE.Vector3(0.12, 0.34, 0.1),
+    new THREE.Vector3(-0.48, 0.98, -0.69),
+    darkWoodMaterial,
+    0.025,
+  );
+  addBox(
+    "beach-office-keyboard",
+    new THREE.Vector3(0.72, 0.06, 0.25),
+    new THREE.Vector3(0.3, 0.93, -0.38),
+    keyboardMaterial,
+    0.025,
+  );
+
+  for (const shelfY of [1.15, 1.67]) {
+    addBox(
+      "beach-office-wall-shelf",
+      new THREE.Vector3(1.02, 0.08, 0.28),
+      new THREE.Vector3(0.82, shelfY, -0.82),
+      darkWoodMaterial,
+      0.025,
+    );
+  }
+  for (let index = 0; index < 4; index += 1) {
+    addBox(
+      `beach-office-book-${index + 1}`,
+      new THREE.Vector3(0.15, 0.35 + (index % 2) * 0.08, 0.2),
+      new THREE.Vector3(0.57 + index * 0.18, 1.39, -0.79),
+      bookMaterials[index],
+      0.018,
+    );
+  }
+
+  addBox(
+    "beach-office-chair-seat",
+    new THREE.Vector3(0.74, 0.16, 0.68),
+    new THREE.Vector3(0.42, 0.68, 0.34),
+    chairMaterial,
+    0.12,
+  );
+  const chairBack = addBox(
+    "beach-office-chair-back",
+    new THREE.Vector3(0.78, 0.78, 0.16),
+    new THREE.Vector3(0.42, 1.08, 0.66),
+    chairMaterial,
+    0.13,
+  );
+  chairBack.rotation.x = -0.08;
+  const chairPedestal = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.09, 0.12, 0.42, 12),
+    chairFrameMaterial,
+  );
+  chairPedestal.name = "beach-office-chair-pedestal";
+  chairPedestal.position.set(0.42, 0.42, 0.34);
+  hut.add(chairPedestal);
+  for (let index = 0; index < 5; index += 1) {
+    const angle = (index / 5) * Math.PI * 2;
+    const chairLeg = addBox(
+      "beach-office-chair-wheel-leg",
+      new THREE.Vector3(0.44, 0.07, 0.08),
+      new THREE.Vector3(
+        0.42 + Math.cos(angle) * 0.18,
+        0.24,
+        0.34 + Math.sin(angle) * 0.18,
+      ),
+      chairFrameMaterial,
+      0.025,
+    );
+    chairLeg.rotation.y = -angle;
+  }
+
+  return hut;
+}
+
+function createMeshyPropTemplate(
+  source: THREE.Object3D,
+  tint: THREE.Color,
+  anisotropy: number,
+) {
+  const template = new THREE.Group();
+  const visual = source.clone(true);
+
+  visual.traverse((object) => {
+    if (!(object instanceof THREE.Mesh)) return;
+
+    const materials = Array.isArray(object.material)
+      ? object.material
+      : [object.material];
+    const styledMaterials = materials.map((sourceMaterial) => {
+      const material = sourceMaterial.clone();
+      if (
+        material instanceof THREE.MeshStandardMaterial ||
+        material instanceof THREE.MeshPhysicalMaterial
+      ) {
+        material.color.multiply(tint);
+        material.metalness = 0;
+        material.roughness = 1;
+        material.emissive.set(0x000000);
+        material.envMapIntensity = 0;
+        material.side = THREE.DoubleSide;
+        if (material.map) {
+          material.map.colorSpace = THREE.SRGBColorSpace;
+          material.map.anisotropy = anisotropy;
+        }
+      } else if (
+        material instanceof THREE.MeshBasicMaterial ||
+        material instanceof THREE.MeshToonMaterial
+      ) {
+        material.color.multiply(tint);
+        material.side = THREE.DoubleSide;
+        if (material.map) {
+          material.map.colorSpace = THREE.SRGBColorSpace;
+          material.map.anisotropy = anisotropy;
+        }
+      }
+      material.userData.outlineParameters = {
+        thickness: ILLUSTRATION_OUTLINE_THICKNESS,
+        color: ILLUSTRATION_OUTLINE_COLOR.toArray(),
+        alpha: ILLUSTRATION_OUTLINE_ALPHA,
+        visible: true,
+      };
+      material.needsUpdate = true;
+      return material;
+    });
+
+    object.material = Array.isArray(object.material)
+      ? styledMaterials
+      : styledMaterials[0];
+  });
+
+  const bounds = new THREE.Box3().setFromObject(visual);
+  const center = bounds.getCenter(new THREE.Vector3());
+  const size = bounds.getSize(new THREE.Vector3());
+  const unitScale = 1 / Math.max(size.y, 0.0001);
+  visual.scale.setScalar(unitScale);
+  visual.position.set(
+    -center.x * unitScale,
+    -bounds.min.y * unitScale,
+    -center.z * unitScale,
+  );
+  template.add(visual);
+  return template;
+}
+
+function createMeshyPropShadow(
+  name: string,
+  radius: number,
+  opacity: number,
+) {
+  const material = new THREE.MeshBasicMaterial({
+    color: 0x665746,
+    transparent: true,
+    opacity,
+    depthWrite: false,
+  });
+  disableOutline(material);
+  const shadow = new THREE.Mesh(
+    new THREE.CircleGeometry(radius, 48),
+    material,
+  );
+  shadow.name = `${name}-contact-shadow`;
+  shadow.rotation.x = -Math.PI / 2;
+  shadow.position.y = 0.008;
+  shadow.scale.set(1.18, 0.72, 1);
+  return shadow;
+}
+
+export default function AgentWorld3D({
+  agentName,
+  location,
+  status,
+  statusLabel,
+}: AgentWorld3DProps) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const motionRef = useRef({ location, status });
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [ambientLabel, setAmbientLabel] = useState("주변을 구경하는 중");
+
+  useEffect(() => {
+    motionRef.current = { location, status };
+  }, [location, status]);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+
+    let disposed = false;
+    let renderer: THREE.WebGLRenderer;
+
+    try {
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        powerPreference: "high-performance",
+      });
+    } catch {
+      queueMicrotask(() => setFailed(true));
+      return;
+    }
+
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.NeutralToneMapping;
+    renderer.toneMappingExposure = 1;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    renderer.domElement.className = "world-3d-canvas";
+    renderer.domElement.setAttribute(
+      "aria-label",
+      "드래그하면 월드가 회전하고, 마우스 휠이나 두 손가락으로 확대하고 축소할 수 있습니다.",
+    );
+    renderer.domElement.title =
+      "드래그: 월드 회전 · 휠/두 손가락: 확대 및 축소";
+    host.appendChild(renderer.domElement);
+
+    const outlineEffect = new OutlineEffect(renderer, {
+      defaultThickness: ILLUSTRATION_OUTLINE_THICKNESS,
+      defaultColor: ILLUSTRATION_OUTLINE_COLOR.toArray(),
+      defaultAlpha: ILLUSTRATION_OUTLINE_ALPHA,
+    });
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x19b2cf);
+    scene.fog = new THREE.Fog(0x29b8cf, 15, 27);
+
+    const camera = new THREE.OrthographicCamera(-5, 5, 6, -6, 0.1, 50);
+    const cameraBase = new THREE.Vector3(0, 9.2, 12.9);
+    const cameraLookAt = new THREE.Vector3(0, 0.2, 0);
+    const cameraBaseOffset = cameraBase.clone().sub(cameraLookAt);
+    const cameraBaseSpherical = new THREE.Spherical().setFromVector3(
+      cameraBaseOffset,
+    );
+    const cameraOrbitSpherical = cameraBaseSpherical.clone();
+    const cameraOrbitOffset = new THREE.Vector3();
+    const worldPitchLimit =
+      cameraBaseSpherical.phi * WORLD_INTERACTION_LIMIT_RATIO;
+    let worldYawTarget = 0;
+    let worldYawCurrent = 0;
+    let worldPitchTarget = 0;
+    let worldPitchCurrent = 0;
+    let worldZoomTarget = 1;
+    let worldZoomCurrent = 1;
+    camera.position.copy(cameraBase);
+    camera.lookAt(cameraLookAt);
+
+    scene.add(new THREE.HemisphereLight(0xfff6dd, 0x536c49, 1.7));
+
+    const keyLight = new THREE.DirectionalLight(0xfff2d1, 2.1);
+    keyLight.position.set(-4, 10, 7);
+    scene.add(keyLight);
+
+    const fillLight = new THREE.DirectionalLight(0x9fcbe0, 0.65);
+    fillLight.position.set(8, 5, -4);
+    scene.add(fillLight);
+
+    const textureLoader = new THREE.TextureLoader();
+    const oceanTexture = textureLoader.load(
+      "/art/ocean-water-tile-v1.png",
+    );
+    oceanTexture.colorSpace = THREE.SRGBColorSpace;
+    oceanTexture.wrapS = THREE.RepeatWrapping;
+    oceanTexture.wrapT = THREE.RepeatWrapping;
+    oceanTexture.repeat.set(6, 6);
+    oceanTexture.anisotropy = Math.min(
+      4,
+      renderer.capabilities.getMaxAnisotropy(),
+    );
+    const oceanMaterial = new THREE.MeshBasicMaterial({
+      map: oceanTexture,
+      toneMapped: false,
+    });
+    disableOutline(oceanMaterial);
+    const outerOcean = new THREE.Mesh(
+      new THREE.PlaneGeometry(42, 42),
+      oceanMaterial,
+    );
+    outerOcean.name = "extended-ocean-floor";
+    outerOcean.rotation.x = -Math.PI / 2;
+    outerOcean.position.y = -0.07;
+    scene.add(outerOcean);
+
+    const groundTexture = textureLoader.load(
+      "/art/beach-island-ocean-v3.png",
+      () => {
+        if (!disposed) setLoadingProgress((value) => Math.max(value, 22));
+      },
+    );
+    groundTexture.colorSpace = THREE.SRGBColorSpace;
+    groundTexture.anisotropy = Math.min(
+      4,
+      renderer.capabilities.getMaxAnisotropy(),
+    );
+
+    const groundMaterial = new THREE.MeshBasicMaterial({
+      map: groundTexture,
+      toneMapped: false,
+    });
+    disableOutline(groundMaterial);
+    const ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(10, 15),
+      groundMaterial,
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.025;
+    scene.add(ground);
+
+    const maximumAnisotropy = Math.min(
+      4,
+      renderer.capabilities.getMaxAnisotropy(),
+    );
+    const deskWoodTexture = textureLoader.load(
+      "/art/desk-wood-watercolor-v1.png",
+    );
+    deskWoodTexture.colorSpace = THREE.SRGBColorSpace;
+    deskWoodTexture.wrapS = THREE.RepeatWrapping;
+    deskWoodTexture.wrapT = THREE.RepeatWrapping;
+    deskWoodTexture.repeat.set(1.6, 1.6);
+    deskWoodTexture.anisotropy = maximumAnisotropy;
+
+    const deskWatercolorGrainTexture = textureLoader.load(
+      "/art/desk-watercolor-grain-v1.png",
+    );
+    deskWatercolorGrainTexture.colorSpace = THREE.SRGBColorSpace;
+    deskWatercolorGrainTexture.wrapS = THREE.RepeatWrapping;
+    deskWatercolorGrainTexture.wrapT = THREE.RepeatWrapping;
+    deskWatercolorGrainTexture.repeat.set(1.35, 1.35);
+    deskWatercolorGrainTexture.anisotropy = maximumAnisotropy;
+
+    const deskKeycapTopTextures = DESK_KEYCAP_TEXTURE_URLS.map((url) => {
+      const texture = textureLoader.load(url);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.anisotropy = maximumAnisotropy;
+      return texture;
+    });
+
+    const deskGroup = createIllustratedDesk({
+      wood: deskWoodTexture,
+      watercolorGrain: deskWatercolorGrainTexture,
+      keycapTops: deskKeycapTopTextures,
+    });
+    scene.add(deskGroup);
+
+    const islandPropsWatercolorTexture = textureLoader.load(
+      "/art/island-props-watercolor-grain-v1.png",
+    );
+    islandPropsWatercolorTexture.colorSpace = THREE.SRGBColorSpace;
+    islandPropsWatercolorTexture.wrapS = THREE.RepeatWrapping;
+    islandPropsWatercolorTexture.wrapT = THREE.RepeatWrapping;
+    islandPropsWatercolorTexture.repeat.set(1.2, 1.2);
+    islandPropsWatercolorTexture.anisotropy = maximumAnisotropy;
+
+    ROCK_CLUSTER_PLACEMENTS.forEach((placement) => {
+      scene.add(
+        createRockCluster(islandPropsWatercolorTexture, placement),
+      );
+    });
+    const beachOfficeTextures = {
+      watercolorGrain: islandPropsWatercolorTexture,
+      wood: deskWoodTexture,
+    };
+
+    const meshyPropLoader = new GLTFLoader();
+    meshyPropLoader.setMeshoptDecoder(MeshoptDecoder);
+    void Promise.allSettled([
+      meshyPropLoader.loadAsync(PALM_TREE_MODEL_URL),
+      meshyPropLoader.loadAsync(BEACH_OFFICE_HUT_MODEL_URL),
+    ]).then(([palmResult, officeResult]) => {
+      if (disposed) return;
+
+      if (palmResult.status === "fulfilled") {
+        const palmTemplate = createMeshyPropTemplate(
+          palmResult.value.scene,
+          new THREE.Color(0xa5ad8a),
+          maximumAnisotropy,
+        );
+        PALM_TREE_PLACEMENTS.forEach((placement) => {
+          const palm = new THREE.Group();
+          palm.name = `${placement.id}-meshy6`;
+          palm.position.copy(placement.position);
+          palm.rotation.y = placement.rotationY;
+          palm.userData.isNavigationObstacle = true;
+          const obstacle = PALM_TREE_OBSTACLES.find(
+            (candidate) => candidate.id === placement.id,
+          );
+          if (obstacle) {
+            palm.userData.collisionBounds = { ...obstacle };
+          }
+
+          const visual = palmTemplate.clone(true);
+          visual.scale.setScalar(3.05 * placement.scale);
+          visual.position.y = -0.24;
+          palm.add(visual);
+          const shadow = createMeshyPropShadow(
+            placement.id,
+            0.54 * placement.scale,
+            0.12,
+          );
+          palm.add(shadow);
+          scene.add(palm);
+        });
+      } else {
+        PALM_TREE_PLACEMENTS.forEach((placement) => {
+          scene.add(createPalmTree(islandPropsWatercolorTexture, placement));
+        });
+      }
+
+      if (officeResult.status === "fulfilled") {
+        const office = new THREE.Group();
+        office.name = `${BEACH_OFFICE_HUT_OBSTACLE.id}-meshy6`;
+        office.position.set(2.35, 0, 5.12);
+        office.rotation.y = THREE.MathUtils.degToRad(-70);
+        office.userData.isNavigationObstacle = true;
+        office.userData.collisionBounds = {
+          ...BEACH_OFFICE_HUT_OBSTACLE,
+        };
+
+        const officeVisual = createMeshyPropTemplate(
+          officeResult.value.scene,
+          new THREE.Color(0xffffff),
+          maximumAnisotropy,
+        );
+        officeVisual.scale.setScalar(2.72);
+        office.add(officeVisual);
+        office.add(createMeshyPropShadow(office.name, 1.72, 0.13));
+        scene.add(office);
+      } else {
+        scene.add(createBeachOfficeHut(beachOfficeTextures));
+      }
+
+      setLoadingProgress((value) => Math.max(value, 48));
+    });
+
+    const characterRoot = new THREE.Group();
+    const characterVisual = new THREE.Group();
+    characterRoot.add(characterVisual);
+    characterRoot.position.copy(WORLD_TARGETS.general);
+    scene.add(characterRoot);
+
+    const blobShadowMaterial = new THREE.MeshBasicMaterial({
+      color: 0x786b55,
+      transparent: true,
+      opacity: 0.18,
+      depthWrite: false,
+    });
+    disableOutline(blobShadowMaterial);
+    const blobShadow = new THREE.Mesh(
+      new THREE.CircleGeometry(0.18, 40),
+      blobShadowMaterial,
+    );
+    blobShadow.rotation.x = -Math.PI / 2;
+    blobShadow.position.y = 0.012;
+    characterRoot.add(blobShadow);
+
+    let mixer: THREE.AnimationMixer | null = null;
+    const animationActions = new Map<string, THREE.AnimationAction>();
+    let currentAction: THREE.AnimationAction | null = null;
+    let characterModel: THREE.Object3D | null = null;
+    let characterYaw = DEFAULT_CHARACTER_YAW;
+    let ambientPhase:
+      | "resting"
+      | "prewalking"
+      | "walking"
+      | "settling" = "resting";
+    let ambientTimer = 4;
+    let ambientAnimationIndex = 0;
+    let ambientPointIndex = -1;
+    let wasAutonomous = AUTONOMOUS_STATUSES.has(motionRef.current.status);
+    let modelProgress = 0;
+    let animationsProgress = 0;
+
+    const playAnimation = (key: string, fadeSeconds = 0.45) => {
+      const nextAction =
+        animationActions.get(key) ?? animationActions.get("idle-look");
+      if (!nextAction || nextAction === currentAction) return;
+
+      const previousAction = currentAction;
+      nextAction.reset();
+      nextAction.enabled = true;
+      nextAction.setEffectiveWeight(1);
+      nextAction.fadeIn(fadeSeconds);
+      nextAction.play();
+      previousAction?.fadeOut(fadeSeconds);
+      currentAction = nextAction;
+    };
+
+    const updateAssetProgress = () => {
+      if (disposed) return;
+      const combinedProgress = (modelProgress + animationsProgress) / 2;
+      setLoadingProgress(
+        Math.max(22, Math.min(94, 22 + Math.round(combinedProgress * 72))),
+      );
+    };
+    const updateProgress = (
+      event: ProgressEvent<EventTarget>,
+      target: "model" | "animations",
+    ) => {
+      if (!event.total) return;
+      const value = Math.min(1, event.loaded / event.total);
+      if (target === "model") modelProgress = value;
+      else animationsProgress = value;
+      updateAssetProgress();
+    };
+    const fbxLoader = new FBXLoader();
+    Promise.all([
+      fbxLoader.loadAsync(CAT_MODEL_URL, (event) =>
+        updateProgress(event, "model"),
+      ),
+      fbxLoader.loadAsync(CAT_ANIMATIONS_URL, (event) =>
+        updateProgress(event, "animations"),
+      ),
+    ])
+      .then(([model, animationSource]) => {
+        if (disposed) return;
+
+        model.rotation.y = characterYaw;
+        characterModel = model;
+        model.traverse((object) => {
+          if (!(object instanceof THREE.Mesh)) return;
+
+          object.castShadow = false;
+          object.receiveShadow = false;
+          const materials = Array.isArray(object.material)
+            ? object.material
+            : [object.material];
+          for (const material of materials) {
+            if (material instanceof THREE.MeshStandardMaterial) {
+              material.color.set(0xffffff);
+              material.roughness = 0.95;
+              material.metalness = 0;
+              material.emissive.set(0x000000);
+              material.emissiveMap = null;
+              material.emissiveIntensity = 0;
+              if (material.map) {
+                material.map.colorSpace = THREE.SRGBColorSpace;
+                material.map.anisotropy = Math.min(
+                  4,
+                  renderer.capabilities.getMaxAnisotropy(),
+                );
+              }
+              if (material instanceof THREE.MeshPhysicalMaterial) {
+                material.specularIntensity = 0.12;
+                material.specularColor.set(0xffffff);
+                material.clearcoat = 0;
+                material.ior = 1.3;
+              }
+            } else if (material instanceof THREE.MeshPhongMaterial) {
+              material.color.set(0xffffff);
+              material.emissive.set(0x000000);
+              material.shininess = 4;
+              material.specular.set(0x2f2926);
+              if (material.map) {
+                material.map.colorSpace = THREE.SRGBColorSpace;
+                material.map.anisotropy = Math.min(
+                  4,
+                  renderer.capabilities.getMaxAnisotropy(),
+                );
+              }
+            }
+            material.userData.outlineParameters = {
+              thickness: ILLUSTRATION_OUTLINE_THICKNESS,
+              color: ILLUSTRATION_OUTLINE_COLOR.toArray(),
+              alpha: ILLUSTRATION_OUTLINE_ALPHA,
+            };
+            material.needsUpdate = true;
+          }
+        });
+
+        model.updateMatrixWorld(true);
+        const sourceBounds = new THREE.Box3().setFromObject(model);
+        const sourceSize = sourceBounds.getSize(new THREE.Vector3());
+        const scale = CHARACTER_HEIGHT / Math.max(sourceSize.y, 0.001);
+        model.scale.setScalar(scale);
+        model.updateMatrixWorld(true);
+
+        const scaledBounds = new THREE.Box3().setFromObject(model);
+        model.position.y = -scaledBounds.min.y;
+        characterVisual.add(model);
+
+        const walkClip = animationSource.animations.find((clip) =>
+          clip.name.endsWith("|Walk_F"),
+        );
+        if (!walkClip) throw new Error("Cat Walk_F animation was not found.");
+        mixer = new THREE.AnimationMixer(model);
+        const walkAction = mixer.clipAction(walkClip);
+        walkAction.setLoop(THREE.LoopRepeat, Infinity);
+        walkAction.timeScale = 0.62;
+        animationActions.set("walk", walkAction);
+
+        for (const ambientAnimation of AMBIENT_ANIMATIONS) {
+          const clip = animationSource.animations.find((candidate) =>
+            candidate.name.endsWith(ambientAnimation.suffix),
+          );
+          if (!clip) {
+            throw new Error(
+              `Cat animation ${ambientAnimation.suffix} was not found.`,
+            );
+          }
+
+          const action = mixer.clipAction(clip);
+          action.setLoop(THREE.LoopRepeat, Infinity);
+          action.timeScale = ambientAnimation.timeScale;
+          animationActions.set(ambientAnimation.key, action);
+        }
+
+        playAnimation("idle-look", 0);
+
+        animationSource.traverse((object) => {
+          if (!(object instanceof THREE.Mesh)) return;
+          object.geometry.dispose();
+          const materials = Array.isArray(object.material)
+            ? object.material
+            : [object.material];
+          materials.forEach(disposeMaterial);
+        });
+
+        setLoadingProgress(100);
+        setReady(true);
+      })
+      .catch(() => {
+        if (!disposed) setFailed(true);
+      });
+
+    const currentPosition = characterRoot.position.clone();
+    const desiredPosition = new THREE.Vector3();
+    const ambientTarget = currentPosition.clone();
+    const movementGoal = new THREE.Vector3();
+    const movementDirection = new THREE.Vector3();
+    const nextPosition = new THREE.Vector3();
+    const lastNavigationTarget = currentPosition.clone();
+    let activeAvoidanceWaypoint: THREE.Vector3 | null = null;
+    const clock = new THREE.Clock();
+
+    const updateSize = () => {
+      const width = Math.max(host.clientWidth, 1);
+      const height = Math.max(host.clientHeight, 1);
+      const aspect = width / height;
+      const viewHeight = aspect < 0.72 ? 11.4 : 10.8;
+      camera.left = (-viewHeight * aspect) / 2;
+      camera.right = (viewHeight * aspect) / 2;
+      camera.top = viewHeight / 2;
+      camera.bottom = -viewHeight / 2;
+      camera.updateProjectionMatrix();
+      renderer.setSize(width, height, false);
+    };
+
+    const activePointers = new Map<number, THREE.Vector2>();
+    let dragPointerId: number | null = null;
+    const dragStart = new THREE.Vector2();
+    let dragStartYaw = worldYawTarget;
+    let dragStartPitch = worldPitchTarget;
+    let pinchStartDistance = 0;
+    let pinchStartZoom = worldZoomTarget;
+
+    const beginWorldDrag = (
+      pointerId: number,
+      position: THREE.Vector2,
+    ) => {
+      dragPointerId = pointerId;
+      dragStart.copy(position);
+      dragStartYaw = worldYawTarget;
+      dragStartPitch = worldPitchTarget;
+      pinchStartDistance = 0;
+    };
+
+    const beginPinchZoom = () => {
+      const pointers = Array.from(activePointers.values());
+      if (pointers.length < 2) return;
+
+      pinchStartDistance = Math.max(
+        pointers[0].distanceTo(pointers[1]),
+        1,
+      );
+      pinchStartZoom = worldZoomTarget;
+      dragPointerId = null;
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+
+      event.preventDefault();
+      const position = new THREE.Vector2(event.clientX, event.clientY);
+      activePointers.set(event.pointerId, position);
+      renderer.domElement.style.cursor = "grabbing";
+      renderer.domElement.setPointerCapture(event.pointerId);
+
+      if (activePointers.size >= 2) {
+        beginPinchZoom();
+      } else {
+        beginWorldDrag(event.pointerId, position);
+      }
+    };
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!activePointers.has(event.pointerId)) return;
+
+      event.preventDefault();
+      const position = new THREE.Vector2(event.clientX, event.clientY);
+      activePointers.set(event.pointerId, position);
+      const rect = host.getBoundingClientRect();
+
+      if (activePointers.size >= 2) {
+        const pointers = Array.from(activePointers.values());
+        const currentDistance = Math.max(
+          pointers[0].distanceTo(pointers[1]),
+          1,
+        );
+        if (pinchStartDistance <= 0) beginPinchZoom();
+        worldZoomTarget = THREE.MathUtils.clamp(
+          pinchStartZoom * (currentDistance / pinchStartDistance),
+          WORLD_ZOOM_MIN,
+          WORLD_ZOOM_MAX,
+        );
+        return;
+      }
+
+      if (event.pointerId !== dragPointerId) return;
+
+      const horizontalMovement =
+        (event.clientX - dragStart.x) / Math.max(rect.width, 1);
+      const verticalMovement =
+        (event.clientY - dragStart.y) / Math.max(rect.height, 1);
+      worldYawTarget = THREE.MathUtils.clamp(
+        dragStartYaw - horizontalMovement * WORLD_YAW_LIMIT * 2,
+        -WORLD_YAW_LIMIT,
+        WORLD_YAW_LIMIT,
+      );
+      worldPitchTarget = THREE.MathUtils.clamp(
+        dragStartPitch + verticalMovement * worldPitchLimit * 2,
+        -worldPitchLimit,
+        worldPitchLimit,
+      );
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      if (!activePointers.has(event.pointerId)) return;
+
+      event.preventDefault();
+      activePointers.delete(event.pointerId);
+      if (renderer.domElement.hasPointerCapture(event.pointerId)) {
+        renderer.domElement.releasePointerCapture(event.pointerId);
+      }
+
+      if (activePointers.size >= 2) {
+        beginPinchZoom();
+      } else if (activePointers.size === 1) {
+        const [remainingPointer] = activePointers.entries();
+        beginWorldDrag(remainingPointer[0], remainingPointer[1]);
+      } else {
+        dragPointerId = null;
+        pinchStartDistance = 0;
+        renderer.domElement.style.cursor = "grab";
+      }
+    };
+
+    const handleWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      const zoomFactor = Math.exp(-event.deltaY * 0.0012);
+      worldZoomTarget = THREE.MathUtils.clamp(
+        worldZoomTarget * zoomFactor,
+        WORLD_ZOOM_MIN,
+        WORLD_ZOOM_MAX,
+      );
+    };
+    renderer.domElement.addEventListener("pointerdown", handlePointerDown);
+    renderer.domElement.addEventListener("pointermove", handlePointerMove, {
+      passive: false,
+    });
+    renderer.domElement.addEventListener("pointerup", handlePointerUp);
+    renderer.domElement.addEventListener("pointercancel", handlePointerUp);
+    renderer.domElement.addEventListener("wheel", handleWheel, {
+      passive: false,
+    });
+
+    const resizeObserver = new ResizeObserver(updateSize);
+    resizeObserver.observe(host);
+    updateSize();
+
+    renderer.setAnimationLoop(() => {
+      const delta = Math.min(clock.getDelta(), 0.05);
+      const isAutonomous =
+        mixer !== null &&
+        AUTONOMOUS_STATUSES.has(motionRef.current.status);
+      let isMoving = false;
+      let movementSpeed = TASK_MOVE_SPEED;
+
+      if (isAutonomous && !wasAutonomous) {
+        ambientPhase = "resting";
+        ambientTimer = randomBetween(2.5, 4.5);
+        ambientTarget.copy(currentPosition);
+        playAnimation("idle-look");
+        setAmbientLabel(
+          motionRef.current.status === "completed"
+            ? "일을 마치고 잠시 쉬는 중"
+            : motionRef.current.status === "failed"
+              ? "기분 전환을 위해 쉬는 중"
+              : "주변을 구경하는 중",
+        );
+      } else if (!isAutonomous && wasAutonomous) {
+        ambientPhase = "resting";
+        ambientTimer = 4;
+        ambientTarget.copy(currentPosition);
+      }
+      wasAutonomous = isAutonomous;
+
+      if (isAutonomous) {
+        movementSpeed = AMBIENT_MOVE_SPEED;
+
+        if (ambientPhase === "resting") {
+          desiredPosition.copy(currentPosition);
+          ambientTimer -= delta;
+
+          if (ambientTimer <= 0) {
+            ambientPhase = "prewalking";
+            ambientTimer = randomBetween(0.8, 1.25);
+            playAnimation("idle-look", 0.5);
+            setAmbientLabel("몸을 일으키고 산책을 준비하는 중");
+          }
+        } else if (ambientPhase === "prewalking") {
+          desiredPosition.copy(currentPosition);
+          ambientTimer -= delta;
+
+          if (ambientTimer <= 0) {
+            let nextPointIndex = ambientPointIndex;
+            for (let attempt = 0; attempt < 8; attempt += 1) {
+              const candidateIndex = Math.floor(
+                Math.random() * AMBIENT_WANDER_POINTS.length,
+              );
+              const candidate = AMBIENT_WANDER_POINTS[candidateIndex];
+              if (
+                candidateIndex !== ambientPointIndex &&
+                currentPosition.distanceTo(candidate) > 1.1
+              ) {
+                nextPointIndex = candidateIndex;
+                break;
+              }
+            }
+
+            if (nextPointIndex < 0) nextPointIndex = 0;
+            ambientPointIndex = nextPointIndex;
+            ambientTarget.copy(AMBIENT_WANDER_POINTS[ambientPointIndex]);
+            ambientPhase = "walking";
+            desiredPosition.copy(ambientTarget);
+            isMoving = true;
+            playAnimation("walk", 0.32);
+            setAmbientLabel("해변을 천천히 산책하는 중");
+          }
+        } else if (ambientPhase === "settling") {
+          desiredPosition.copy(currentPosition);
+          ambientTimer -= delta;
+
+          if (ambientTimer <= 0) {
+            ambientAnimationIndex =
+              (ambientAnimationIndex +
+                1 +
+                Math.floor(
+                  Math.random() * (AMBIENT_ANIMATIONS.length - 1),
+                )) %
+              AMBIENT_ANIMATIONS.length;
+            const nextAmbient =
+              AMBIENT_ANIMATIONS[ambientAnimationIndex];
+            ambientTimer = randomBetween(
+              nextAmbient.minSeconds,
+              nextAmbient.maxSeconds,
+            );
+            ambientPhase = "resting";
+            playAnimation(nextAmbient.key, 0.5);
+            setAmbientLabel(nextAmbient.label);
+          }
+        } else {
+          desiredPosition.copy(ambientTarget);
+          const ambientDistance =
+            currentPosition.distanceTo(desiredPosition);
+
+          if (ambientDistance <= AMBIENT_ARRIVAL_DISTANCE) {
+            currentPosition.copy(ambientTarget);
+            desiredPosition.copy(currentPosition);
+            ambientPhase = "settling";
+            ambientTimer = randomBetween(1.1, 1.8);
+            playAnimation("idle-look", 0.36);
+            setAmbientLabel("걸음을 멈추고 주변을 살피는 중");
+          } else {
+            isMoving = true;
+            playAnimation("walk", 0.32);
+          }
+        }
+      } else {
+        desiredPosition.copy(WORLD_TARGETS[motionRef.current.location]);
+        const taskDistance = currentPosition.distanceTo(desiredPosition);
+        isMoving = taskDistance > TASK_ARRIVAL_DISTANCE;
+        if (isMoving) {
+          playAnimation("walk", 0.28);
+        } else {
+          currentPosition.copy(desiredPosition);
+          playAnimation("idle-look", 0.34);
+        }
+      }
+
+      const walkAction = animationActions.get("walk");
+      if (walkAction && isMoving) {
+        walkAction.timeScale = isAutonomous ? 0.62 : 0.92;
+      }
+
+      movementGoal.copy(desiredPosition);
+      if (isMoving) {
+        if (lastNavigationTarget.distanceToSquared(desiredPosition) > 0.01) {
+          lastNavigationTarget.copy(desiredPosition);
+          activeAvoidanceWaypoint = null;
+        }
+        if (
+          activeAvoidanceWaypoint &&
+          currentPosition.distanceTo(activeAvoidanceWaypoint) <=
+            TASK_ARRIVAL_DISTANCE
+        ) {
+          activeAvoidanceWaypoint = null;
+        }
+        activeAvoidanceWaypoint ??= findAvoidanceWaypoint(
+          currentPosition,
+          desiredPosition,
+        );
+        if (activeAvoidanceWaypoint) {
+          movementGoal.copy(activeAvoidanceWaypoint);
+        }
+      } else {
+        activeAvoidanceWaypoint = null;
+        lastNavigationTarget.copy(desiredPosition);
+      }
+
+      movementDirection.subVectors(movementGoal, currentPosition);
+      if (
+        isMoving &&
+        characterModel &&
+        movementDirection.lengthSq() > 0.001
+      ) {
+        const targetYaw = Math.atan2(
+          movementDirection.x,
+          movementDirection.z,
+        );
+        characterYaw = lerpAngle(
+          characterYaw,
+          targetYaw,
+          1 - Math.exp(-delta * 5),
+        );
+        characterModel.rotation.y = characterYaw;
+      }
+
+      mixer?.update(delta);
+      if (isMoving) {
+        const remainingDistance =
+          currentPosition.distanceTo(movementGoal);
+        const stepDistance = movementSpeed * delta;
+        if (remainingDistance <= stepDistance) {
+          nextPosition.copy(movementGoal);
+        } else {
+          nextPosition.copy(currentPosition).lerp(
+            movementGoal,
+            stepDistance / remainingDistance,
+          );
+        }
+        const wouldCollide = SCENE_OBSTACLES.some((obstacle) =>
+          isInsideObstacle(nextPosition, obstacle),
+        );
+        if (!wouldCollide) {
+          currentPosition.copy(nextPosition);
+        } else {
+          activeAvoidanceWaypoint = findAvoidanceWaypoint(
+            currentPosition,
+            desiredPosition,
+          );
+        }
+      }
+      characterRoot.position.x = currentPosition.x;
+      characterRoot.position.z = currentPosition.z;
+      characterVisual.position.y = 0;
+      characterVisual.rotation.z = 0;
+      blobShadow.scale.setScalar(1);
+
+      const cameraEase = 1 - Math.exp(-delta * 8);
+      worldYawCurrent = THREE.MathUtils.lerp(
+        worldYawCurrent,
+        worldYawTarget,
+        cameraEase,
+      );
+      worldPitchCurrent = THREE.MathUtils.lerp(
+        worldPitchCurrent,
+        worldPitchTarget,
+        cameraEase,
+      );
+      worldZoomCurrent = THREE.MathUtils.lerp(
+        worldZoomCurrent,
+        worldZoomTarget,
+        cameraEase,
+      );
+      cameraOrbitSpherical.theta =
+        cameraBaseSpherical.theta + worldYawCurrent;
+      cameraOrbitSpherical.phi =
+        cameraBaseSpherical.phi + worldPitchCurrent;
+      cameraOrbitOffset.setFromSpherical(cameraOrbitSpherical);
+      camera.position.copy(cameraLookAt).add(cameraOrbitOffset);
+      camera.zoom = worldZoomCurrent;
+      camera.updateProjectionMatrix();
+      camera.lookAt(cameraLookAt);
+      outlineEffect.render(scene, camera);
+    });
+
+    return () => {
+      disposed = true;
+      renderer.setAnimationLoop(null);
+      resizeObserver.disconnect();
+      renderer.domElement.removeEventListener(
+        "pointerdown",
+        handlePointerDown,
+      );
+      renderer.domElement.removeEventListener(
+        "pointermove",
+        handlePointerMove,
+      );
+      renderer.domElement.removeEventListener("pointerup", handlePointerUp);
+      renderer.domElement.removeEventListener(
+        "pointercancel",
+        handlePointerUp,
+      );
+      renderer.domElement.removeEventListener("wheel", handleWheel);
+      mixer?.stopAllAction();
+
+      scene.traverse((object) => {
+        if (!(object instanceof THREE.Mesh || object instanceof THREE.Sprite)) {
+          return;
+        }
+        if (object instanceof THREE.Mesh) object.geometry.dispose();
+        const materials = Array.isArray(object.material)
+          ? object.material
+          : [object.material];
+        materials.forEach(disposeMaterial);
+      });
+      renderer.dispose();
+      renderer.domElement.remove();
+    };
+  }, []);
+
+  return (
+    <>
+      <div
+        ref={hostRef}
+        className="world-3d-host"
+        aria-label={`${agentName}가 있는 2.5D 해변 사무실`}
+      />
+
+      {failed && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          className="world-3d-fallback"
+          src="/art/beach-island-ocean-v3.png"
+          alt="동물 에이전트가 일하는 해변 사무실 배경"
+          width="1024"
+          height="1536"
+        />
+      )}
+
+      {!ready && !failed && (
+        <div className="world-3d-loading" role="status" aria-live="polite">
+          <span className="world-3d-loader" />
+          <strong>2.5D 해변 사무실 준비 중</strong>
+          <small>{loadingProgress}% · 고양이 자율 행동 불러오기</small>
+        </div>
+      )}
+
+      <div className="world-3d-location" aria-live="polite">
+        <span>{LOCATION_LABELS[location]}</span>
+        <strong>
+          {AUTONOMOUS_STATUSES.has(status) && ready
+            ? ambientLabel
+            : statusLabel}
+        </strong>
+      </div>
+    </>
+  );
+}
