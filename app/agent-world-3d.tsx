@@ -1466,7 +1466,7 @@ export default function AgentWorld3D({
     deskWatercolorGrainTexture.anisotropy = maximumAnisotropy;
 
     const deskGroundAreaTexture = textureLoader.load(
-      "/art/coding-desk-ground-illustration-v1.png",
+      "/art/coding-desk-ground-illustration-v2.png",
     );
     deskGroundAreaTexture.colorSpace = THREE.SRGBColorSpace;
     deskGroundAreaTexture.anisotropy = maximumAnisotropy;

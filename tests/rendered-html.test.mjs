@@ -99,7 +99,7 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /nextMonitorScreenFrame/);
   assert.match(world3d, /coding-desk-four-key-keypad-base/);
   assert.match(world3d, /coding-desk-keycap-\$\{index \+ 1\}-top-texture/);
-  assert.match(world3d, /coding-desk-ground-illustration-v1\.png/);
+  assert.match(world3d, /coding-desk-ground-illustration-v2\.png/);
   assert.match(world3d, /coding-desk-ground-illustration/);
   assert.match(world3d, /groundArea: deskGroundAreaTexture/);
   assert.match(world3d, /coding-desk-coffee-cup/);
@@ -262,7 +262,7 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     ),
     access(
       new URL(
-        "../public/art/coding-desk-ground-illustration-v1.png",
+        "../public/art/coding-desk-ground-illustration-v2.png",
         import.meta.url,
       ),
     ),
