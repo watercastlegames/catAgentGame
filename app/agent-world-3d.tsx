@@ -59,6 +59,7 @@ const ILLUSTRATION_OUTLINE_THICKNESS = 0.005;
 const ILLUSTRATION_OUTLINE_ALPHA = 0.8;
 const WORKSTATION_OUTLINE_THICKNESS = 0.0035;
 const WORKSTATION_OUTLINE_ALPHA = 0.55;
+const FAR_OCEAN_STYLE_COLOR = 0x77cbbd;
 const CHARACTER_HEIGHT = 0.86;
 const DEFAULT_CHARACTER_YAW = 0.6;
 const WORLD_INTERACTION_LIMIT_RATIO = 0.2;
@@ -1964,8 +1965,8 @@ export default function AgentWorld3D({
     });
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x19b2cf);
-    scene.fog = new THREE.Fog(0x29b8cf, 15, 27);
+    scene.background = new THREE.Color(FAR_OCEAN_STYLE_COLOR);
+    scene.fog = new THREE.Fog(FAR_OCEAN_STYLE_COLOR, 15, 27);
 
     const camera = new THREE.OrthographicCamera(-5, 5, 6, -6, 0.1, 50);
     const cameraBase = new THREE.Vector3(0, 9.2, 12.9);
@@ -2013,6 +2014,38 @@ export default function AgentWorld3D({
       map: oceanTexture,
       toneMapped: false,
     });
+    oceanMaterial.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <map_fragment>",
+        `#ifdef USE_MAP
+
+  vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+  float sourceLuma = dot(
+    sampledDiffuseColor.rgb,
+    vec3( 0.2126, 0.7152, 0.0722 )
+  );
+  float watercolorDetail = ( sourceLuma - 0.36 ) * 0.42;
+  vec3 styleLockedOcean = vec3( 0.1845, 0.5972, 0.5097 );
+  sampledDiffuseColor.rgb = clamp(
+    styleLockedOcean +
+      watercolorDetail * vec3( 0.68, 0.9, 0.94 ),
+    0.0,
+    1.0
+  );
+
+  #ifdef DECODE_VIDEO_TEXTURE
+
+    sampledDiffuseColor = sRGBTransferEOTF( sampledDiffuseColor );
+
+  #endif
+
+  diffuseColor *= sampledDiffuseColor;
+
+#endif`,
+      );
+    };
+    oceanMaterial.customProgramCacheKey = () =>
+      "extended-ocean-style-locked-v2";
     disableOutline(oceanMaterial);
     const outerOcean = new THREE.Mesh(
       new THREE.PlaneGeometry(42, 42),
