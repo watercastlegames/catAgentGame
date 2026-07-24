@@ -172,7 +172,7 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   );
   assert.match(
     world3d,
-    /id: "palm-tree-northeast"[\s\S]*rotationY: 0\.78,[\s\S]*scale: 1\.12/,
+    /id: "palm-tree-northeast"[\s\S]*rotationY: -0\.78,[\s\S]*scale: 1\.12/,
   );
   assert.match(world3d, /createMeshyPropShadow/);
   assert.match(world3d, /meshyPropLoader\.setMeshoptDecoder/);

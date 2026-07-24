@@ -197,7 +197,7 @@ const PALM_TREE_PLACEMENTS: IslandPropPlacement[] = [
   {
     id: "palm-tree-northeast",
     position: new THREE.Vector3(3.55, 0, -4.55),
-    rotationY: 0.78,
+    rotationY: -0.78,
     scale: 1.12,
   },
   {
