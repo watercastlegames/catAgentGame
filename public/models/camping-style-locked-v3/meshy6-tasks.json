@@ -1,0 +1,57 @@
+{
+  "ai_model": "meshy-6",
+  "task_type": "image-to-3d",
+  "target_format": "glb",
+  "hd_texture": true,
+  "remove_lighting": true,
+  "target_polycount": 40000,
+  "total_consumed_credits": 120,
+  "remaining_credits_after_batch": 1786,
+  "assets": [
+    {
+      "name": "tent-workstation",
+      "task_id": "019f9657-5015-74df-9eb9-c11d702e4fa3",
+      "consumed_credits": 30,
+      "source_image": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-references\\camping-style-locked-v3\\tent-workstation-v3.png",
+      "original_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-source\\camping-style-locked-v3\\tent-workstation-meshy6-v3.glb",
+      "web_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\public\\models\\camping-style-locked-v3\\tent-workstation-meshy6-web-v3.glb",
+      "web_file_size_bytes": 679928
+    },
+    {
+      "name": "round-laptop-workstation",
+      "task_id": "019f9657-59bc-7522-8438-e1e1daeb3284",
+      "consumed_credits": 30,
+      "source_image": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-references\\camping-style-locked-v3\\round-laptop-workstation-v3.png",
+      "original_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-source\\camping-style-locked-v3\\round-laptop-workstation-meshy6-v3.glb",
+      "web_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\public\\models\\camping-style-locked-v3\\round-laptop-workstation-meshy6-web-v3.glb",
+      "web_file_size_bytes": 712212
+    },
+    {
+      "name": "folding-laptop-radio-workstation",
+      "task_id": "019f9657-5f02-7758-9599-5c7d25c0e36b",
+      "consumed_credits": 30,
+      "source_image": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-references\\camping-style-locked-v3\\folding-laptop-radio-workstation-v3.png",
+      "original_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-source\\camping-style-locked-v3\\folding-laptop-radio-workstation-meshy6-v3.glb",
+      "web_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\public\\models\\camping-style-locked-v3\\folding-laptop-radio-workstation-meshy6-web-v3.glb",
+      "web_file_size_bytes": 859088
+    },
+    {
+      "name": "low-monitor-cat-keycap-workstation",
+      "task_id": "019f9657-629f-7af3-9239-3706882f2746",
+      "consumed_credits": 30,
+      "source_image": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-references\\camping-style-locked-v3\\low-monitor-cat-keycap-workstation-v3.png",
+      "original_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-source\\camping-style-locked-v3\\low-monitor-cat-keycap-workstation-meshy6-v3.glb",
+      "web_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\public\\models\\camping-style-locked-v3\\low-monitor-cat-keycap-workstation-meshy6-web-v3.glb",
+      "web_file_size_bytes": 731892
+    }
+  ],
+  "web_optimization": {
+    "geometry_compression": "meshopt",
+    "texture_format": "webp",
+    "texture_size": 2048
+  },
+  "style_tuning": {
+    "workstation_outline_thickness": 0.0035,
+    "workstation_outline_alpha": 0.55
+  }
+}

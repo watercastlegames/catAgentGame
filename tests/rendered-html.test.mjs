@@ -76,10 +76,16 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /MeshoptDecoder/);
   assert.match(world3d, /Lowpoly_Cat_Blue\.fbx/);
   assert.match(world3d, /Lowpoly_Cat_Animations_IP\.fbx/);
-  assert.match(world3d, /tent-workstation-meshy6-web-v1\.glb/);
-  assert.match(world3d, /round-laptop-station-meshy6-web-v1\.glb/);
-  assert.match(world3d, /folding-laptop-radio-station-meshy6-web-v1\.glb/);
-  assert.match(world3d, /low-monitor-station-meshy6-web-v1\.glb/);
+  assert.match(world3d, /tent-workstation-meshy6-web-v3\.glb/);
+  assert.match(world3d, /round-laptop-workstation-meshy6-web-v3\.glb/);
+  assert.match(
+    world3d,
+    /folding-laptop-radio-workstation-meshy6-web-v3\.glb/,
+  );
+  assert.match(
+    world3d,
+    /low-monitor-cat-keycap-workstation-meshy6-web-v3\.glb/,
+  );
   assert.match(world3d, /palm-tree-meshy6-web-v1\.glb/);
   assert.match(world3d, /camping-supplies-cluster-meshy6-web-v1\.glb/);
   assert.match(world3d, /camping-lantern-meshy6-web-v1\.glb/);
@@ -228,6 +234,8 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /0x6f5040/);
   assert.match(world3d, /ILLUSTRATION_OUTLINE_THICKNESS = 0\.005/);
   assert.match(world3d, /ILLUSTRATION_OUTLINE_ALPHA = 0\.8/);
+  assert.match(world3d, /WORKSTATION_OUTLINE_THICKNESS = 0\.0035/);
+  assert.match(world3d, /WORKSTATION_OUTLINE_ALPHA = 0\.55/);
   assert.match(world3d, /CHARACTER_HEIGHT = 0\.86/);
   assert.match(world3d, /outlineEffect\.render/);
   assert.match(world3d, /playAnimation/);
@@ -352,6 +360,36 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     access(
       new URL(
         "../public/models/camping-style-locked-v1/meshy6-tasks.json",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-locked-v3/tent-workstation-meshy6-web-v3.glb",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-locked-v3/round-laptop-workstation-meshy6-web-v3.glb",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-locked-v3/folding-laptop-radio-workstation-meshy6-web-v3.glb",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-locked-v3/low-monitor-cat-keycap-workstation-meshy6-web-v3.glb",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-locked-v3/meshy6-tasks.json",
         import.meta.url,
       ),
     ),

@@ -57,6 +57,8 @@ const LOCATION_LABELS: Record<AgentWorldLocation, string> = {
 const ILLUSTRATION_OUTLINE_COLOR = new THREE.Color(0x6f5040);
 const ILLUSTRATION_OUTLINE_THICKNESS = 0.005;
 const ILLUSTRATION_OUTLINE_ALPHA = 0.8;
+const WORKSTATION_OUTLINE_THICKNESS = 0.0035;
+const WORKSTATION_OUTLINE_ALPHA = 0.55;
 const CHARACTER_HEIGHT = 0.86;
 const DEFAULT_CHARACTER_YAW = 0.6;
 const WORLD_INTERACTION_LIMIT_RATIO = 0.2;
@@ -81,13 +83,13 @@ const CAT_ANIMATIONS_URL =
 const PALM_TREE_MODEL_URL =
   "/models/palm-tree-meshy6-web-v1.glb";
 const TENT_WORKSTATION_MODEL_URL =
-  "/models/camping-v5/tent-workstation-meshy6-web-v1.glb";
+  "/models/camping-style-locked-v3/tent-workstation-meshy6-web-v3.glb";
 const ROUND_LAPTOP_STATION_MODEL_URL =
-  "/models/camping-v5/round-laptop-station-meshy6-web-v1.glb";
+  "/models/camping-style-locked-v3/round-laptop-workstation-meshy6-web-v3.glb";
 const FOLDING_LAPTOP_STATION_MODEL_URL =
-  "/models/camping-v5/folding-laptop-radio-station-meshy6-web-v1.glb";
+  "/models/camping-style-locked-v3/folding-laptop-radio-workstation-meshy6-web-v3.glb";
 const LOW_MONITOR_STATION_MODEL_URL =
-  "/models/camping-v5/low-monitor-station-meshy6-web-v1.glb";
+  "/models/camping-style-locked-v3/low-monitor-cat-keycap-workstation-meshy6-web-v3.glb";
 const CAMPING_SUPPLIES_MODEL_URL =
   "/models/camping-style-locked-v1/camping-supplies-cluster-meshy6-web-v1.glb";
 const CAMPING_LANTERN_MODEL_URL =
@@ -1739,6 +1741,8 @@ function createMeshyPropTemplate(
   source: THREE.Object3D,
   tint: THREE.Color,
   anisotropy: number,
+  outlineThickness = ILLUSTRATION_OUTLINE_THICKNESS,
+  outlineAlpha = ILLUSTRATION_OUTLINE_ALPHA,
 ) {
   const template = new THREE.Group();
   const visual = source.clone(true);
@@ -1777,9 +1781,9 @@ function createMeshyPropTemplate(
         }
       }
       material.userData.outlineParameters = {
-        thickness: ILLUSTRATION_OUTLINE_THICKNESS,
+        thickness: outlineThickness,
         color: ILLUSTRATION_OUTLINE_COLOR.toArray(),
-        alpha: ILLUSTRATION_OUTLINE_ALPHA,
+        alpha: outlineAlpha,
         visible: true,
       };
       material.needsUpdate = true;
@@ -2322,6 +2326,8 @@ float shoreOverlayWaterSignal( vec3 color ) {
           result.value.scene,
           new THREE.Color(0xffffff),
           maximumAnisotropy,
+          WORKSTATION_OUTLINE_THICKNESS,
+          WORKSTATION_OUTLINE_ALPHA,
         );
         visual.scale.setScalar(placement.height);
         workstation.add(
