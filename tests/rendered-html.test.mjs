@@ -166,6 +166,10 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /createBeachOfficeHut/);
   assert.doesNotMatch(world3d, /createBeachOfficeBench/);
   assert.match(world3d, /createMeshyPropTemplate/);
+  assert.match(world3d, /applyNorthernPalmTrunkBrown/);
+  assert.match(world3d, /NORTHERN_PALM_TRUNK_COLOR.*0xb8794f/);
+  assert.match(world3d, /north-palms-brown-v1/);
+  assert.match(world3d, /placement\.position\.z < 0/);
   assert.match(world3d, /createMeshyPropShadow/);
   assert.match(world3d, /meshyPropLoader\.setMeshoptDecoder/);
   assert.match(world3d, /3\.05 \* placement\.scale/);
