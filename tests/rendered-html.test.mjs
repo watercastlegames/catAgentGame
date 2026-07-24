@@ -171,10 +171,15 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /createMeshyPropTemplate/);
   assert.match(world3d, /ensurePalmLeafSwayMorphTargets/);
   assert.match(world3d, /registerPalmLeafSway/);
-  assert.match(world3d, /palm-leaf-sway-morph-v1/);
+  assert.match(world3d, /palm-leaf-sway-morph-v2/);
+  assert.doesNotMatch(
+    world3d,
+    /position instanceof THREE\.BufferAttribute/,
+  );
   assert.match(world3d, /geometry\.morphTargetsRelative = true/);
   assert.match(world3d, /palmLeafSwayTargets/);
-  assert.match(world3d, /palmLeafSwayTime \* 0\.72/);
+  assert.match(world3d, /palmLeafSwayTime \* 0\.9/);
+  assert.match(world3d, /tipFactor \* 0\.024/);
   assert.match(
     world3d,
     /id: "palm-tree-northwest"[\s\S]*rotationY: 0\.78,[\s\S]*scale: 1\.12/,

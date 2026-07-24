@@ -192,7 +192,7 @@ type PalmLeafSwayTarget = {
   phase: number;
 };
 
-const PALM_LEAF_SWAY_MORPH_VERSION = "palm-leaf-sway-morph-v1";
+const PALM_LEAF_SWAY_MORPH_VERSION = "palm-leaf-sway-morph-v2";
 
 const PALM_TREE_PLACEMENTS: IslandPropPlacement[] = [
   {
@@ -1306,7 +1306,7 @@ function ensurePalmLeafSwayMorphTargets(geometry: THREE.BufferGeometry) {
   }
 
   const position = geometry.getAttribute("position");
-  if (!(position instanceof THREE.BufferAttribute)) return false;
+  if (!position || position.itemSize < 3) return false;
 
   const swayAcross = new Float32Array(position.count * 3);
   const swayDepth = new Float32Array(position.count * 3);
@@ -1324,19 +1324,19 @@ function ensurePalmLeafSwayMorphTargets(geometry: THREE.BufferGeometry) {
     const offset = index * 3;
 
     swayAcross[offset] =
-      leafMask * (0.017 + tipFactor * 0.012) *
+      leafMask * (0.036 + tipFactor * 0.024) *
       (0.84 + Math.sin(angle * 5) * 0.16);
     swayAcross[offset + 1] =
-      leafMask * Math.sin(x * 7 + z * 5) * 0.004;
+      leafMask * Math.sin(x * 7 + z * 5) * 0.008;
     swayAcross[offset + 2] =
-      leafMask * Math.sin(y * 5 + angle * 2) * 0.005;
+      leafMask * Math.sin(y * 5 + angle * 2) * 0.011;
 
     swayDepth[offset] =
-      leafMask * Math.cos(y * 4 + angle * 3) * 0.006;
+      leafMask * Math.cos(y * 4 + angle * 3) * 0.013;
     swayDepth[offset + 1] =
-      leafMask * Math.cos(x * 5 - z * 6) * 0.004;
+      leafMask * Math.cos(x * 5 - z * 6) * 0.008;
     swayDepth[offset + 2] =
-      leafMask * (0.014 + tipFactor * 0.01) *
+      leafMask * (0.028 + tipFactor * 0.02) *
       (0.84 + Math.cos(angle * 6) * 0.16);
   }
 
@@ -2055,10 +2055,10 @@ export default function AgentWorld3D({
       palmLeafSwayTargets.forEach(({ mesh, phase }) => {
         if (!mesh.morphTargetInfluences) return;
         mesh.morphTargetInfluences[0] =
-          Math.sin(palmLeafSwayTime * 0.72 + phase) * 0.72 +
-          Math.sin(palmLeafSwayTime * 1.18 + phase * 1.7) * 0.16;
+          Math.sin(palmLeafSwayTime * 0.9 + phase) * 0.78 +
+          Math.sin(palmLeafSwayTime * 1.55 + phase * 1.7) * 0.2;
         mesh.morphTargetInfluences[1] =
-          Math.sin(palmLeafSwayTime * 0.94 + phase * 1.35) * 0.52;
+          Math.sin(palmLeafSwayTime * 1.12 + phase * 1.35) * 0.68;
       });
       const isAutonomous =
         mixer !== null &&
