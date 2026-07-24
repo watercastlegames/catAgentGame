@@ -99,6 +99,14 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /nextMonitorScreenFrame/);
   assert.match(world3d, /coding-desk-four-key-keypad-base/);
   assert.match(world3d, /coding-desk-keycap-\$\{index \+ 1\}-top-texture/);
+  assert.match(world3d, /coding-desk-ground-area/);
+  assert.match(world3d, /coding-desk-flattened-sand/);
+  assert.match(world3d, /coding-desk-flattened-sand-rim/);
+  assert.match(world3d, /coding-desk-picnic-mat/);
+  assert.match(world3d, /coding-desk-picnic-mat-border/);
+  assert.match(world3d, /coding-desk-picnic-mat-weave/);
+  assert.match(world3d, /coding-desk-picnic-mat-accent/);
+  assert.match(world3d, /coding-desk-picnic-mat-fringe/);
   assert.match(world3d, /coding-desk-coffee-cup/);
   assert.doesNotMatch(world3d, /new THREE\.Sprite/);
   assert.doesNotMatch(world3d, /SpriteMaterial/);
