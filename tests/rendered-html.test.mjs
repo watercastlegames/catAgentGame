@@ -234,8 +234,8 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /0x6f5040/);
   assert.match(world3d, /ILLUSTRATION_OUTLINE_THICKNESS = 0\.005/);
   assert.match(world3d, /ILLUSTRATION_OUTLINE_ALPHA = 0\.8/);
-  assert.match(world3d, /WORKSTATION_OUTLINE_THICKNESS = 0\.0035/);
-  assert.match(world3d, /WORKSTATION_OUTLINE_ALPHA = 0\.55/);
+  assert.doesNotMatch(world3d, /WORKSTATION_OUTLINE_THICKNESS/);
+  assert.doesNotMatch(world3d, /WORKSTATION_OUTLINE_ALPHA/);
   assert.match(world3d, /FAR_OCEAN_STYLE_COLOR = 0x77cbbd/);
   assert.match(world3d, /extended-ocean-style-locked-v2/);
   assert.match(

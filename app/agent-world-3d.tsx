@@ -57,8 +57,6 @@ const LOCATION_LABELS: Record<AgentWorldLocation, string> = {
 const ILLUSTRATION_OUTLINE_COLOR = new THREE.Color(0x6f5040);
 const ILLUSTRATION_OUTLINE_THICKNESS = 0.005;
 const ILLUSTRATION_OUTLINE_ALPHA = 0.8;
-const WORKSTATION_OUTLINE_THICKNESS = 0.0035;
-const WORKSTATION_OUTLINE_ALPHA = 0.55;
 const FAR_OCEAN_STYLE_COLOR = 0x77cbbd;
 const CHARACTER_HEIGHT = 0.86;
 const DEFAULT_CHARACTER_YAW = 0.6;
@@ -2359,8 +2357,6 @@ float shoreOverlayWaterSignal( vec3 color ) {
           result.value.scene,
           new THREE.Color(0xffffff),
           maximumAnisotropy,
-          WORKSTATION_OUTLINE_THICKNESS,
-          WORKSTATION_OUTLINE_ALPHA,
         );
         visual.scale.setScalar(placement.height);
         workstation.add(
