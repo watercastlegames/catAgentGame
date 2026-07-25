@@ -107,6 +107,14 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /desk-keycap-3-top-v1\.png/);
   assert.match(world3d, /desk-keycap-4-top-v1\.png/);
   assert.match(world3d, /LOW_MONITOR_STATION_ROTATION_Y = -0\.06/);
+  assert.match(
+    world3d,
+    /LOW_MONITOR_SCREEN_LOCAL_POSITION = new THREE\.Vector3\(\s*0\.05,\s*0\.846,\s*-0\.481/,
+  );
+  assert.match(world3d, /LOW_MONITOR_KEYCAP_START_X = -0\.23/);
+  assert.match(world3d, /LOW_MONITOR_KEYCAP_SPACING = 0\.2/);
+  assert.match(world3d, /LOW_MONITOR_KEYCAP_Y = 0\.579/);
+  assert.match(world3d, /LOW_MONITOR_KEYCAP_Z = -0\.17/);
   assert.match(world3d, /low-monitor-workstation-interaction-overlay/);
   assert.match(world3d, /createMonitorScreenTexture/);
   assert.match(world3d, /drawMonitorScreen/);
@@ -142,6 +150,8 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /DESK_KEYCAP_PRESS_DEPTH = 0\.052/);
   assert.match(world3d, /ambientPhase === "kneading"/);
   assert.match(world3d, /animatedDeskKeycaps/);
+  assert.match(world3d, /workstation\.add\(interactionGroup\)/);
+  assert.match(world3d, /monitorScreen\.visible = showDeskInteraction/);
   assert.match(world3d, /책상 안쪽에 앉아 키캡 꾹꾹이 중/);
   assert.match(world3d, /\|Sitting_Idle/);
   assert.match(world3d, /\|Sitting_idle_2/);

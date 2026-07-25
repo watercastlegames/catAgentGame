@@ -30,6 +30,21 @@ const ROUND_LAPTOP_STATION_POSITION = new THREE.Vector3(-2.2, 0, -0.42);
 const FOLDING_LAPTOP_STATION_POSITION = new THREE.Vector3(2.18, 0, -0.18);
 const LOW_MONITOR_STATION_POSITION = new THREE.Vector3(2.12, 0, 3.42);
 const LOW_MONITOR_STATION_ROTATION_Y = -0.06;
+const LOW_MONITOR_SCREEN_LOCAL_POSITION = new THREE.Vector3(
+  0.05,
+  0.846,
+  -0.481,
+);
+const LOW_MONITOR_SCREEN_SIZE = new THREE.Vector2(0.62, 0.36);
+const LOW_MONITOR_KEYCAP_START_X = -0.23;
+const LOW_MONITOR_KEYCAP_SPACING = 0.2;
+const LOW_MONITOR_KEYCAP_Y = 0.579;
+const LOW_MONITOR_KEYCAP_Z = -0.17;
+const LOW_MONITOR_KNEADING_LOCAL_TARGET = new THREE.Vector3(
+  0.08,
+  LOW_MONITOR_KEYCAP_Y,
+  LOW_MONITOR_KEYCAP_Z,
+);
 const CAMPING_SUPPLY_CLUSTER_POSITION = new THREE.Vector3(-2.72, 0, 3.42);
 const CAMPING_LANTERN_POSITION = new THREE.Vector3(-3.42, 0, -1.82);
 const CODING_DESK_TARGET = new THREE.Vector3(2.12, 0, 4.12);
@@ -916,8 +931,6 @@ function createCodingStationInteractionOverlay(
 ) {
   const interactionGroup = new THREE.Group();
   interactionGroup.name = "low-monitor-workstation-interaction-overlay";
-  interactionGroup.position.copy(LOW_MONITOR_STATION_POSITION);
-  interactionGroup.rotation.y = LOW_MONITOR_STATION_ROTATION_Y;
 
   const monitorScreenTexture = createMonitorScreenTexture();
   drawMonitorScreen(monitorScreenTexture, false, 0);
@@ -927,27 +940,44 @@ function createCodingStationInteractionOverlay(
     polygonOffset: true,
     polygonOffsetFactor: -4,
     polygonOffsetUnits: -4,
+    depthTest: false,
+    depthWrite: false,
+    side: THREE.DoubleSide,
   });
   disableOutline(monitorScreenMaterial);
   const monitorScreen = new THREE.Mesh(
-    new THREE.PlaneGeometry(0.61, 0.34),
+    new THREE.PlaneGeometry(
+      LOW_MONITOR_SCREEN_SIZE.x,
+      LOW_MONITOR_SCREEN_SIZE.y,
+    ),
     monitorScreenMaterial,
   );
   monitorScreen.name = "low-monitor-workstation-live-code-screen";
-  monitorScreen.position.set(0.17, 0.84, 0.195);
-  monitorScreen.renderOrder = 5;
+  monitorScreen.position.copy(LOW_MONITOR_SCREEN_LOCAL_POSITION);
+  monitorScreen.renderOrder = 20;
+  monitorScreen.visible = false;
   interactionGroup.add(monitorScreen);
 
   const keyColors = [0xf2a160, 0x9d8c9f, 0xef858a, 0xf0c175];
   const animatedDeskKeycaps = keyColors.map((color, index) => {
     const keycapName = `coding-desk-keycap-${index + 1}`;
-    const keycapMaterial = new THREE.MeshToonMaterial({ color });
+    const keycapMaterial = new THREE.MeshToonMaterial({
+      color,
+      depthTest: false,
+      depthWrite: false,
+    });
     const keycap = new THREE.Mesh(
-      new RoundedBoxGeometry(0.14, 0.065, 0.15, 3, 0.025),
+      new RoundedBoxGeometry(0.15, 0.065, 0.16, 3, 0.025),
       keycapMaterial,
     );
     keycap.name = keycapName;
-    keycap.position.set(-0.28 + index * 0.17, 0.49, 0.39);
+    keycap.position.set(
+      LOW_MONITOR_KEYCAP_START_X + index * LOW_MONITOR_KEYCAP_SPACING,
+      LOW_MONITOR_KEYCAP_Y,
+      LOW_MONITOR_KEYCAP_Z,
+    );
+    keycap.renderOrder = 21;
+    keycap.visible = false;
     interactionGroup.add(keycap);
 
     const keycapTopMaterial = new THREE.MeshBasicMaterial({
@@ -958,6 +988,8 @@ function createCodingStationInteractionOverlay(
       polygonOffset: true,
       polygonOffsetFactor: -3,
       polygonOffsetUnits: -3,
+      depthTest: false,
+      depthWrite: false,
     });
     disableOutline(keycapTopMaterial);
     const keycapTop = new THREE.Mesh(
@@ -966,8 +998,13 @@ function createCodingStationInteractionOverlay(
     );
     keycapTop.name = `${keycapName}-top-texture`;
     keycapTop.rotation.x = -Math.PI / 2;
-    keycapTop.position.set(keycap.position.x, 0.524, keycap.position.z);
-    keycapTop.renderOrder = 6;
+    keycapTop.position.set(
+      keycap.position.x,
+      LOW_MONITOR_KEYCAP_Y + 0.035,
+      keycap.position.z,
+    );
+    keycapTop.renderOrder = 22;
+    keycapTop.visible = false;
     interactionGroup.add(keycapTop);
 
     return [
@@ -981,6 +1018,7 @@ function createCodingStationInteractionOverlay(
 
   return {
     interactionGroup,
+    monitorScreen,
     monitorScreenTexture,
     animatedDeskKeycaps,
   };
@@ -2251,16 +2289,18 @@ float shoreOverlayWaterSignal( vec3 color ) {
 
     const {
       interactionGroup,
+      monitorScreen,
       monitorScreenTexture,
       animatedDeskKeycaps,
     } = createCodingStationInteractionOverlay(
       deskKeycapTopTextures,
     );
-    scene.add(interactionGroup);
-    interactionGroup.updateMatrixWorld(true);
-    const deskKneadingLookTarget = interactionGroup.localToWorld(
-      new THREE.Vector3(-0.02, 0.49, 0.39),
-    );
+    const deskKneadingLookTarget = LOW_MONITOR_KNEADING_LOCAL_TARGET.clone()
+      .applyAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        LOW_MONITOR_STATION_ROTATION_Y,
+      )
+      .add(LOW_MONITOR_STATION_POSITION);
 
     const islandPropsWatercolorTexture = textureLoader.load(
       "/art/island-props-watercolor-grain-v1.png",
@@ -2367,6 +2407,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
             0.1,
           ),
         );
+        if (placement.id === DESK_OBSTACLE.id) {
+          workstation.add(interactionGroup);
+        }
         scene.add(workstation);
       });
 
@@ -3085,7 +3128,12 @@ float shoreOverlayWaterSignal( vec3 color ) {
       } else if (kneadingBlend < 0.001) {
         kneadingElapsed = 0;
       }
+      const showDeskInteraction = kneadingBlend > 0.01;
+      monitorScreen.visible = showDeskInteraction;
       animatedDeskKeycaps.forEach((parts, index) => {
+        parts.forEach(({ object }) => {
+          object.visible = showDeskInteraction;
+        });
         const phaseOffset =
           index < 2 ? index * 0.16 : Math.PI + (index - 2) * 0.16;
         const pressWave = Math.max(
