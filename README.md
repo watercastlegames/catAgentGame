@@ -1,22 +1,22 @@
 # Agent Forest
 
-현재 PC에 로그인된 Codex 작업을 숲속 고양이 캐릭터의 이동, 작업, 보고,
-승인 상태로 보여주는 로컬 연동 프로토타입입니다.
+내 PC에서 사용하는 Codex 세션을 해변의 고양이 에이전트 이동, 작업, 승인,
+완료 상태로 보여주는 웹 인터페이스입니다.
 
-## 현재 확인된 기능
+## 현재 구현된 연결 기능
 
-- Codex CLI 자동 탐지 및 버전 표시
-- `codex exec --json` JSONL 이벤트 수신
-- Codex 이벤트를 `General → 담당 부서 → 보고 대기열 → 개인 사무실` 흐름으로 변환
-- 브라우저에 실시간 SSE 이벤트 전송
-- General, Coding, Design, Music 부서 선택
+- Codex CLI와 App Server 자동 감지
+- 내 PC의 최근 저장 세션 목록 불러오기
+- 선택한 세션 읽기·재개
+- 선택 세션에서 새 작업 시작
+- 진행 중인 작업에 추가 지시 보내기
+- 현재 작업 중단
+- 명령 실행·파일 변경·추가 권한 승인 요청 처리
+- Codex 이벤트를 고양이 이동·작업·보고 상태로 변환
+- 브라우저와 PC Companion의 6자리 보안 페어링
 - 비용 없는 화면 시연
-- 실제 Codex 작업 실행
-- 결과 보고와 확인·재검토·반려 UI
-- 모바일 반응형 화면
-- 모델의 비공개 추론을 화면에 노출하지 않는 이벤트 필터
 
-## 로컬 실행
+## 사용 방법
 
 Node.js 22 이상과 로그인된 Codex CLI가 필요합니다.
 
@@ -25,61 +25,68 @@ npm install
 npm run dev:local
 ```
 
-기본 주소:
+터미널에 다음과 같이 6자리 연결 코드가 표시됩니다.
 
-- 웹 화면: `http://localhost:3000`
-- Codex 브리지: `http://127.0.0.1:4317`
+```text
+[agent-companion] 연결 코드: 123456
+```
 
-3000번 포트가 사용 중이면 화면 서버가 3001번 등 다음 빈 포트를 사용합니다.
+Agent Forest의 `내 PC 세션 연결` 영역에 코드를 입력하면 최근 Codex 세션이
+표시됩니다. 로컬 개발 주소는 기본적으로 `http://localhost:3000`, PC
+Companion 주소는 `http://127.0.0.1:4317`입니다.
 
-웹 화면과 브리지를 따로 실행할 수도 있습니다.
+웹 화면과 Companion을 따로 실행할 수도 있습니다.
 
 ```powershell
 npm run dev
 npm run bridge
 ```
 
-## 안전 설정
+## 연결 설정
 
-실제 Codex 실행은 기본적으로 `read-only` 샌드박스를 사용합니다. 이 단계에서는
-연동 검증이 목적이므로 브라우저에서 파일 수정 권한을 주지 않습니다.
-
-다른 작업 폴더를 읽기 전용으로 연결하려면 브리지를 시작하기 전에 다음 값을
-지정할 수 있습니다.
+다른 프로젝트를 새 세션의 기본 작업 폴더로 사용하려면 Companion 실행 전에
+다음을 지정합니다.
 
 ```powershell
 $env:CODEX_BRIDGE_WORKSPACE = "D:\원하는\프로젝트"
 npm run bridge
 ```
 
-`CODEX_BRIDGE_SANDBOX`를 변경하면 권한 범위가 달라지므로 제품화 전 별도 승인
-정책을 구현해야 합니다.
+추가 웹 Origin을 허용해야 한다면 쉼표로 구분해 지정합니다.
+
+```powershell
+$env:AGENT_BRIDGE_ALLOWED_ORIGINS = "https://example.com,https://another.example.com"
+npm run bridge
+```
+
+연결 코드를 고정해야 하는 테스트 환경에서는 다음 값을 사용할 수 있습니다.
+
+```powershell
+$env:AGENT_BRIDGE_PAIRING_CODE = "123456"
+npm run bridge
+```
 
 ## 구조
 
 ```text
-현재 로그인된 Codex
-        ↓ JSONL
-bridge/server.mjs
-        ↓ 정규화된 SSE 이벤트
-React Agent Forest 화면
-        ↓
-캐릭터 이동 · 작업 · 보고 · 승인
+Agent Forest Web
+        ↕ HTTP + SSE / pairing token
+bridge/server.mjs (PC Companion)
+        ↕ newline JSON-RPC over stdio
+Codex App Server
+        ↕
+내 PC의 저장 세션과 실행 중인 작업
 ```
 
-- `app/page.tsx`: Agent Forest 화면과 상호작용
-- `app/globals.css`: 원화 기반 반응형 시각 디자인
-- `bridge/server.mjs`: 로컬 HTTP/SSE 서버와 Codex 실행기
+- `bridge/codex-app-server-client.mjs`: App Server 프로세스와 JSON-RPC 연결
+- `bridge/session-view.mjs`: 민감 경로를 제외한 세션 표시 데이터 생성
+- `bridge/server.mjs`: 페어링, 세션 API, SSE, 승인 라우팅
 - `bridge/event-mapper.mjs`: Codex 이벤트를 캐릭터 행동으로 변환
-- `tests/`: 렌더링과 이벤트 변환 테스트
+- `app/page.tsx`: 세션 선택, 작업 전송, 승인 UI
+- `tests/`: 프로토콜, 세션 정보, 이벤트, 렌더링 회귀 테스트
 
-## 테스트
+## 검증
 
 ```powershell
 npm test
 ```
-
-현재 원화는 캐릭터와 배경이 합쳐진 이미지이므로 이 프로토타입에서는 원화를
-배경으로 사용하고 활성 에이전트 마커를 위에 움직입니다. 다음 제작 단계에서 빈
-배경, 부서 가구, 개별 고양이 스프라이트를 분리하면 원화 스타일 그대로 걷기와
-작업 애니메이션을 구현할 수 있습니다.

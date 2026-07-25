@@ -2,6 +2,7 @@
 
 import {
   type FormEvent,
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -25,6 +26,9 @@ type BridgeEvent = {
   type: string;
   occurredAt: string;
   taskId?: string | null;
+  threadId?: string | null;
+  turnId?: string | null;
+  requestId?: string;
   agentId?: string;
   department?: Department;
   status?: AgentStatus;
@@ -37,7 +41,10 @@ type BridgeEvent = {
   version?: string | null;
   available?: boolean;
   running?: boolean;
-  decision?: "approve" | "review" | "reject";
+  decision?: "approve" | "reject" | "cancel";
+  approvalKind?: "command" | "fileChange" | "permissions";
+  command?: string;
+  session?: CodexSession;
   usage?: {
     input_tokens?: number;
     cached_input_tokens?: number;
@@ -47,6 +54,7 @@ type BridgeEvent = {
 
 type ActiveTask = {
   taskId: string;
+  threadId?: string | null;
   prompt: string;
   department: Department;
   mode: "codex" | "simulation";
@@ -55,8 +63,34 @@ type ActiveTask = {
   result: string;
 };
 
+type CodexSession = {
+  id: string;
+  sessionId: string;
+  title: string;
+  preview: string;
+  projectName: string;
+  status: "notLoaded" | "idle" | "active" | "systemError" | string;
+  activeFlags: string[];
+  source: string;
+  modelProvider: string;
+  updatedAt: string;
+  createdAt: string;
+  ephemeral: boolean;
+  canAcceptDirectInput: boolean;
+};
+
+type BridgeHealth = {
+  available?: boolean;
+  version?: string | null;
+  appServerConnected?: boolean;
+  paired?: boolean;
+  requiresPairing?: boolean;
+};
+
 const BRIDGE_URL =
   process.env.NEXT_PUBLIC_AGENT_BRIDGE_URL ?? "http://127.0.0.1:4317";
+const COMPANION_TOKEN_KEY = "agent-forest-companion-token";
+const SELECTED_SESSION_KEY = "agent-forest-selected-session";
 
 const DEPARTMENTS: Record<
   Department,
@@ -113,6 +147,26 @@ function compactNumber(value?: number) {
   return new Intl.NumberFormat("ko-KR", { notation: "compact" }).format(value);
 }
 
+function sessionStatusLabel(status: string) {
+  if (status === "active") return "실행 중";
+  if (status === "idle") return "대기";
+  if (status === "systemError") return "오류";
+  return "저장됨";
+}
+
+function relativeTime(value: string) {
+  const time = new Date(value).getTime();
+  if (!Number.isFinite(time)) return "";
+  const difference = Math.max(0, Date.now() - time);
+  const minutes = Math.floor(difference / 60_000);
+  if (minutes < 1) return "방금";
+  if (minutes < 60) return `${minutes}분 전`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}시간 전`;
+  const days = Math.floor(hours / 24);
+  return `${days}일 전`;
+}
+
 export default function Home() {
   const [bridgeState, setBridgeState] = useState<
     "connecting" | "connected" | "disconnected"
@@ -132,17 +186,74 @@ export default function Home() {
   const [events, setEvents] = useState<BridgeEvent[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [approvalEvent, setApprovalEvent] = useState<BridgeEvent | null>(null);
-  const [reviewMode, setReviewMode] = useState(false);
-  const [feedback, setFeedback] = useState("");
   const [toast, setToast] = useState<string | null>(null);
+  const [companionToken, setCompanionToken] = useState<string | null>(null);
+  const [pairingCode, setPairingCode] = useState("");
+  const [pairingBusy, setPairingBusy] = useState(false);
+  const [sessions, setSessions] = useState<CodexSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
 
   const agent = DEPARTMENTS[activeDepartment];
 
   const latestEvents = useMemo(() => events.slice(0, 8), [events]);
+  const selectedSession = useMemo(
+    () => sessions.find((session) => session.id === selectedThreadId) ?? null,
+    [selectedThreadId, sessions],
+  );
+
+  const apiFetch = useCallback(
+    (pathname: string, init: RequestInit = {}) => {
+      const headers = new Headers(init.headers);
+      if (companionToken) {
+        headers.set("Authorization", `Bearer ${companionToken}`);
+      }
+      return fetch(`${BRIDGE_URL}${pathname}`, { ...init, headers });
+    },
+    [companionToken],
+  );
+
+  useEffect(() => {
+    const savedToken = window.localStorage.getItem(COMPANION_TOKEN_KEY);
+    const savedSession = window.localStorage.getItem(SELECTED_SESSION_KEY);
+    if (savedToken) setCompanionToken(savedToken);
+    if (savedSession) setSelectedThreadId(savedSession);
+  }, []);
 
   useEffect(() => {
     let disposed = false;
-    const source = new EventSource(`${BRIDGE_URL}/events`);
+    const authorization: Record<string, string> = {};
+    if (companionToken) {
+      authorization.Authorization = `Bearer ${companionToken}`;
+    }
+
+    fetch(`${BRIDGE_URL}/health`, { headers: authorization })
+      .then((response) => response.json())
+      .then((health: BridgeHealth) => {
+        if (disposed) return;
+        setCodexAvailable(Boolean(health.available));
+        setCodexVersion(health.version ?? null);
+        setBridgeState(health.paired ? "connected" : "disconnected");
+        if (companionToken && !health.paired) {
+          window.localStorage.removeItem(COMPANION_TOKEN_KEY);
+          setCompanionToken(null);
+        }
+      })
+      .catch(() => {
+        if (!disposed) setBridgeState("disconnected");
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [companionToken]);
+
+  useEffect(() => {
+    if (!companionToken) return;
+    let disposed = false;
+    const source = new EventSource(
+      `${BRIDGE_URL}/events?token=${encodeURIComponent(companionToken)}`,
+    );
 
     source.onopen = () => {
       if (!disposed) setBridgeState("connected");
@@ -162,6 +273,7 @@ export default function Home() {
           setActiveDepartment(taskDepartment);
           setActiveTask({
             taskId: event.taskId ?? "unknown",
+            threadId: event.threadId,
             prompt: event.prompt ?? event.detail ?? "",
             department: taskDepartment,
             mode: event.mode ?? "simulation",
@@ -174,7 +286,9 @@ export default function Home() {
         }
 
         if (
-          ["agent.status", "task.result", "task.failed"].includes(event.type)
+          ["agent.status", "task.result", "task.failed", "task.completed"].includes(
+            event.type,
+          )
         ) {
           if (event.department) setActiveDepartment(event.department);
           if (event.status) setAgentStatus(event.status);
@@ -205,21 +319,29 @@ export default function Home() {
                 }
               : task,
           );
-          setIsSubmitting(false);
         }
 
-        if (event.type === "task.failed") {
+        if (["task.failed", "task.completed"].includes(event.type)) {
           setIsSubmitting(false);
-          setToast(event.detail ?? "작업이 완료되지 않았어요.");
+          if (event.type === "task.failed") {
+            setToast(event.detail ?? "작업이 완료되지 않았어요.");
+          }
         }
 
         if (event.type === "approval.decided") {
           setAgentStatus(event.status ?? "idle");
           setAgentLocation(event.location ?? "general");
           setApprovalEvent(null);
-          setReviewMode(false);
-          setFeedback("");
           setToast(event.title ?? "결정을 저장했어요.");
+        }
+
+        if (event.type === "session.updated" && event.session) {
+          setSessions((current) => {
+            const others = current.filter(
+              (session) => session.id !== event.session?.id,
+            );
+            return [event.session as CodexSession, ...others].slice(0, 30);
+          });
         }
 
         if (!["bridge.snapshot", "bridge.status"].includes(event.type)) {
@@ -230,23 +352,41 @@ export default function Home() {
       }
     };
 
-    fetch(`${BRIDGE_URL}/health`)
-      .then((response) => response.json())
-      .then((health) => {
-        if (disposed) return;
-        setCodexAvailable(Boolean(health.available));
-        setCodexVersion(health.version ?? null);
-        setBridgeState("connected");
-      })
-      .catch(() => {
-        if (!disposed) setBridgeState("disconnected");
-      });
-
     return () => {
       disposed = true;
       source.close();
     };
-  }, []);
+  }, [companionToken]);
+
+  const refreshSessions = useCallback(async () => {
+    if (!companionToken) return;
+    setSessionsLoading(true);
+    try {
+      const response = await apiFetch("/v2/sessions?limit=20");
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "세션을 불러오지 못했어요.");
+      const nextSessions = (body.data ?? []) as CodexSession[];
+      setSessions(nextSessions);
+      setSelectedThreadId((current) => {
+        if (current && nextSessions.some((session) => session.id === current)) {
+          return current;
+        }
+        const next = nextSessions[0]?.id ?? null;
+        if (next) window.localStorage.setItem(SELECTED_SESSION_KEY, next);
+        return next;
+      });
+    } catch (error) {
+      setToast(
+        error instanceof Error ? error.message : "세션을 불러오지 못했어요.",
+      );
+    } finally {
+      setSessionsLoading(false);
+    }
+  }, [apiFetch, companionToken]);
+
+  useEffect(() => {
+    if (companionToken) void refreshSessions();
+  }, [companionToken, refreshSessions]);
 
   useEffect(() => {
     if (!toast) return;
@@ -254,21 +394,117 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  async function startTask(mode: "codex" | "simulation") {
-    if (!prompt.trim() || isSubmitting) return;
-    setIsSubmitting(true);
-    setApprovalEvent(null);
-    setEvents([]);
+  async function pairCompanion(event: FormEvent) {
+    event.preventDefault();
+    if (pairingBusy || pairingCode.trim().length !== 6) return;
+    setPairingBusy(true);
     try {
-      const response = await fetch(`${BRIDGE_URL}/${mode === "codex" ? "run" : "simulate"}`, {
+      const response = await fetch(`${BRIDGE_URL}/v2/pair`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: prompt.trim(), department }),
+        body: JSON.stringify({ code: pairingCode.trim() }),
+      });
+      const body = await response.json();
+      if (!response.ok || !body.token) {
+        throw new Error(body.error ?? "PC Companion에 연결하지 못했어요.");
+      }
+      window.localStorage.setItem(COMPANION_TOKEN_KEY, body.token);
+      setCompanionToken(body.token);
+      setBridgeState("connected");
+      setPairingCode("");
+      setToast("내 PC의 Codex Companion과 연결됐어요.");
+    } catch (error) {
+      setToast(
+        error instanceof Error
+          ? error.message
+          : "PC Companion에 연결하지 못했어요.",
+      );
+    } finally {
+      setPairingBusy(false);
+    }
+  }
+
+  function disconnectCompanion() {
+    window.localStorage.removeItem(COMPANION_TOKEN_KEY);
+    window.localStorage.removeItem(SELECTED_SESSION_KEY);
+    setCompanionToken(null);
+    setSelectedThreadId(null);
+    setSessions([]);
+    setBridgeState("disconnected");
+    setAgentStatus("idle");
+    setAgentLocation("general");
+  }
+
+  async function selectSession(threadId: string) {
+    setSelectedThreadId(threadId);
+    window.localStorage.setItem(SELECTED_SESSION_KEY, threadId);
+    try {
+      const response = await apiFetch(
+        `/v2/sessions/${encodeURIComponent(threadId)}/resume`,
+        { method: "POST" },
+      );
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "세션을 열지 못했어요.");
+      setToast(`“${body.session?.title ?? "Codex 세션"}”을 연결했어요.`);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "세션을 열지 못했어요.");
+    }
+  }
+
+  async function createNewSession() {
+    setSessionsLoading(true);
+    try {
+      const response = await apiFetch("/v2/sessions", { method: "POST" });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "새 세션을 만들지 못했어요.");
+      const session = body.session as CodexSession;
+      setSessions((current) => [session, ...current]);
+      setSelectedThreadId(session.id);
+      window.localStorage.setItem(SELECTED_SESSION_KEY, session.id);
+      setToast("이 프로젝트의 새 Codex 세션을 만들었어요.");
+    } catch (error) {
+      setToast(
+        error instanceof Error ? error.message : "새 세션을 만들지 못했어요.",
+      );
+    } finally {
+      setSessionsLoading(false);
+    }
+  }
+
+  async function startTask(mode: "codex" | "simulation") {
+    if (!prompt.trim()) return;
+    const canSteer =
+      mode === "codex" && isSubmitting && activeTask?.mode === "codex";
+    if (isSubmitting && !canSteer) return;
+    if (mode === "codex" && !selectedThreadId) {
+      setToast("먼저 연결할 Codex 세션을 선택해 주세요.");
+      return;
+    }
+    setIsSubmitting(true);
+    setApprovalEvent(null);
+    if (!canSteer) setEvents([]);
+    try {
+      const endpoint =
+        mode === "simulation"
+          ? "/simulate"
+          : canSteer
+            ? `/v2/sessions/${encodeURIComponent(selectedThreadId as string)}/steer`
+            : `/v2/sessions/${encodeURIComponent(selectedThreadId as string)}/turns`;
+      const response = await apiFetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: prompt.trim(),
+          department,
+          threadId: selectedThreadId,
+        }),
       });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "작업을 시작하지 못했어요.");
       if (mode === "simulation") {
         setTimeout(() => setIsSubmitting(false), 5100);
+      } else if (canSteer) {
+        setToast("진행 중인 Codex 작업에 추가 지시를 보냈어요.");
       }
     } catch (error) {
       setIsSubmitting(false);
@@ -278,26 +514,42 @@ export default function Home() {
     }
   }
 
+  async function interruptTask() {
+    if (!selectedThreadId) return;
+    try {
+      const response = await apiFetch(
+        `/v2/sessions/${encodeURIComponent(selectedThreadId)}/interrupt`,
+        { method: "POST" },
+      );
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "작업을 중단하지 못했어요.");
+      setIsSubmitting(false);
+      setAgentStatus("idle");
+      setAgentLocation("general");
+      setToast("현재 Codex 작업을 중단했어요.");
+    } catch (error) {
+      setToast(
+        error instanceof Error ? error.message : "작업을 중단하지 못했어요.",
+      );
+    }
+  }
+
   function submitTask(event: FormEvent) {
     event.preventDefault();
     void startTask("codex");
   }
 
-  async function decide(decision: "approve" | "review" | "reject") {
-    if (decision === "review" && !reviewMode) {
-      setReviewMode(true);
-      return;
-    }
+  async function decide(decision: "approve" | "reject" | "cancel") {
+    if (!approvalEvent?.requestId) return;
     try {
-      const response = await fetch(`${BRIDGE_URL}/decision`, {
+      const response = await apiFetch(
+        `/v2/approvals/${encodeURIComponent(approvalEvent.requestId)}`,
+        {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          taskId: approvalEvent?.taskId,
-          decision,
-          feedback: decision === "review" ? feedback : "",
-        }),
-      });
+          body: JSON.stringify({ decision }),
+        },
+      );
       if (!response.ok) throw new Error("결정을 저장하지 못했어요.");
     } catch (error) {
       setToast(
@@ -321,15 +573,21 @@ export default function Home() {
           <span className={`connection-dot ${bridgeState}`} />
           <div>
             <strong>
-              {bridgeState === "connected"
+              {bridgeState === "connected" && companionToken
                 ? codexAvailable
-                  ? "Codex 연결됨"
+                  ? "내 PC Codex 연결됨"
                   : "브리지만 연결됨"
                 : bridgeState === "connecting"
                   ? "연결 확인 중"
-                  : "로컬 브리지 꺼짐"}
+                  : companionToken
+                    ? "PC Companion 확인 필요"
+                    : "PC 연결 필요"}
             </strong>
-            <small>{codexVersion ?? "Codex 버전 확인 대기"}</small>
+            <small>
+              {companionToken
+                ? codexVersion ?? "Codex 버전 확인 대기"
+                : "Companion 연결 코드를 입력하세요"}
+            </small>
           </div>
         </div>
       </header>
@@ -368,13 +626,124 @@ export default function Home() {
         </section>
 
         <aside className="control-panel">
+          <section className="panel-section session-browser">
+            <div className="section-heading compact">
+              <div>
+                <span className="section-kicker">CODEX SESSIONS</span>
+                <h2>내 PC 세션 연결</h2>
+              </div>
+              <span className="step-badge">01</span>
+            </div>
+
+            {!companionToken ? (
+              <form className="pairing-form" onSubmit={pairCompanion}>
+                <div className="pairing-copy">
+                  <span aria-hidden="true">🔗</span>
+                  <div>
+                    <strong>PC Companion을 실행해 주세요</strong>
+                    <p>터미널에 표시된 6자리 연결 코드를 입력하면 현재 Codex 세션을 불러옵니다.</p>
+                  </div>
+                </div>
+                <label htmlFor="pairing-code">연결 코드</label>
+                <div className="pairing-controls">
+                  <input
+                    id="pairing-code"
+                    value={pairingCode}
+                    onChange={(event) =>
+                      setPairingCode(
+                        event.target.value.replace(/\D/g, "").slice(0, 6),
+                      )
+                    }
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    placeholder="000000"
+                    autoComplete="one-time-code"
+                  />
+                  <button
+                    type="submit"
+                    disabled={pairingBusy || pairingCode.length !== 6}
+                  >
+                    {pairingBusy ? "연결 중" : "연결"}
+                  </button>
+                </div>
+                <code>npm run bridge</code>
+              </form>
+            ) : (
+              <>
+                <div className="session-actions">
+                  <button
+                    type="button"
+                    onClick={() => void refreshSessions()}
+                    disabled={sessionsLoading}
+                  >
+                    {sessionsLoading ? "불러오는 중…" : "↻ 새로고침"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void createNewSession()}
+                    disabled={sessionsLoading}
+                  >
+                    ＋ 새 세션
+                  </button>
+                  <button
+                    type="button"
+                    className="session-disconnect"
+                    onClick={disconnectCompanion}
+                  >
+                    연결 해제
+                  </button>
+                </div>
+
+                <div className="session-list" role="listbox" aria-label="Codex 세션">
+                  {sessions.length ? (
+                    sessions.map((session) => (
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={selectedThreadId === session.id}
+                        className={
+                          selectedThreadId === session.id ? "selected" : ""
+                        }
+                        key={session.id}
+                        onClick={() => void selectSession(session.id)}
+                      >
+                        <span className={`session-state state-${session.status}`} />
+                        <span className="session-copy">
+                          <strong>{session.title}</strong>
+                          <small>
+                            {session.projectName} · {relativeTime(session.updatedAt)}
+                          </small>
+                        </span>
+                        <em>{sessionStatusLabel(session.status)}</em>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="session-empty">
+                      {sessionsLoading
+                        ? "PC의 Codex 세션을 확인하고 있어요…"
+                        : "표시할 Codex 세션이 없습니다."}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </section>
+
           <section className="panel-section task-composer">
             <div className="section-heading">
               <div>
                 <span className="section-kicker">NEW MISSION</span>
                 <h2>고양이 에이전트에게 업무 맡기기</h2>
               </div>
-              <span className="step-badge">01</span>
+              <span className="step-badge">02</span>
+            </div>
+
+            <div className="selected-session-line">
+              <span className={selectedSession ? "ready" : ""} />
+              {selectedSession
+                ? `${selectedSession.title} · ${selectedSession.projectName}`
+                : "연결할 Codex 세션을 선택해 주세요"}
             </div>
 
             <div className="department-tabs" role="radiogroup" aria-label="담당 부서">
@@ -417,24 +786,32 @@ export default function Home() {
                 disabled={
                   bridgeState !== "connected" ||
                   !codexAvailable ||
-                  isSubmitting ||
+                  !companionToken ||
+                  !selectedThreadId ||
+                  (isSubmitting && activeTask?.mode !== "codex") ||
                   !prompt.trim()
                 }
               >
                 <span aria-hidden="true">{isSubmitting ? "🐾" : "✦"}</span>
-                {isSubmitting ? "고양이가 일하는 중…" : "Codex로 실제 실행"}
+                {isSubmitting
+                  ? "진행 중인 작업에 추가 지시"
+                  : "선택한 Codex 세션에서 실행"}
               </button>
               <button
                 className="simulate-button"
                 type="button"
-                disabled={isSubmitting || bridgeState !== "connected"}
+                disabled={
+                  isSubmitting ||
+                  bridgeState !== "connected" ||
+                  !companionToken
+                }
                 onClick={() => void startTask("simulation")}
               >
                 비용 없는 화면 시연
               </button>
             </form>
             <p className="usage-note">
-              실제 실행은 현재 로그인된 Codex 계정과 설정을 사용하며 사용량이 발생할 수 있습니다.
+              실제 실행은 선택한 PC 세션의 로그인·권한·샌드박스 설정을 그대로 사용합니다.
             </p>
           </section>
 
@@ -465,6 +842,15 @@ export default function Home() {
                 <p>{activeTask.detail}</p>
                 {activeTask.result && (
                   <div className="result-preview">{activeTask.result}</div>
+                )}
+                {isSubmitting && activeTask.mode === "codex" && (
+                  <button
+                    type="button"
+                    className="interrupt-button"
+                    onClick={() => void interruptTask()}
+                  >
+                    현재 Codex 작업 중단
+                  </button>
                 )}
               </>
             ) : (
@@ -505,8 +891,8 @@ export default function Home() {
       </div>
 
       <footer className="app-footer">
-        <span>Local integration prototype</span>
-        <strong>Codex JSONL → Agent Bridge → Forest UI</strong>
+        <span>PC Companion integration</span>
+        <strong>Codex App Server → Secure Companion → Agent Forest</strong>
         <span>Bridge {BRIDGE_URL.replace("http://", "")}</span>
       </footer>
 
@@ -526,6 +912,11 @@ export default function Home() {
               <span className="section-kicker">MANAGER REPORT</span>
               <h2 id="approval-title">{approvalEvent.title}</h2>
               <p>{approvalEvent.detail}</p>
+              {approvalEvent.command && (
+                <pre className="approval-command">
+                  <code>{approvalEvent.command}</code>
+                </pre>
+              )}
               {approvalEvent.result && (
                 <div className="report-result">{approvalEvent.result}</div>
               )}
@@ -543,40 +934,27 @@ export default function Home() {
                 </div>
               )}
 
-              {reviewMode && (
-                <label className="feedback-field">
-                  재검토 의견
-                  <textarea
-                    value={feedback}
-                    onChange={(event) => setFeedback(event.target.value)}
-                    placeholder="어떤 부분을 다시 확인할까요?"
-                    rows={3}
-                    autoFocus
-                  />
-                </label>
-              )}
-
               <div className="approval-actions">
                 <button
                   type="button"
                   className="approve"
                   onClick={() => void decide("approve")}
                 >
-                  확인
+                  이번 요청 승인
                 </button>
                 <button
                   type="button"
                   className="review"
-                  onClick={() => void decide("review")}
+                  onClick={() => void decide("reject")}
                 >
-                  {reviewMode ? "의견 보내기" : "재검토"}
+                  거절하고 계속
                 </button>
                 <button
                   type="button"
                   className="reject"
-                  onClick={() => void decide("reject")}
+                  onClick={() => void decide("cancel")}
                 >
-                  반려
+                  작업 취소
                 </button>
               </div>
             </div>

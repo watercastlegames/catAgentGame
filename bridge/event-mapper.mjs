@@ -127,10 +127,10 @@ export function mapCodexEvent(raw, context) {
     case "turn.completed":
       return [
         baseEvent(context, {
-          type: "approval.required",
-          status: "waiting_approval",
-          location: "office",
-          title: "보고합니다! 작업을 완료했어요.",
+          type: "task.completed",
+          status: "completed",
+          location: "queue",
+          title: "Codex 작업이 완료됐어요.",
           detail: context.lastMessage || "Codex 작업이 정상적으로 완료됐어요.",
           result: context.lastMessage || "",
           usage: raw.usage ?? null,
@@ -191,11 +191,11 @@ export function createSimulationEvents(context) {
       result: "화면 시연을 완료했습니다. 실제 실행 버튼을 누르면 현재 로그인된 Codex 결과가 여기에 표시됩니다.",
     }),
     at(4700, {
-      type: "approval.required",
-      status: "waiting_approval",
-      location: "office",
-      title: "보고합니다! 시연을 완료했어요.",
-      detail: "확인·재검토·반려 버튼까지 정상적으로 연결됐어요.",
+      type: "task.completed",
+      status: "completed",
+      location: "queue",
+      title: "화면 시연이 완료됐어요.",
+      detail: "Codex 세션 상태가 고양이 행동으로 연결되는 흐름을 확인했어요.",
       result: "비용 없는 화면 시연이 완료됐습니다.",
       usage: null,
     }),

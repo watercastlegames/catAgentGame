@@ -45,8 +45,8 @@ test("maps the Codex JSONL lifecycle into visible office states", () => {
   assert.equal(turn.status, "moving");
   assert.equal(result.type, "task.result");
   assert.equal(result.location, "queue");
-  assert.equal(completed.type, "approval.required");
-  assert.equal(completed.location, "office");
+  assert.equal(completed.type, "task.completed");
+  assert.equal(completed.location, "queue");
   assert.equal(completed.result, "연동 확인 완료");
 });
 
@@ -71,7 +71,7 @@ test("creates a complete no-cost simulation path", () => {
   const events = createSimulationEvents(context());
   assert.deepEqual(
     events.map(({ event }) => event.location),
-    ["general", "coding", "coding", "queue", "office"],
+    ["general", "coding", "coding", "queue", "queue"],
   );
-  assert.equal(events.at(-1).event.type, "approval.required");
+  assert.equal(events.at(-1).event.type, "task.completed");
 });

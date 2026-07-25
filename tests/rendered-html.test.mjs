@@ -32,7 +32,8 @@ test("server-renders the Agent Forest integration UI", async () => {
   assert.match(html, /<html[^>]+lang="ko"/i);
   assert.match(html, /<title>Agent Forest/);
   assert.match(html, /고양이 에이전트에게 업무 맡기기/);
-  assert.match(html, /Codex로 실제 실행/);
+  assert.match(html, /내 PC 세션 연결/);
+  assert.match(html, /선택한 Codex 세션에서 실행/);
   assert.match(html, /비용 없는 화면 시연/);
   assert.match(html, /class="world-stage world-stage-3d"/);
   assert.match(html, /2\.5D 해변 사무실 준비 중/);
@@ -54,6 +55,9 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
 
   assert.match(page, /new EventSource/);
   assert.match(page, /127\.0\.0\.1:4317/);
+  assert.match(page, /COMPANION_TOKEN_KEY/);
+  assert.match(page, /\/v2\/sessions/);
+  assert.match(page, /\/v2\/approvals/);
   assert.match(page, /approval\.required/);
   assert.match(page, /AUTONOMOUS CAT MOTION ACTIVE/);
   assert.match(page, /고양이 자율 행동 · 책상 객체 충돌 회피/);

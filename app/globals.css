@@ -469,6 +469,259 @@ button {
   font-weight: 800;
 }
 
+.pairing-form {
+  display: grid;
+  gap: 10px;
+}
+
+.pairing-copy {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(111, 139, 98, 0.18);
+  border-radius: 14px;
+  color: var(--forest-800);
+  background: rgba(220, 231, 168, 0.24);
+  gap: 10px;
+}
+
+.pairing-copy > span {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.58);
+  font-size: 18px;
+}
+
+.pairing-copy strong,
+.pairing-copy p {
+  display: block;
+  margin: 0;
+}
+
+.pairing-copy strong {
+  font-size: 10px;
+}
+
+.pairing-copy p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.pairing-form > label {
+  color: var(--forest-800);
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.pairing-controls {
+  display: grid;
+  grid-template-columns: 1fr 82px;
+  gap: 7px;
+}
+
+.pairing-controls input {
+  min-width: 0;
+  height: 43px;
+  padding: 0 13px;
+  border: 1px solid rgba(99, 92, 79, 0.2);
+  border-radius: 12px;
+  outline: none;
+  color: var(--forest-900);
+  background: rgba(255, 255, 255, 0.72);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 17px;
+  font-weight: 850;
+  letter-spacing: 0.24em;
+}
+
+.pairing-controls input:focus {
+  border-color: var(--forest-600);
+  box-shadow: 0 0 0 4px rgba(111, 139, 98, 0.12);
+}
+
+.pairing-controls button,
+.session-actions button {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: var(--forest-800);
+  background: rgba(255, 255, 255, 0.62);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 900;
+}
+
+.pairing-controls button {
+  color: var(--cream);
+  background: var(--forest-800);
+}
+
+.pairing-controls button:disabled,
+.session-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.pairing-form > code {
+  justify-self: start;
+  padding: 4px 7px;
+  border-radius: 7px;
+  color: var(--brown);
+  background: rgba(234, 216, 185, 0.38);
+  font-size: 8px;
+}
+
+.session-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  margin-bottom: 9px;
+  gap: 5px;
+}
+
+.session-actions button {
+  min-height: 30px;
+  padding: 5px 8px;
+}
+
+.session-actions .session-disconnect {
+  color: #8a514b;
+  background: rgba(233, 160, 151, 0.16);
+}
+
+.session-list {
+  display: grid;
+  max-height: 186px;
+  padding-right: 2px;
+  gap: 5px;
+  overflow-y: auto;
+  scrollbar-color: rgba(80, 105, 76, 0.32) transparent;
+  scrollbar-width: thin;
+}
+
+.session-list > button {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 49px;
+  padding: 8px 9px;
+  border: 1px solid rgba(77, 83, 66, 0.12);
+  border-radius: 12px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.42);
+  cursor: pointer;
+  text-align: left;
+  gap: 8px;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    transform 0.16s ease;
+}
+
+.session-list > button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(54, 83, 60, 0.32);
+}
+
+.session-list > button.selected {
+  border-color: rgba(54, 83, 60, 0.5);
+  background: rgba(220, 231, 168, 0.38);
+  box-shadow: inset 3px 0 0 var(--forest-700);
+}
+
+.session-state {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a7aea8;
+}
+
+.session-state.state-active {
+  background: #6fa6b8;
+  box-shadow: 0 0 0 4px rgba(111, 166, 184, 0.14);
+  animation: pulse 1.8s ease-in-out infinite;
+}
+
+.session-state.state-idle {
+  background: #88a163;
+}
+
+.session-state.state-systemError {
+  background: #ca7068;
+}
+
+.session-copy {
+  min-width: 0;
+}
+
+.session-copy strong,
+.session-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-copy strong {
+  color: var(--brown);
+  font-size: 9px;
+}
+
+.session-copy small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 7px;
+}
+
+.session-list em {
+  padding: 3px 5px;
+  border-radius: 999px;
+  color: var(--forest-700);
+  background: rgba(169, 189, 114, 0.2);
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.session-empty {
+  display: grid;
+  min-height: 72px;
+  place-items: center;
+  color: var(--muted);
+  font-size: 8px;
+  text-align: center;
+}
+
+.selected-session-line {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  margin: -4px 0 13px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  color: var(--muted);
+  background: rgba(234, 216, 185, 0.28);
+  font-size: 8px;
+  gap: 7px;
+}
+
+.selected-session-line > span {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #b0a99d;
+}
+
+.selected-session-line > span.ready {
+  background: #7c9c63;
+}
+
 .department-tabs {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -690,6 +943,19 @@ button {
   white-space: pre-wrap;
 }
 
+.interrupt-button {
+  width: 100%;
+  min-height: 34px;
+  margin-top: 10px;
+  border: 1px solid rgba(202, 112, 104, 0.3);
+  border-radius: 11px;
+  color: #8a514b;
+  background: rgba(233, 160, 151, 0.16);
+  cursor: pointer;
+  font-size: 8px;
+  font-weight: 900;
+}
+
 .empty-task {
   display: grid;
   min-height: 110px;
@@ -905,6 +1171,25 @@ button {
   font-size: 10px;
   line-height: 1.65;
   white-space: pre-wrap;
+}
+
+.approval-command {
+  overflow: auto;
+  max-height: 150px;
+  margin: 14px 0 0;
+  padding: 13px;
+  border: 1px solid rgba(105, 79, 68, 0.18);
+  border-radius: 13px;
+  color: #f3f0e7;
+  background: #26352b;
+  font-size: 9px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.approval-command code {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
 }
 
 .token-row {
