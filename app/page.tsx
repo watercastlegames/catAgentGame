@@ -5,6 +5,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import AgentWorld3D, { type AgentWorldLocation } from "./agent-world-3d";
@@ -87,9 +88,12 @@ type BridgeHealth = {
   requiresPairing?: boolean;
 };
 
+type CompanionTransport = "local" | "cloud";
+
 const BRIDGE_URL =
   process.env.NEXT_PUBLIC_AGENT_BRIDGE_URL ?? "http://127.0.0.1:4317";
 const COMPANION_TOKEN_KEY = "agent-forest-companion-token";
+const COMPANION_TRANSPORT_KEY = "agent-forest-companion-transport";
 const SELECTED_SESSION_KEY = "agent-forest-selected-session";
 
 const DEPARTMENTS: Record<
@@ -188,11 +192,14 @@ export default function Home() {
   const [approvalEvent, setApprovalEvent] = useState<BridgeEvent | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [companionToken, setCompanionToken] = useState<string | null>(null);
+  const [companionTransport, setCompanionTransport] =
+    useState<CompanionTransport>("local");
   const [pairingCode, setPairingCode] = useState("");
   const [pairingBusy, setPairingBusy] = useState(false);
   const [sessions, setSessions] = useState<CodexSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const relayEventCursor = useRef(0);
 
   const agent = DEPARTMENTS[activeDepartment];
 
@@ -208,16 +215,24 @@ export default function Home() {
       if (companionToken) {
         headers.set("Authorization", `Bearer ${companionToken}`);
       }
-      return fetch(`${BRIDGE_URL}${pathname}`, { ...init, headers });
+      const base =
+        companionTransport === "cloud" ? "/api/relay" : BRIDGE_URL;
+      return fetch(`${base}${pathname}`, { ...init, headers });
     },
-    [companionToken],
+    [companionToken, companionTransport],
   );
 
   useEffect(() => {
     const savedToken = window.localStorage.getItem(COMPANION_TOKEN_KEY);
+    const savedTransport = window.localStorage.getItem(
+      COMPANION_TRANSPORT_KEY,
+    );
     const savedSession = window.localStorage.getItem(SELECTED_SESSION_KEY);
-    if (savedToken) setCompanionToken(savedToken);
-    if (savedSession) setSelectedThreadId(savedSession);
+    queueMicrotask(() => {
+      if (savedToken) setCompanionToken(savedToken);
+      if (savedTransport === "cloud") setCompanionTransport("cloud");
+      if (savedSession) setSelectedThreadId(savedSession);
+    });
   }, []);
 
   useEffect(() => {
@@ -227,7 +242,9 @@ export default function Home() {
       authorization.Authorization = `Bearer ${companionToken}`;
     }
 
-    fetch(`${BRIDGE_URL}/health`, { headers: authorization })
+    const base =
+      companionTransport === "cloud" ? "/api/relay" : BRIDGE_URL;
+    fetch(`${base}/health`, { headers: authorization })
       .then((response) => response.json())
       .then((health: BridgeHealth) => {
         if (disposed) return;
@@ -236,6 +253,7 @@ export default function Home() {
         setBridgeState(health.paired ? "connected" : "disconnected");
         if (companionToken && !health.paired) {
           window.localStorage.removeItem(COMPANION_TOKEN_KEY);
+          window.localStorage.removeItem(COMPANION_TRANSPORT_KEY);
           setCompanionToken(null);
         }
       })
@@ -246,117 +264,157 @@ export default function Home() {
     return () => {
       disposed = true;
     };
-  }, [companionToken]);
+  }, [companionToken, companionTransport]);
+
+  const consumeBridgeEvent = useCallback((event: BridgeEvent) => {
+    if (event.version !== undefined) setCodexVersion(event.version ?? null);
+    if (event.available !== undefined) setCodexAvailable(event.available);
+
+    if (event.type === "task.queued") {
+      const taskDepartment = event.department ?? "general";
+      setActiveDepartment(taskDepartment);
+      setActiveTask({
+        taskId: event.taskId ?? "unknown",
+        threadId: event.threadId,
+        prompt: event.prompt ?? event.detail ?? "",
+        department: taskDepartment,
+        mode: event.mode ?? "simulation",
+        title: event.title ?? "새 업무를 접수했어요",
+        detail: event.detail ?? "",
+        result: "",
+      });
+      setAgentStatus("queued");
+      setAgentLocation("general");
+    }
+
+    if (
+      ["agent.status", "task.result", "task.failed", "task.completed"].includes(
+        event.type,
+      )
+    ) {
+      if (event.department) setActiveDepartment(event.department);
+      if (event.status) setAgentStatus(event.status);
+      if (event.location) setAgentLocation(event.location);
+      setActiveTask((task) =>
+        task
+          ? {
+              ...task,
+              title: event.title ?? task.title,
+              detail: event.detail ?? task.detail,
+              result: event.result ?? task.result,
+            }
+          : task,
+      );
+    }
+
+    if (event.type === "approval.required") {
+      setAgentStatus("waiting_approval");
+      setAgentLocation("office");
+      setApprovalEvent(event);
+      setActiveTask((task) =>
+        task
+          ? {
+              ...task,
+              title: event.title ?? task.title,
+              detail: event.detail ?? task.detail,
+              result: event.result ?? task.result,
+            }
+          : task,
+      );
+    }
+
+    if (["task.failed", "task.completed"].includes(event.type)) {
+      setIsSubmitting(false);
+      if (event.type === "task.failed") {
+        setToast(event.detail ?? "작업이 완료되지 않았어요.");
+      }
+    }
+
+    if (event.type === "approval.decided") {
+      setAgentStatus(event.status ?? "idle");
+      setAgentLocation(event.location ?? "general");
+      setApprovalEvent(null);
+      setToast(event.title ?? "결정을 저장했어요.");
+    }
+
+    if (event.type === "session.updated" && event.session) {
+      setSessions((current) => {
+        const others = current.filter(
+          (session) => session.id !== event.session?.id,
+        );
+        return [event.session as CodexSession, ...others].slice(0, 30);
+      });
+    }
+
+    if (!["bridge.snapshot", "bridge.status"].includes(event.type)) {
+      setEvents((current) => [event, ...current].slice(0, 30));
+    }
+  }, []);
 
   useEffect(() => {
     if (!companionToken) return;
     let disposed = false;
-    const source = new EventSource(
-      `${BRIDGE_URL}/events?token=${encodeURIComponent(companionToken)}`,
-    );
 
-    source.onopen = () => {
-      if (!disposed) setBridgeState("connected");
-    };
-    source.onerror = () => {
-      if (!disposed) setBridgeState("disconnected");
-    };
-    source.onmessage = (message) => {
+    if (companionTransport === "local") {
+      const source = new EventSource(
+        `${BRIDGE_URL}/events?token=${encodeURIComponent(companionToken)}`,
+      );
+      source.onopen = () => {
+        if (!disposed) setBridgeState("connected");
+      };
+      source.onerror = () => {
+        if (!disposed) setBridgeState("disconnected");
+      };
+      source.onmessage = (message) => {
+        if (disposed) return;
+        try {
+          consumeBridgeEvent(JSON.parse(message.data) as BridgeEvent);
+        } catch {
+          // Ignore malformed bridge messages and keep the event stream alive.
+        }
+      };
+      return () => {
+        disposed = true;
+        source.close();
+      };
+    }
+
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const poll = async () => {
       if (disposed) return;
       try {
-        const event = JSON.parse(message.data) as BridgeEvent;
-        if (event.version !== undefined) setCodexVersion(event.version ?? null);
-        if (event.available !== undefined) setCodexAvailable(event.available);
-
-        if (event.type === "task.queued") {
-          const taskDepartment = event.department ?? "general";
-          setActiveDepartment(taskDepartment);
-          setActiveTask({
-            taskId: event.taskId ?? "unknown",
-            threadId: event.threadId,
-            prompt: event.prompt ?? event.detail ?? "",
-            department: taskDepartment,
-            mode: event.mode ?? "simulation",
-            title: event.title ?? "새 업무를 접수했어요",
-            detail: event.detail ?? "",
-            result: "",
-          });
-          setAgentStatus("queued");
-          setAgentLocation("general");
+        const response = await fetch(
+          `/api/relay/events?after=${relayEventCursor.current}`,
+          {
+            headers: { Authorization: `Bearer ${companionToken}` },
+            cache: "no-store",
+          },
+        );
+        const body = await response.json();
+        if (!response.ok) {
+          throw new Error(body.error ?? "외부 이벤트를 불러오지 못했어요.");
         }
-
-        if (
-          ["agent.status", "task.result", "task.failed", "task.completed"].includes(
-            event.type,
-          )
-        ) {
-          if (event.department) setActiveDepartment(event.department);
-          if (event.status) setAgentStatus(event.status);
-          if (event.location) setAgentLocation(event.location);
-          setActiveTask((task) =>
-            task
-              ? {
-                  ...task,
-                  title: event.title ?? task.title,
-                  detail: event.detail ?? task.detail,
-                  result: event.result ?? task.result,
-                }
-              : task,
+        for (const entry of body.events ?? []) {
+          relayEventCursor.current = Math.max(
+            relayEventCursor.current,
+            Number(entry.cursor ?? 0),
           );
+          consumeBridgeEvent(entry.event as BridgeEvent);
         }
-
-        if (event.type === "approval.required") {
-          setAgentStatus("waiting_approval");
-          setAgentLocation("office");
-          setApprovalEvent(event);
-          setActiveTask((task) =>
-            task
-              ? {
-                  ...task,
-                  title: event.title ?? task.title,
-                  detail: event.detail ?? task.detail,
-                  result: event.result ?? task.result,
-                }
-              : task,
-          );
-        }
-
-        if (["task.failed", "task.completed"].includes(event.type)) {
-          setIsSubmitting(false);
-          if (event.type === "task.failed") {
-            setToast(event.detail ?? "작업이 완료되지 않았어요.");
-          }
-        }
-
-        if (event.type === "approval.decided") {
-          setAgentStatus(event.status ?? "idle");
-          setAgentLocation(event.location ?? "general");
-          setApprovalEvent(null);
-          setToast(event.title ?? "결정을 저장했어요.");
-        }
-
-        if (event.type === "session.updated" && event.session) {
-          setSessions((current) => {
-            const others = current.filter(
-              (session) => session.id !== event.session?.id,
-            );
-            return [event.session as CodexSession, ...others].slice(0, 30);
-          });
-        }
-
-        if (!["bridge.snapshot", "bridge.status"].includes(event.type)) {
-          setEvents((current) => [event, ...current].slice(0, 30));
-        }
+        setBridgeState("connected");
       } catch {
-        // Ignore malformed bridge messages and keep the event stream alive.
+        if (!disposed) setBridgeState("disconnected");
+      } finally {
+        if (!disposed) timer = setTimeout(poll, 1_250);
       }
     };
+    void poll();
 
     return () => {
       disposed = true;
-      source.close();
+      if (timer) clearTimeout(timer);
     };
-  }, [companionToken]);
+  }, [companionToken, companionTransport, consumeBridgeEvent]);
 
   const refreshSessions = useCallback(async () => {
     if (!companionToken) return;
@@ -385,7 +443,9 @@ export default function Home() {
   }, [apiFetch, companionToken]);
 
   useEffect(() => {
-    if (companionToken) void refreshSessions();
+    if (companionToken) {
+      queueMicrotask(() => void refreshSessions());
+    }
   }, [companionToken, refreshSessions]);
 
   useEffect(() => {
@@ -399,20 +459,55 @@ export default function Home() {
     if (pairingBusy || pairingCode.trim().length !== 6) return;
     setPairingBusy(true);
     try {
-      const response = await fetch(`${BRIDGE_URL}/v2/pair`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: pairingCode.trim() }),
-      });
-      const body = await response.json();
-      if (!response.ok || !body.token) {
-        throw new Error(body.error ?? "PC Companion에 연결하지 못했어요.");
+      const code = pairingCode.trim();
+      let response: Response | null = null;
+      let body: Record<string, unknown> = {};
+      let transport: CompanionTransport = "local";
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1_800);
+      try {
+        response = await fetch(`${BRIDGE_URL}/v2/pair`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code }),
+          signal: controller.signal,
+        });
+        body = (await response.json()) as Record<string, unknown>;
+      } catch {
+        response = null;
+      } finally {
+        clearTimeout(timeout);
+      }
+
+      if (!response?.ok || !body.token) {
+        transport = "cloud";
+        response = await fetch("/api/relay/pair", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code }),
+        });
+        body = (await response.json()) as Record<string, unknown>;
+      }
+
+      if (!response.ok || typeof body.token !== "string") {
+        throw new Error(
+          typeof body.error === "string"
+            ? body.error
+            : "PC Companion에 연결하지 못했어요.",
+        );
       }
       window.localStorage.setItem(COMPANION_TOKEN_KEY, body.token);
+      window.localStorage.setItem(COMPANION_TRANSPORT_KEY, transport);
+      setCompanionTransport(transport);
       setCompanionToken(body.token);
+      relayEventCursor.current = Number(body.eventCursor ?? 0);
       setBridgeState("connected");
       setPairingCode("");
-      setToast("내 PC의 Codex Companion과 연결됐어요.");
+      setToast(
+        transport === "cloud"
+          ? "외부 네트워크에서 내 PC의 Codex와 연결됐어요."
+          : "내 PC의 Codex Companion과 연결됐어요.",
+      );
     } catch (error) {
       setToast(
         error instanceof Error
@@ -426,8 +521,10 @@ export default function Home() {
 
   function disconnectCompanion() {
     window.localStorage.removeItem(COMPANION_TOKEN_KEY);
+    window.localStorage.removeItem(COMPANION_TRANSPORT_KEY);
     window.localStorage.removeItem(SELECTED_SESSION_KEY);
     setCompanionToken(null);
+    setCompanionTransport("local");
     setSelectedThreadId(null);
     setSessions([]);
     setBridgeState("disconnected");
@@ -445,7 +542,11 @@ export default function Home() {
       );
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "세션을 열지 못했어요.");
-      setToast(`“${body.session?.title ?? "Codex 세션"}”을 연결했어요.`);
+      setToast(
+        body.queued
+          ? "PC에 세션 연결 요청을 보냈어요."
+          : `“${body.session?.title ?? "Codex 세션"}”을 연결했어요.`,
+      );
     } catch (error) {
       setToast(error instanceof Error ? error.message : "세션을 열지 못했어요.");
     }
@@ -457,6 +558,11 @@ export default function Home() {
       const response = await apiFetch("/v2/sessions", { method: "POST" });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error ?? "새 세션을 만들지 못했어요.");
+      if (body.queued) {
+        setToast("PC에 새 Codex 세션 생성 요청을 보냈어요.");
+        setTimeout(() => void refreshSessions(), 2_500);
+        return;
+      }
       const session = body.session as CodexSession;
       setSessions((current) => [session, ...current]);
       setSelectedThreadId(session.id);
@@ -575,7 +681,9 @@ export default function Home() {
             <strong>
               {bridgeState === "connected" && companionToken
                 ? codexAvailable
-                  ? "내 PC Codex 연결됨"
+                  ? companionTransport === "cloud"
+                    ? "외부에서 내 PC Codex 연결됨"
+                    : "내 PC Codex 연결됨"
                   : "브리지만 연결됨"
                 : bridgeState === "connecting"
                   ? "연결 확인 중"
@@ -585,7 +693,7 @@ export default function Home() {
             </strong>
             <small>
               {companionToken
-                ? codexVersion ?? "Codex 버전 확인 대기"
+                ? `${companionTransport === "cloud" ? "보안 중계 · " : ""}${codexVersion ?? "Codex 버전 확인 대기"}`
                 : "Companion 연결 코드를 입력하세요"}
             </small>
           </div>
@@ -641,7 +749,7 @@ export default function Home() {
                   <span aria-hidden="true">🔗</span>
                   <div>
                     <strong>PC Companion을 실행해 주세요</strong>
-                    <p>터미널에 표시된 6자리 연결 코드를 입력하면 현재 Codex 세션을 불러옵니다.</p>
+                    <p>PC 터미널의 6자리 코드를 입력하면 휴대폰·외부 네트워크에서도 현재 Codex 세션을 불러옵니다.</p>
                   </div>
                 </div>
                 <label htmlFor="pairing-code">연결 코드</label>

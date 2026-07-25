@@ -4,6 +4,10 @@ import { createServer } from "node:http";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import {
+  CloudRelay,
+  loadOrCreateRelayIdentity,
+} from "./cloud-relay.mjs";
 import { CodexAppServerClient } from "./codex-app-server-client.mjs";
 import { createSimulationEvents } from "./event-mapper.mjs";
 import {
@@ -16,6 +20,10 @@ const bridgeDir = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(bridgeDir, "..");
 const host = process.env.AGENT_BRIDGE_HOST ?? "127.0.0.1";
 const port = Number(process.env.AGENT_BRIDGE_PORT ?? 4317);
+const relayUrl =
+  process.env.AGENT_FOREST_RELAY_URL ??
+  "https://agent-forest-raccoon.sminia82.chatgpt.site";
+const relayEnabled = relayUrl.toLowerCase() !== "off";
 const workspace = path.resolve(
   process.env.CODEX_BRIDGE_WORKSPACE ?? projectRoot,
 );
@@ -55,6 +63,7 @@ let appServerClient = null;
 let appServerPromise = null;
 let appServerError = null;
 let lastRunOk = null;
+let cloudRelay = null;
 
 function resolveCodexEntry() {
   const candidates = [
@@ -171,6 +180,12 @@ function publicState({ paired = false } = {}) {
     paired,
     requiresPairing: !paired,
     bridge: `http://${host}:${port}`,
+    cloudRelay: cloudRelay?.status() ?? {
+      enabled: relayEnabled,
+      online: false,
+      relayUrl: relayEnabled ? relayUrl : null,
+      lastError: null,
+    },
   };
 }
 
@@ -182,6 +197,7 @@ function broadcast(payload) {
   };
   const message = `data: ${JSON.stringify(event)}\n\n`;
   for (const client of clients) client.write(message);
+  cloudRelay?.publishEvent(event);
   return event;
 }
 
@@ -678,6 +694,105 @@ function runSimulation(context) {
   }, Math.max(...scheduled.map(({ delayMs }) => delayMs)) + 300);
 }
 
+async function relaySnapshot() {
+  let sessions = [];
+  try {
+    const page = await listSessions(new URL("http://relay/v2/sessions?limit=30"));
+    sessions = page.data ?? [];
+  } catch {
+    // Health still reaches the browser while Codex is starting or reconnecting.
+  }
+  return {
+    ...publicState({ paired: false }),
+    sessions,
+    workspaceName: path.basename(workspace),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+async function executeRelayCommand(command) {
+  if (String(command.method ?? "").toUpperCase() !== "POST") {
+    throw new Error("허용되지 않은 외부 명령 방식입니다.");
+  }
+  const commandUrl = new URL(command.path, "http://relay");
+  const body = command.body && typeof command.body === "object" ? command.body : {};
+
+  if (commandUrl.pathname === "/v2/sessions") {
+    return { session: await createSession() };
+  }
+
+  const sessionMatch = commandUrl.pathname.match(
+    /^\/v2\/sessions\/([^/]+)\/(resume|turns|steer|interrupt)$/,
+  );
+  if (sessionMatch) {
+    const threadId = decodeURIComponent(sessionMatch[1]);
+    const action = sessionMatch[2];
+    if (action === "resume") {
+      return { session: await resumeSession(threadId) };
+    }
+    if (action === "turns") {
+      return { accepted: true, ...(await startTurn(threadId, body)) };
+    }
+    if (action === "steer") {
+      const turnId = activeTurns.get(threadId);
+      const prompt = safeText(body.prompt, 2_000);
+      if (!turnId || !prompt) {
+        throw new Error("추가 지시를 보낼 활성 작업을 찾지 못했습니다.");
+      }
+      const client = await ensureAppServer();
+      const result = await client.request("turn/steer", {
+        threadId,
+        expectedTurnId: turnId,
+        input: [{ type: "text", text: prompt }],
+      });
+      return { accepted: true, turnId: result.turnId ?? turnId };
+    }
+    if (action === "interrupt") {
+      const turnId = activeTurns.get(threadId);
+      if (!turnId) throw new Error("중단할 활성 작업을 찾지 못했습니다.");
+      const client = await ensureAppServer();
+      await client.request("turn/interrupt", { threadId, turnId });
+      return { interrupted: true, turnId };
+    }
+  }
+
+  const approvalMatch = commandUrl.pathname.match(
+    /^\/v2\/approvals\/([^/]+)$/,
+  );
+  if (approvalMatch) {
+    const decision = ["approve", "reject", "cancel"].includes(body.decision)
+      ? body.decision
+      : null;
+    if (!decision) throw new Error("올바른 승인 결정을 선택해 주세요.");
+    await respondApproval(decodeURIComponent(approvalMatch[1]), decision);
+    return { saved: true };
+  }
+
+  if (commandUrl.pathname === "/simulate") {
+    if (!safeText(body.prompt, 2_000)) {
+      throw new Error("작업 내용을 입력해 주세요.");
+    }
+    const context = createContext(body, "simulation");
+    broadcast({
+      type: "task.queued",
+      taskId: context.taskId,
+      agentId: context.agentId,
+      department: context.department,
+      status: "queued",
+      location: "general",
+      title: "화면 시연을 시작해요",
+      detail: context.prompt.slice(0, 220),
+      prompt: context.prompt,
+      mode: "simulation",
+      source: "bridge",
+    });
+    runSimulation(context);
+    return { accepted: true, taskId: context.taskId, mode: "simulation" };
+  }
+
+  throw new Error("허용되지 않은 외부 명령입니다.");
+}
+
 const server = createServer(async (request, response) => {
   const requestUrl = new URL(request.url ?? "/", `http://${host}:${port}`);
 
@@ -905,6 +1020,21 @@ server.listen(port, host, () => {
     `[agent-companion] http://${host}:${port} · ${codexVersion || "Codex unavailable"}`,
   );
   console.log(`[agent-companion] 연결 코드: ${pairingCode}`);
+  if (relayEnabled) {
+    const identity = loadOrCreateRelayIdentity(
+      path.join(projectRoot, ".agent-forest-companion.json"),
+    );
+    cloudRelay = new CloudRelay({
+      baseUrl: relayUrl,
+      deviceId: identity.deviceId,
+      secret: identity.secret,
+      pairingCode,
+      getSnapshot: relaySnapshot,
+      executeCommand: executeRelayCommand,
+    });
+    void cloudRelay.start();
+    console.log(`[agent-companion] 외부 연결: ${relayUrl}`);
+  }
   void ensureAppServer().catch((error) => {
     appServerError = safeText(error?.message, 260);
     console.error(`[agent-companion] App Server 연결 실패: ${appServerError}`);
@@ -912,6 +1042,7 @@ server.listen(port, host, () => {
 });
 
 async function shutdown() {
+  await cloudRelay?.stop();
   await appServerClient?.stop();
   server.close(() => process.exit(0));
 }

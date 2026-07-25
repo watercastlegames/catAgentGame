@@ -14,6 +14,7 @@
 - 명령 실행·파일 변경·추가 권한 승인 요청 처리
 - Codex 이벤트를 고양이 이동·작업·보고 상태로 변환
 - 브라우저와 PC Companion의 6자리 보안 페어링
+- 휴대폰·외부 네트워크용 암호화 클라우드 중계
 - 비용 없는 화면 시연
 
 ## 사용 방법
@@ -34,6 +35,11 @@ npm run dev:local
 Agent Forest의 `내 PC 세션 연결` 영역에 코드를 입력하면 최근 Codex 세션이
 표시됩니다. 로컬 개발 주소는 기본적으로 `http://localhost:3000`, PC
 Companion 주소는 `http://127.0.0.1:4317`입니다.
+
+배포 사이트에서는 같은 6자리 코드를 사용할 수 있습니다. 같은 PC에서는
+로컬 연결을 우선 사용하고, 휴대폰이나 외부 네트워크에서는 자동으로 보안
+클라우드 중계로 전환합니다. PC Companion은 계속 실행 중이어야 하지만
+공유기 포트 포워딩이나 공인 IP 설정은 필요하지 않습니다.
 
 웹 화면과 Companion을 따로 실행할 수도 있습니다.
 
@@ -70,7 +76,7 @@ npm run bridge
 
 ```text
 Agent Forest Web
-        ↕ HTTP + SSE / pairing token
+        ↕ 로컬 HTTP + SSE 또는 HTTPS 클라우드 중계
 bridge/server.mjs (PC Companion)
         ↕ newline JSON-RPC over stdio
 Codex App Server
@@ -81,6 +87,8 @@ Codex App Server
 - `bridge/codex-app-server-client.mjs`: App Server 프로세스와 JSON-RPC 연결
 - `bridge/session-view.mjs`: 민감 경로를 제외한 세션 표시 데이터 생성
 - `bridge/server.mjs`: 페어링, 세션 API, SSE, 승인 라우팅
+- `bridge/cloud-relay.mjs`: PC의 아웃바운드 HTTPS 동기화와 명령 처리
+- `worker/relay.ts`: D1 기반 외부 페어링·명령·이벤트 중계 API
 - `bridge/event-mapper.mjs`: Codex 이벤트를 캐릭터 행동으로 변환
 - `app/page.tsx`: 세션 선택, 작업 전송, 승인 UI
 - `tests/`: 프로토콜, 세션 정보, 이벤트, 렌더링 회귀 테스트
