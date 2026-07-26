@@ -298,6 +298,7 @@ export default function Home() {
   const keycapAudioPoolRef = useRef<HTMLAudioElement[]>([]);
   const keycapAudioIndexRef = useRef(0);
   const keycapPressTimerRef = useRef<number | null>(null);
+  const keycapFeedbackPrimedRef = useRef(false);
 
   const approvalEvent = approvalQueue[0] ?? null;
   const latestEvents = useMemo(() => events.slice(0, 10), [events]);
@@ -330,6 +331,9 @@ export default function Home() {
       null
     );
   }, [runtimeList, selectedSeat, selectedThreadId]);
+  const pressedRadioIndex = pressedRadioKey
+    ? RADIO_MENU.findIndex((item) => item.key === pressedRadioKey) + 1
+    : 0;
 
   useEffect(() => {
     runtimesRef.current = runtimes;
@@ -1128,7 +1132,8 @@ export default function Home() {
     window.localStorage.setItem(DECOR_KEY, value);
   }
 
-  function activateRadioMenu(page: RadioPage) {
+  function pressRadioMenuKey(page: RadioPage) {
+    keycapFeedbackPrimedRef.current = true;
     const audioPool = keycapAudioPoolRef.current;
     const sound = audioPool[keycapAudioIndexRef.current % audioPool.length];
     keycapAudioIndexRef.current += 1;
@@ -1143,9 +1148,16 @@ export default function Home() {
     setPressedRadioKey(page);
     keycapPressTimerRef.current = window.setTimeout(() => {
       setPressedRadioKey(null);
+      keycapFeedbackPrimedRef.current = false;
       keycapPressTimerRef.current = null;
-    }, 130);
+    }, 180);
+  }
 
+  function activateRadioMenu(page: RadioPage) {
+    if (!keycapFeedbackPrimedRef.current) {
+      pressRadioMenuKey(page);
+    }
+    keycapFeedbackPrimedRef.current = false;
     setRadioPage(page);
     setRadioOpen(true);
     resetHudTimer();
@@ -1215,6 +1227,41 @@ export default function Home() {
             onRadioClick={() => setRadioOpen(true)}
           />
 
+          <nav
+            className={`keycap-menu keycap-menu-pressed-${pressedRadioIndex} hud-fade ${
+              hudDormant && !radioOpen ? "is-dormant" : ""
+            }`}
+            aria-label="하단 메뉴"
+          >
+            <div className="keycap-menu-art" aria-hidden="true" />
+            {RADIO_MENU.map(({ key, ariaLabel }, index) => (
+              <button
+                type="button"
+                key={key}
+                aria-label={ariaLabel}
+                aria-current={radioPage === key ? "page" : undefined}
+                className={[
+                  "keycap-menu-button",
+                  `keycap-menu-button-${index + 1}`,
+                  radioPage === key ? "selected" : "",
+                  pressedRadioKey === key ? "is-pressed" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                onPointerDown={() => pressRadioMenuKey(key)}
+                onKeyDown={(event) => {
+                  if (
+                    !event.repeat &&
+                    (event.key === "Enter" || event.key === " ")
+                  ) {
+                    pressRadioMenuKey(key);
+                  }
+                }}
+                onClick={() => activateRadioMenu(key)}
+              />
+            ))}
+          </nav>
+
           <div
             className={`demo-shells hud-fade ${hudDormant ? "is-dormant" : ""}`}
             aria-label="무료 시연 예시"
@@ -1252,32 +1299,6 @@ export default function Home() {
             )}
         </div>
       </section>
-
-      <nav
-        className={`keycap-menu hud-fade ${
-          hudDormant && !radioOpen ? "is-dormant" : ""
-        }`}
-        aria-label="하단 메뉴"
-      >
-        <div className="keycap-menu-art" aria-hidden="true" />
-        {RADIO_MENU.map(({ key, ariaLabel }, index) => (
-          <button
-            type="button"
-            key={key}
-            aria-label={ariaLabel}
-            aria-current={radioPage === key ? "page" : undefined}
-            className={[
-              "keycap-menu-button",
-              `keycap-menu-button-${index + 1}`,
-              radioPage === key ? "selected" : "",
-              pressedRadioKey === key ? "is-pressed" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            onClick={() => activateRadioMenu(key)}
-          />
-        ))}
-      </nav>
 
       {radioOpen && (
         <aside className="control-panel radio-panel" aria-label="캠핑 라디오">
