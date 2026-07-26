@@ -194,6 +194,10 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(css, /menu-keycaps-pressed-3-v1\.png/);
   assert.match(css, /menu-keycaps-pressed-4-v1\.png/);
   assert.match(css, /\.keycap-menu-layer-normal[\s\S]*opacity:\s*1/);
+  assert.match(
+    css,
+    /\.keycap-menu-pressed-1 \.keycap-menu-layer-normal[\s\S]*opacity:\s*0/,
+  );
   assert.match(css, /\.keycap-menu-pressed-1 \.keycap-menu-layer-pressed-1/);
   assert.match(css, /\.keycap-menu-button\.selected::after[\s\S]*box-shadow:\s*none/);
   assert.doesNotMatch(css, /--keycap-art/);

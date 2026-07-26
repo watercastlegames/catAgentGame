@@ -2310,6 +2310,13 @@ button {
   opacity: 1;
 }
 
+.keycap-menu-pressed-1 .keycap-menu-layer-normal,
+.keycap-menu-pressed-2 .keycap-menu-layer-normal,
+.keycap-menu-pressed-3 .keycap-menu-layer-normal,
+.keycap-menu-pressed-4 .keycap-menu-layer-normal {
+  opacity: 0;
+}
+
 .keycap-menu-layer-pressed-1 {
   background-image: url("/art/menu-keycaps-pressed-1-v1.png");
 }
