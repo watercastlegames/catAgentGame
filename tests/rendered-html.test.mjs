@@ -203,6 +203,8 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(css, /\.keycap-menu-button\.selected::after[\s\S]*box-shadow:\s*none/);
   assert.doesNotMatch(css, /--keycap-art/);
   assert.match(css, /\.keycap-menu\s*\{[\s\S]*position:\s*fixed/);
+  assert.match(css, /width:\s*min\(448px,\s*calc\(80vw - 14px\)\)/);
+  assert.match(css, /width:\s*min\(400px,\s*calc\(80vw - 6px\)\)/);
   assert.match(css, /env\(safe-area-inset-bottom\)/);
   assert.doesNotMatch(css, /translateY\(7px\)/);
   assert.match(world3d, /"prewalking"/);
@@ -494,7 +496,6 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     ),
     access(new URL("../public/audio/keycap-click-1.mp3", import.meta.url)),
     access(new URL("../public/audio/keycap-click-2.mp3", import.meta.url)),
-    access(new URL("../public/audio/keycap-click-3.mp3", import.meta.url)),
     access(new URL("../public/audio/ATTRIBUTION.txt", import.meta.url)),
     access(new URL("../public/concept-approval.jpg", import.meta.url)),
     access(new URL("../bridge/server.mjs", import.meta.url)),

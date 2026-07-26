@@ -183,7 +183,6 @@ const RADIO_MENU: Array<{ key: RadioPage; ariaLabel: string }> = [
 const KEYCAP_CLICK_SOUNDS = [
   "/audio/keycap-click-1.mp3",
   "/audio/keycap-click-2.mp3",
-  "/audio/keycap-click-3.mp3",
 ];
 
 function normalizeUsage(usage?: Usage | null) {

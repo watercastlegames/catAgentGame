@@ -2275,7 +2275,7 @@ button {
   bottom: max(6px, env(safe-area-inset-bottom));
   left: 50%;
   z-index: 45;
-  width: min(560px, calc(100vw - 18px));
+  width: min(448px, calc(80vw - 14px));
   aspect-ratio: 2.805 / 1;
   overflow: hidden;
   filter: drop-shadow(0 16px 18px rgba(74, 56, 43, 0.22));
@@ -2418,30 +2418,30 @@ button {
 }
 
 .world-caption {
-  bottom: 216px;
+  bottom: 174px;
 }
 
 .demo-shells {
-  bottom: 260px;
+  bottom: 208px;
 }
 
 .result-printer {
-  bottom: 304px;
+  bottom: 244px;
 }
 
 @media (max-width: 820px) {
   .keycap-menu {
     bottom: max(4px, env(safe-area-inset-bottom));
-    width: min(500px, calc(100vw - 8px));
+    width: min(400px, calc(80vw - 6px));
   }
 
   .demo-shells {
-    bottom: clamp(142px, 37vw, 184px);
+    bottom: clamp(116px, 30vw, 150px);
   }
 
   .radio-panel {
-    bottom: calc(clamp(134px, 36vw, 174px) + env(safe-area-inset-bottom));
-    max-height: calc(100svh - clamp(148px, 39vw, 188px));
+    bottom: calc(clamp(108px, 29vw, 140px) + env(safe-area-inset-bottom));
+    max-height: calc(100svh - clamp(120px, 32vw, 154px));
   }
 }
 

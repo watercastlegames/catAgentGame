@@ -1,10 +1,7 @@
 Agent Forest UI sound effects
 
-"Toy Electronic Typewriter Key Press 1" by sprinkleCipher (CC-BY)
-https://freesound.org/s/752745
+"Keychron k10 Enter" by Sadiquecat (CC0)
+https://freesound.org/s/789629
 
-"Toy Electronic Typewriter Key Press 3" by sprinkleCipher (CC-BY)
-https://freesound.org/s/752747
-
-"Toy Electronic Typewriter Key Press 2" by sprinkleCipher (CC-BY)
-https://freesound.org/s/752746
+"Keychron k10 space_bar" by Sadiquecat (CC0)
+https://freesound.org/s/789630
