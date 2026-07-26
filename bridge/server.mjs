@@ -1,8 +1,8 @@
-import { randomInt, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   CloudRelay,
@@ -10,6 +10,8 @@ import {
 } from "./cloud-relay.mjs";
 import { CodexAppServerClient } from "./codex-app-server-client.mjs";
 import { createSimulationEvents } from "./event-mapper.mjs";
+import { PairingAttemptLimiter, PairingStore } from "./pairing-store.mjs";
+import { isSafeReadOnlyCommand } from "./security-policy.mjs";
 import {
   presentThread,
   presentThreadPage,
@@ -50,20 +52,26 @@ for (const origin of (process.env.AGENT_BRIDGE_ALLOWED_ORIGINS ?? "")
   defaultAllowedOrigins.add(origin);
 }
 
+const pairingStore = new PairingStore(
+  path.join(projectRoot, ".agent-forest-pairing.json"),
+);
 const pairingCode =
-  process.env.AGENT_BRIDGE_PAIRING_CODE ??
-  String(randomInt(100_000, 1_000_000));
-const clientTokens = new Set();
+  process.env.AGENT_BRIDGE_PAIRING_CODE ?? pairingStore.pairingCode;
+const pairingAttemptLimiter = new PairingAttemptLimiter();
 const clients = new Set();
 const threadContexts = new Map();
 const activeTurns = new Map();
 const pendingApprovals = new Map();
+const itemCache = new Map();
 let sequence = 0;
 let appServerClient = null;
 let appServerPromise = null;
 let appServerError = null;
 let lastRunOk = null;
 let cloudRelay = null;
+let appServerRestartTimer = null;
+let appServerRestartAttempt = 0;
+let shuttingDown = false;
 
 function resolveCodexEntry() {
   const candidates = [
@@ -144,17 +152,19 @@ async function readJson(request) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-function bearerToken(request, requestUrl) {
+function bearerToken(request, requestUrl, { allowQuery = false } = {}) {
   const authorization = request.headers.authorization;
   if (typeof authorization === "string" && authorization.startsWith("Bearer ")) {
     return authorization.slice(7);
   }
-  return requestUrl.searchParams.get("token") ?? "";
+  return allowQuery ? requestUrl.searchParams.get("token") ?? "" : "";
 }
 
 function isAuthorized(request, requestUrl) {
-  const token = bearerToken(request, requestUrl);
-  return Boolean(token && clientTokens.has(token));
+  const token = bearerToken(request, requestUrl, {
+    allowQuery: requestUrl.pathname === "/events",
+  });
+  return pairingStore.hasToken(token);
 }
 
 function requireAuthorization(request, response, requestUrl) {
@@ -201,6 +211,76 @@ function broadcast(payload) {
   return event;
 }
 
+function serializableApproval(requestId, approval) {
+  const context = contextFor(approval.threadId);
+  const copy = approval.copy ?? approvalCopy(approval.method, approval.params);
+  return {
+    id: `snapshot_${requestId}`,
+    type: "approval.required",
+    occurredAt: approval.occurredAt ?? new Date().toISOString(),
+    requestId,
+    approvalKind: copy?.kind,
+    taskId: approval.params.turnId ?? context.taskId,
+    threadId: approval.threadId,
+    turnId: approval.params.turnId ?? context.turnId,
+    agentId: context.agentId,
+    department: context.department,
+    status: "waiting_approval",
+    location: "office",
+    title: copy?.title ?? "승인이 필요해요",
+    detail: copy?.detail ?? "PC의 Codex가 확인을 기다리고 있어요.",
+    command: copy?.command ?? "",
+    files: copy?.files ?? [],
+    permissions: copy?.permissions ?? null,
+    usage: context.usage ?? null,
+    source: "codex",
+  };
+}
+
+function pendingApprovalSnapshot() {
+  return [...pendingApprovals.entries()].map(([requestId, approval]) =>
+    serializableApproval(requestId, approval),
+  );
+}
+
+function notifyLocalOS(title, detail) {
+  try {
+    if (process.platform === "win32") {
+      const title64 = Buffer.from(String(title), "utf8").toString("base64");
+      const detail64 = Buffer.from(String(detail), "utf8").toString("base64");
+      const script = [
+        "Add-Type -AssemblyName System.Windows.Forms",
+        "Add-Type -AssemblyName System.Drawing",
+        `$title=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${title64}'))`,
+        `$detail=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${detail64}'))`,
+        "$notice=New-Object System.Windows.Forms.NotifyIcon",
+        "$notice.Icon=[System.Drawing.SystemIcons]::Information",
+        "$notice.BalloonTipTitle=$title",
+        "$notice.BalloonTipText=$detail",
+        "$notice.Visible=$true",
+        "$notice.ShowBalloonTip(7000)",
+        "Start-Sleep -Seconds 8",
+        "$notice.Dispose()",
+      ].join("; ");
+      const encoded = Buffer.from(script, "utf16le").toString("base64");
+      spawn(
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+        { detached: true, stdio: "ignore", windowsHide: true },
+      ).unref();
+      return;
+    }
+    if (process.platform === "linux") {
+      spawn("notify-send", [String(title), String(detail)], {
+        detached: true,
+        stdio: "ignore",
+      }).unref();
+    }
+  } catch {
+    // A notification failure must never block an approval event.
+  }
+}
+
 function contextFor(threadId, overrides = {}) {
   const current = threadContexts.get(threadId) ?? {
     threadId,
@@ -212,6 +292,7 @@ function contextFor(threadId, overrides = {}) {
     agentId: departmentAgents.coding,
     mode: "codex",
     lastMessage: "",
+    usage: null,
   };
   const department = allowedDepartments.has(overrides.department)
     ? overrides.department
@@ -278,6 +359,27 @@ function itemCopy(itemType) {
   return copy[itemType] ?? copy.reasoning;
 }
 
+function cacheItem(threadId, turnId, item) {
+  if (!item?.id) return;
+  itemCache.set(item.id, {
+    threadId,
+    turnId,
+    item,
+    cachedAt: Date.now(),
+  });
+  if (itemCache.size > 300) {
+    const oldest = [...itemCache.entries()]
+      .sort((left, right) => left[1].cachedAt - right[1].cachedAt)
+      .slice(0, itemCache.size - 250);
+    oldest.forEach(([key]) => itemCache.delete(key));
+  }
+}
+
+function approvalItem(params) {
+  const itemId = params.itemId ?? params.item?.id;
+  return (itemId && itemCache.get(itemId)?.item) || params.item || null;
+}
+
 function handleNotification({ method, params }) {
   const threadId = params.threadId ?? params.thread?.id ?? null;
   if (method === "thread/started" && params.thread) {
@@ -326,6 +428,7 @@ function handleNotification({ method, params }) {
   }
 
   if (method === "item/started") {
+    cacheItem(threadId, params.turnId ?? context.turnId, params.item);
     const itemType = params.item?.type ?? "reasoning";
     const [title, detail] = itemCopy(itemType);
     broadcast({
@@ -354,6 +457,7 @@ function handleNotification({ method, params }) {
   }
 
   if (method === "item/completed") {
+    cacheItem(threadId, params.turnId ?? context.turnId, params.item);
     const itemType = params.item?.type ?? "unknown";
     if (itemType === "agentMessage") {
       const result = extractItemText(params.item) || context.lastMessage;
@@ -395,10 +499,15 @@ function handleNotification({ method, params }) {
   }
 
   if (method === "thread/tokenUsage/updated") {
+    const usage = params.tokenUsage ?? params.usage ?? null;
+    context.usage = usage;
     broadcast({
       type: "session.usage",
+      taskId: context.taskId,
       threadId,
-      usage: params.tokenUsage ?? params.usage ?? null,
+      agentId: context.agentId,
+      department: context.department,
+      usage,
       source: "codex",
     });
     return;
@@ -409,6 +518,14 @@ function handleNotification({ method, params }) {
     activeTurns.delete(threadId);
     lastRunOk = turn.status === "completed";
     const failed = turn.status === "failed";
+    for (const [itemId, cached] of itemCache) {
+      if (
+        cached.threadId === threadId &&
+        (!cached.turnId || cached.turnId === (turn.id ?? context.turnId))
+      ) {
+        itemCache.delete(itemId);
+      }
+    }
     broadcast({
       type: failed ? "task.failed" : "task.completed",
       taskId: context.taskId,
@@ -447,6 +564,7 @@ function handleNotification({ method, params }) {
 }
 
 function approvalCopy(method, params) {
+  const cachedItem = approvalItem(params);
   if (method === "item/commandExecution/requestApproval") {
     return {
       kind: "command",
@@ -454,7 +572,7 @@ function approvalCopy(method, params) {
       detail:
         safeText(params.reason, 400) ||
         "Codex가 PC에서 명령을 실행하기 전에 확인을 요청했어요.",
-      command: safeText(params.command, 1_200),
+      command: safeText(params.command ?? cachedItem?.command, 1_200),
     };
   }
   if (method === "item/fileChange/requestApproval") {
@@ -465,6 +583,12 @@ function approvalCopy(method, params) {
         safeText(params.reason, 400) ||
         "Codex가 프로젝트 파일을 변경하기 전에 확인을 요청했어요.",
       command: "",
+      files: Array.isArray(params.changes ?? cachedItem?.changes)
+        ? (params.changes ?? cachedItem?.changes).slice(0, 20)
+        : Array.isArray(params.files ?? cachedItem?.files)
+          ? (params.files ?? cachedItem?.files).slice(0, 20)
+          : [],
+      permissions: null,
     };
   }
   if (method === "item/permissions/requestApproval") {
@@ -475,6 +599,8 @@ function approvalCopy(method, params) {
         safeText(params.reason, 400) ||
         "Codex가 현재 작업에 필요한 추가 권한을 요청했어요.",
       command: "",
+      files: [],
+      permissions: params.permissions ?? cachedItem?.permissions ?? {},
     };
   }
   return null;
@@ -491,6 +617,30 @@ function handleServerRequest({ id, method, params }) {
     return;
   }
 
+  if (
+    isSafeReadOnlyCommand(
+      method,
+      params.command ?? approvalItem(params)?.command,
+    )
+  ) {
+    appServerClient?.respond(id, { decision: "accept" });
+    const context = contextFor(params.threadId);
+    broadcast({
+      type: "approval.autoApproved",
+      taskId: params.turnId ?? context.taskId,
+      threadId: params.threadId,
+      turnId: params.turnId ?? context.turnId,
+      agentId: context.agentId,
+      department: context.department,
+      status: "working",
+      location: context.department,
+      title: "읽기 전용 명령을 자동 승인했어요",
+      detail: copy.command,
+      source: "bridge",
+    });
+    return;
+  }
+
   const requestId = `approval_${randomUUID()}`;
   const threadId = params.threadId;
   const context = contextFor(threadId);
@@ -499,8 +649,10 @@ function handleServerRequest({ id, method, params }) {
     method,
     params,
     threadId,
+    copy,
+    occurredAt: new Date().toISOString(),
   });
-  broadcast({
+  const approvalEvent = broadcast({
     type: "approval.required",
     requestId,
     approvalKind: copy.kind,
@@ -514,9 +666,15 @@ function handleServerRequest({ id, method, params }) {
     title: copy.title,
     detail: copy.detail,
     command: copy.command,
+    files: copy.files ?? [],
+    permissions: copy.permissions ?? null,
+    usage: context.usage ?? null,
     availableDecisions: params.availableDecisions ?? null,
     source: "codex",
   });
+  const pending = pendingApprovals.get(requestId);
+  if (pending) pending.occurredAt = approvalEvent.occurredAt;
+  notifyLocalOS(copy.title, copy.detail);
 }
 
 async function ensureAppServer() {
@@ -552,8 +710,10 @@ async function ensureAppServer() {
         detail: appServerError,
         source: "bridge",
       });
+      scheduleAppServerRestart();
     });
     await client.start();
+    appServerRestartAttempt = 0;
     appServerError = null;
     broadcast({ type: "bridge.status", ...publicState(), source: "bridge" });
     return client;
@@ -567,6 +727,26 @@ async function ensureAppServer() {
     appServerClient = null;
     throw error;
   }
+}
+
+function scheduleAppServerRestart() {
+  if (shuttingDown || !codexEntry || appServerRestartTimer) return;
+  const delay = Math.min(30_000, 1_000 * 2 ** appServerRestartAttempt);
+  appServerRestartAttempt += 1;
+  appServerRestartTimer = setTimeout(() => {
+    appServerRestartTimer = null;
+    void ensureAppServer().catch((error) => {
+      appServerError = safeText(error?.message, 260);
+      broadcast({
+        type: "bridge.status",
+        ...publicState(),
+        detail: `Codex 재연결 대기: ${appServerError}`,
+        source: "bridge",
+      });
+      scheduleAppServerRestart();
+    });
+  }, delay);
+  appServerRestartTimer.unref?.();
 }
 
 async function listSessions(requestUrl) {
@@ -651,7 +831,9 @@ async function respondApproval(requestId, decision) {
   let result;
   if (approval.method === "item/permissions/requestApproval") {
     result = {
-      permissions: accepted ? approval.params.permissions ?? {} : {},
+      permissions: accepted
+        ? approval.params.permissions ?? approval.copy?.permissions ?? {}
+        : {},
       scope: "turn",
     };
   } else {
@@ -705,6 +887,7 @@ async function relaySnapshot() {
   return {
     ...publicState({ paired: false }),
     sessions,
+    pendingApprovals: pendingApprovalSnapshot(),
     workspaceName: path.basename(workspace),
     updatedAt: new Date().toISOString(),
   };
@@ -819,6 +1002,17 @@ const server = createServer(async (request, response) => {
 
   if (request.method === "POST" && requestUrl.pathname === "/v2/pair") {
     try {
+      const forwardedAddress = String(
+        request.headers["x-forwarded-for"] ?? request.socket.remoteAddress ?? "",
+      )
+        .split(",")[0]
+        .trim();
+      if (!pairingAttemptLimiter.check(forwardedAddress || "unknown")) {
+        sendJson(response, request, 429, {
+          error: "연결 시도가 너무 많습니다. 잠시 뒤 다시 시도해 주세요.",
+        });
+        return;
+      }
       const body = await readJson(request);
       if (String(body.code ?? "").trim() !== pairingCode) {
         sendJson(response, request, 401, {
@@ -827,7 +1021,8 @@ const server = createServer(async (request, response) => {
         return;
       }
       const token = randomUUID().replaceAll("-", "");
-      clientTokens.add(token);
+      pairingStore.addToken(token);
+      pairingAttemptLimiter.clear(forwardedAddress || "unknown");
       sendJson(response, request, 200, {
         paired: true,
         token,
@@ -857,6 +1052,7 @@ const server = createServer(async (request, response) => {
         type: "bridge.snapshot",
         occurredAt: new Date().toISOString(),
         ...publicState({ paired: true }),
+        pendingApprovals: pendingApprovalSnapshot(),
         source: "bridge",
       })}\n\n`,
     );
@@ -1038,10 +1234,13 @@ server.listen(port, host, () => {
   void ensureAppServer().catch((error) => {
     appServerError = safeText(error?.message, 260);
     console.error(`[agent-companion] App Server 연결 실패: ${appServerError}`);
+    scheduleAppServerRestart();
   });
 });
 
 async function shutdown() {
+  shuttingDown = true;
+  if (appServerRestartTimer) clearTimeout(appServerRestartTimer);
   await cloudRelay?.stop();
   await appServerClient?.stop();
   server.close(() => process.exit(0));

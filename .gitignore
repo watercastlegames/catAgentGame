@@ -31,6 +31,7 @@ yarn-error.log*
 .bridge.pid
 .relay*.log
 .agent-forest-companion.json
+.agent-forest-pairing.json
 .devserver.*.log
 .devserver.pid
 
@@ -42,10 +43,12 @@ yarn-error.log*
 
 # typescript
 next-env.d.ts
+*.tsbuildinfo
 /dist/
 /.wrangler/
 /outputs/
 /work/
+/tmp/
 
 # Local generation sources and exports are not needed by the deployed site.
 /assets/

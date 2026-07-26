@@ -7,6 +7,7 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 import { findAvoidancePath2D } from "./navigation.mjs";
 
 export type AgentWorldLocation =
@@ -18,11 +19,32 @@ export type AgentWorldLocation =
   | "queue"
   | "office";
 
-type AgentWorld3DProps = {
+export type SeatId = "seat-1" | "seat-2" | "seat-3" | "seat-4";
+
+export type SeatView = {
+  seatId: SeatId | "queue";
   agentName: string;
   location: AgentWorldLocation;
   status: string;
   statusLabel: string;
+  blocked: boolean;
+};
+
+type AgentWorld3DProps = {
+  seats: SeatView[];
+  companionConnected: "connected" | "pairing" | "offline";
+  completionSignal: number;
+  onSeatClick?: (seatId: SeatId) => void;
+  onRadioClick?: () => void;
+};
+
+const DEFAULT_SEAT_VIEW: SeatView = {
+  seatId: "seat-1",
+  agentName: "코치 모모",
+  location: "general",
+  status: "idle",
+  statusLabel: "대기 중",
+  blocked: false,
 };
 
 const TENT_WORKSTATION_POSITION = new THREE.Vector3(-2.05, 0, -3.65);
@@ -119,6 +141,12 @@ const DESK_KEYCAP_TEXTURE_URLS = [
   "/art/desk-keycap-4-top-v1.png",
 ];
 const AUTONOMOUS_STATUSES = new Set(["idle", "completed", "failed"]);
+const SEAT_WORLD_POSITIONS: Record<SeatId, THREE.Vector3> = {
+  "seat-1": new THREE.Vector3(-2.05, 0, -2.48),
+  "seat-2": new THREE.Vector3(2.12, 0, 4.12),
+  "seat-3": new THREE.Vector3(-2.2, 0, 0.78),
+  "seat-4": new THREE.Vector3(2.18, 0, 1.18),
+};
 
 type AmbientAnimation = {
   key: string;
@@ -683,6 +711,8 @@ function drawMonitorScreen(
   texture.needsUpdate = true;
 }
 
+// Retained as an offline procedural fallback for the external desk model.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function createIllustratedDesk(textures: DeskTextureSet) {
   const deskGroup = new THREE.Group();
   deskGroup.name = DESK_OBSTACLE.id;
@@ -1519,6 +1549,8 @@ type BeachOfficeTextureSet = {
   wood: THREE.Texture;
 };
 
+// Retained as an offline procedural fallback for the detailed hut model.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function createBeachOfficeHut(textures: BeachOfficeTextureSet) {
   const hut = new THREE.Group();
   hut.name = BEACH_OFFICE_HUT_OBSTACLE.id;
@@ -1946,22 +1978,127 @@ function createMeshyPropShadow(
   return shadow;
 }
 
+function createInteractionProxy(clickTargetId: string, radius = 0.5) {
+  const material = new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    colorWrite: false,
+  });
+  disableOutline(material);
+  const proxy = new THREE.Mesh(
+    new THREE.SphereGeometry(radius, 10, 8),
+    material,
+  );
+  proxy.name = `${clickTargetId}-click-proxy`;
+  proxy.position.y = radius;
+  proxy.userData.clickTargetId = clickTargetId;
+  return proxy;
+}
+
+function createAgentMarker(agentName: string) {
+  const marker = new THREE.Group();
+  marker.name = `agent-marker-${agentName}`;
+  const canvas = document.createElement("canvas");
+  canvas.width = 384;
+  canvas.height = 96;
+  const context = canvas.getContext("2d");
+  if (context) {
+    context.fillStyle = "rgba(251, 241, 213, 0.96)";
+    context.strokeStyle = "#816553";
+    context.lineWidth = 8;
+    context.beginPath();
+    context.roundRect(8, 8, 368, 80, 22);
+    context.fill();
+    context.stroke();
+    context.fillStyle = "#4d4038";
+    context.font = "700 34px sans-serif";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText(agentName.slice(0, 14), 192, 49);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    alphaTest: 0.02,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  disableOutline(material);
+  const label = new THREE.Mesh(new THREE.PlaneGeometry(0.94, 0.235), material);
+  label.position.y = 1.12;
+  label.renderOrder = 30;
+  marker.add(label);
+
+  const beacon = new THREE.Group();
+  beacon.name = `blocked-beacon-${agentName}`;
+  const beaconMaterial = new THREE.MeshBasicMaterial({
+    color: 0xd86c5f,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  disableOutline(beaconMaterial);
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.12, 0.17, 28),
+    beaconMaterial,
+  );
+  const bar = new THREE.Mesh(
+    new THREE.BoxGeometry(0.045, 0.13, 0.025),
+    beaconMaterial,
+  );
+  bar.position.y = 0.04;
+  const dot = new THREE.Mesh(
+    new THREE.CircleGeometry(0.024, 16),
+    beaconMaterial,
+  );
+  dot.position.y = -0.065;
+  dot.position.z = 0.01;
+  beacon.add(ring, bar, dot);
+  beacon.position.y = 1.45;
+  beacon.visible = false;
+  beacon.renderOrder = 31;
+  marker.add(beacon);
+  return { marker, label, beacon, texture };
+}
+
 export default function AgentWorld3D({
-  agentName,
-  location,
-  status,
-  statusLabel,
+  seats,
+  companionConnected,
+  completionSignal,
+  onSeatClick,
+  onRadioClick,
 }: AgentWorld3DProps) {
   const hostRef = useRef<HTMLDivElement>(null);
-  const motionRef = useRef({ location, status });
+  const primarySeat = seats[0] ?? DEFAULT_SEAT_VIEW;
+  const motionRef = useRef({
+    location: primarySeat.location,
+    status: primarySeat.status,
+  });
+  const seatsRef = useRef(seats);
+  const connectionRef = useRef(companionConnected);
+  const completionSignalRef = useRef(completionSignal);
+  const onSeatClickRef = useRef(onSeatClick);
+  const onRadioClickRef = useRef(onRadioClick);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [failed, setFailed] = useState(false);
   const [ready, setReady] = useState(false);
   const [ambientLabel, setAmbientLabel] = useState("주변을 구경하는 중");
 
   useEffect(() => {
-    motionRef.current = { location, status };
-  }, [location, status]);
+    const currentPrimary = seats[0] ?? DEFAULT_SEAT_VIEW;
+    motionRef.current = {
+      location: currentPrimary.location,
+      status: currentPrimary.status,
+    };
+    seatsRef.current = seats;
+    connectionRef.current = companionConnected;
+    completionSignalRef.current = completionSignal;
+    onSeatClickRef.current = onSeatClick;
+    onRadioClickRef.current = onRadioClick;
+  }, [companionConnected, completionSignal, onRadioClick, onSeatClick, seats]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -2003,6 +2140,8 @@ export default function AgentWorld3D({
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(FAR_OCEAN_STYLE_COLOR);
     scene.fog = new THREE.Fog(FAR_OCEAN_STYLE_COLOR, 15, 27);
+    const clickableObjects: THREE.Object3D[] = [];
+    const billboardObjects: THREE.Object3D[] = [];
 
     const camera = new THREE.OrthographicCamera(-5, 5, 6, -6, 0.1, 50);
     const cameraBase = new THREE.Vector3(0, 9.2, 12.9);
@@ -2468,7 +2607,115 @@ float shoreOverlayWaterSignal( vec3 color ) {
     const characterVisual = new THREE.Group();
     characterRoot.add(characterVisual);
     characterRoot.position.copy(WORLD_TARGETS.general);
+    const primarySeatId =
+      seatsRef.current[0]?.seatId === "queue"
+        ? "seat-1"
+        : (seatsRef.current[0]?.seatId ?? "seat-1");
+    const primaryClickProxy = createInteractionProxy(
+      `cat-${primarySeatId}`,
+      0.52,
+    );
+    const primaryMarker = createAgentMarker(
+      seatsRef.current[0]?.agentName ?? "코치 모모",
+    );
+    characterRoot.add(primaryClickProxy, primaryMarker.marker);
+    clickableObjects.push(primaryClickProxy);
+    billboardObjects.push(primaryMarker.label, primaryMarker.beacon);
     scene.add(characterRoot);
+
+    const radioClickProxy = createInteractionProxy("radio", 0.42);
+    radioClickProxy.position
+      .copy(FOLDING_LAPTOP_STATION_POSITION)
+      .add(new THREE.Vector3(0.55, 0.54, 0.05));
+    scene.add(radioClickProxy);
+    clickableObjects.push(radioClickProxy);
+
+    const radioLampMaterial = new THREE.MeshBasicMaterial({
+      color: 0x8a8377,
+      toneMapped: false,
+      depthWrite: false,
+    });
+    disableOutline(radioLampMaterial);
+    const radioLamp = new THREE.Mesh(
+      new THREE.CircleGeometry(0.045, 24),
+      radioLampMaterial,
+    );
+    radioLamp.name = "camping-radio-connection-lamp";
+    radioLamp.position
+      .copy(FOLDING_LAPTOP_STATION_POSITION)
+      .add(new THREE.Vector3(0.55, 0.83, 0.17));
+    radioLamp.rotation.x = -0.75;
+    radioLamp.renderOrder = 20;
+    scene.add(radioLamp);
+
+    const completionParticleCount = 12;
+    const completionParticleGeometry = new THREE.DodecahedronGeometry(0.055, 0);
+    const completionParticleMaterial = new THREE.MeshBasicMaterial({
+      color: 0xf2b968,
+      transparent: true,
+      opacity: 0.92,
+      toneMapped: false,
+      depthWrite: false,
+    });
+    disableOutline(completionParticleMaterial);
+    const completionParticles = new THREE.InstancedMesh(
+      completionParticleGeometry,
+      completionParticleMaterial,
+      completionParticleCount,
+    );
+    completionParticles.name = "completion-spectacle-particles";
+    completionParticles.visible = false;
+    completionParticles.renderOrder = 25;
+    scene.add(completionParticles);
+    const completionParticleDummy = new THREE.Object3D();
+    const completionParticleVelocities = Array.from(
+      { length: completionParticleCount },
+      (_, index) =>
+        new THREE.Vector3(
+          Math.cos((index / completionParticleCount) * Math.PI * 2) *
+            (0.55 + (index % 3) * 0.17),
+          0.72 + (index % 4) * 0.11,
+          Math.sin((index / completionParticleCount) * Math.PI * 2) *
+            (0.55 + ((index + 1) % 3) * 0.14),
+        ),
+    );
+    let lastCompletionSignal = completionSignalRef.current;
+    let completionElapsed = 2;
+
+    const playCompletionChime = () => {
+      try {
+        const AudioContextConstructor =
+          window.AudioContext ??
+          (
+            window as typeof window & {
+              webkitAudioContext?: typeof AudioContext;
+            }
+          ).webkitAudioContext;
+        if (!AudioContextConstructor) return;
+        const audio = new AudioContextConstructor();
+        const startedAt = audio.currentTime;
+        [523.25, 783.99].forEach((frequency, index) => {
+          const oscillator = audio.createOscillator();
+          const gain = audio.createGain();
+          oscillator.frequency.value = frequency;
+          gain.gain.setValueAtTime(0.0001, startedAt + index * 0.08);
+          gain.gain.exponentialRampToValueAtTime(
+            0.07,
+            startedAt + index * 0.08 + 0.02,
+          );
+          gain.gain.exponentialRampToValueAtTime(
+            0.0001,
+            startedAt + index * 0.08 + 0.2,
+          );
+          oscillator.connect(gain).connect(audio.destination);
+          oscillator.start(startedAt + index * 0.08);
+          oscillator.stop(startedAt + index * 0.08 + 0.21);
+        });
+        window.setTimeout(() => void audio.close(), 450);
+      } catch {
+        // Browsers may block autoplay; the visual sequence remains intact.
+      }
+    };
 
     const blobShadowMaterial = new THREE.MeshBasicMaterial({
       color: 0x786b55,
@@ -2489,6 +2736,17 @@ float shoreOverlayWaterSignal( vec3 color ) {
     const animationActions = new Map<string, THREE.AnimationAction>();
     let currentAction: THREE.AnimationAction | null = null;
     let characterModel: THREE.Object3D | null = null;
+    let loadedAnimationClips: THREE.AnimationClip[] = [];
+    type SecondaryAgent = {
+      root: THREE.Group;
+      model: THREE.Object3D;
+      mixer: THREE.AnimationMixer;
+      actions: Map<string, THREE.AnimationAction>;
+      currentKey: string;
+      marker: ReturnType<typeof createAgentMarker>;
+      clickProxy: THREE.Object3D | null;
+    };
+    const secondaryAgents = new Map<string, SecondaryAgent>();
     let characterYaw = DEFAULT_CHARACTER_YAW;
     let ambientPhase:
       | "resting"
@@ -2525,6 +2783,113 @@ float shoreOverlayWaterSignal( vec3 color ) {
       currentAction = nextAction;
     };
 
+    const removeClickable = (object: THREE.Object3D | null) => {
+      if (!object) return;
+      const index = clickableObjects.indexOf(object);
+      if (index >= 0) clickableObjects.splice(index, 1);
+    };
+
+    const createSecondaryAgent = (seat: SeatView) => {
+      if (!characterModel || loadedAnimationClips.length === 0) return null;
+      const root = new THREE.Group();
+      root.name = `secondary-agent-${seat.seatId}`;
+      const model = cloneSkeleton(characterModel);
+      root.add(model);
+      const shadow = new THREE.Mesh(
+        new THREE.CircleGeometry(0.18, 32),
+        blobShadowMaterial.clone(),
+      );
+      shadow.rotation.x = -Math.PI / 2;
+      shadow.position.y = 0.012;
+      root.add(shadow);
+      const marker = createAgentMarker(seat.agentName);
+      marker.beacon.visible = seat.blocked;
+      root.add(marker.marker);
+      billboardObjects.push(marker.label, marker.beacon);
+      let clickProxy: THREE.Object3D | null = null;
+      if (seat.seatId !== "queue") {
+        clickProxy = createInteractionProxy(`cat-${seat.seatId}`, 0.52);
+        root.add(clickProxy);
+        clickableObjects.push(clickProxy);
+      }
+      const mixer = new THREE.AnimationMixer(model);
+      const actions = new Map<string, THREE.AnimationAction>();
+      const clipEntries = [
+        ["walk", "|Walk_F"],
+        ["idle", "|Idle_1"],
+        ["sit", "|Sitting_Idle"],
+        ["work", DESK_KNEADING_ANIMATION_SUFFIX],
+      ] as const;
+      for (const [key, suffix] of clipEntries) {
+        const clip = loadedAnimationClips.find((candidate) =>
+          candidate.name.endsWith(suffix),
+        );
+        if (!clip) continue;
+        const action = mixer.clipAction(clip);
+        action.setLoop(THREE.LoopRepeat, Infinity);
+        action.timeScale = key === "walk" ? 0.62 : 0.82;
+        actions.set(key, action);
+      }
+      const initial = actions.get("idle") ?? actions.values().next().value;
+      initial?.play();
+      const entry: SecondaryAgent = {
+        root,
+        model,
+        mixer,
+        actions,
+        currentKey: initial ? "idle" : "",
+        marker,
+        clickProxy,
+      };
+      scene.add(root);
+      secondaryAgents.set(String(seat.seatId), entry);
+      return entry;
+    };
+
+    const syncSecondaryAgents = (delta: number) => {
+      const desiredSeats = seatsRef.current.slice(1, 5);
+      const desiredKeys = new Set(desiredSeats.map((seat) => String(seat.seatId)));
+      for (const [key, entry] of secondaryAgents) {
+        if (desiredKeys.has(key)) continue;
+        removeClickable(entry.clickProxy);
+        entry.root.removeFromParent();
+        secondaryAgents.delete(key);
+      }
+      desiredSeats.forEach((seat, index) => {
+        const key = String(seat.seatId);
+        const entry = secondaryAgents.get(key) ?? createSecondaryAgent(seat);
+        if (!entry) return;
+        const target =
+          seat.seatId === "queue"
+            ? WORLD_TARGETS.queue
+                .clone()
+                .add(new THREE.Vector3(index * 0.52, 0, index * 0.18))
+            : SEAT_WORLD_POSITIONS[seat.seatId];
+        entry.root.position.copy(target);
+        entry.marker.beacon.visible = seat.blocked;
+        const nextKey = seat.blocked
+          ? "sit"
+          : ["moving", "queued", "briefing", "reporting"].includes(seat.status)
+            ? "walk"
+            : seat.status === "working"
+              ? "work"
+              : "idle";
+        if (nextKey !== entry.currentKey) {
+          const previous = entry.actions.get(entry.currentKey);
+          const next =
+            entry.actions.get(nextKey) ??
+            entry.actions.get("idle") ??
+            entry.actions.values().next().value;
+          previous?.fadeOut(0.3);
+          next?.reset().fadeIn(0.3).play();
+          entry.currentKey = nextKey;
+        }
+        entry.model.rotation.y =
+          nextKey === "walk" ? DEFAULT_CHARACTER_YAW + index * 0.2 : 0.25;
+        entry.mixer.update(delta);
+      });
+    };
+
     const updateAssetProgress = () => {
       if (disposed) return;
       const combinedProgress = (modelProgress + animationsProgress) / 2;
@@ -2554,6 +2919,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       .then(([model, animationSource]) => {
         if (disposed) return;
 
+        loadedAnimationClips = animationSource.animations;
         model.rotation.y = characterYaw;
         characterModel = model;
         model.traverse((object) => {
@@ -2705,6 +3071,10 @@ float shoreOverlayWaterSignal( vec3 color ) {
     let dragStartPitch = worldPitchTarget;
     let pinchStartDistance = 0;
     let pinchStartZoom = worldZoomTarget;
+    const clickStart = new THREE.Vector2();
+    const raycaster = new THREE.Raycaster();
+    const pointerNdc = new THREE.Vector2();
+    let clickStartedAt = 0;
 
     const beginWorldDrag = (
       pointerId: number,
@@ -2735,6 +3105,10 @@ float shoreOverlayWaterSignal( vec3 color ) {
       event.preventDefault();
       const position = new THREE.Vector2(event.clientX, event.clientY);
       activePointers.set(event.pointerId, position);
+      if (activePointers.size === 1) {
+        clickStart.copy(position);
+        clickStartedAt = performance.now();
+      }
       renderer.domElement.style.cursor = "grabbing";
       renderer.domElement.setPointerCapture(event.pointerId);
 
@@ -2790,6 +3164,15 @@ float shoreOverlayWaterSignal( vec3 color ) {
       if (!activePointers.has(event.pointerId)) return;
 
       event.preventDefault();
+      const pointerCountBeforeRelease = activePointers.size;
+      const clickDistance = clickStart.distanceTo(
+        new THREE.Vector2(event.clientX, event.clientY),
+      );
+      const clickThreshold = event.pointerType === "touch" ? 10 : 6;
+      const shouldClick =
+        pointerCountBeforeRelease === 1 &&
+        clickDistance < clickThreshold &&
+        performance.now() - clickStartedAt < 280;
       activePointers.delete(event.pointerId);
       if (renderer.domElement.hasPointerCapture(event.pointerId)) {
         renderer.domElement.releasePointerCapture(event.pointerId);
@@ -2804,6 +3187,25 @@ float shoreOverlayWaterSignal( vec3 color ) {
         dragPointerId = null;
         pinchStartDistance = 0;
         renderer.domElement.style.cursor = "grab";
+      }
+
+      if (shouldClick) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        pointerNdc.set(
+          ((event.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1,
+          -((event.clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1,
+        );
+        raycaster.setFromCamera(pointerNdc, camera);
+        const hit = raycaster.intersectObjects(clickableObjects, true)[0];
+        let target: THREE.Object3D | null = hit?.object ?? null;
+        while (target && !target.userData.clickTargetId) target = target.parent;
+        const targetId = String(target?.userData.clickTargetId ?? "");
+        if (targetId === "radio") {
+          onRadioClickRef.current?.();
+        } else if (targetId.startsWith("cat-seat-")) {
+          const seatId = targetId.slice(4) as SeatId;
+          onSeatClickRef.current?.(seatId);
+        }
       }
     };
 
@@ -2832,6 +3234,54 @@ float shoreOverlayWaterSignal( vec3 color ) {
 
     renderer.setAnimationLoop(() => {
       const delta = Math.min(clock.getDelta(), 0.05);
+      const primaryView = seatsRef.current[0] ?? DEFAULT_SEAT_VIEW;
+      const isPrimaryBlocked = primaryView.blocked;
+      primaryMarker.beacon.visible = isPrimaryBlocked;
+      syncSecondaryAgents(delta);
+      const connectionState = connectionRef.current;
+      radioLampMaterial.color.setHex(
+        connectionState === "connected"
+          ? 0x8fd18a
+          : connectionState === "pairing"
+            ? 0xeeb04a
+            : 0x8a8377,
+      );
+      const lampPulse =
+        connectionState === "pairing"
+          ? 0.84 + Math.sin(clock.elapsedTime * 4) * 0.16
+          : 1;
+      radioLamp.scale.setScalar(lampPulse);
+
+      if (completionSignalRef.current !== lastCompletionSignal) {
+        lastCompletionSignal = completionSignalRef.current;
+        completionElapsed = 0;
+        completionParticles.visible = true;
+        worldZoomTarget = WORLD_ZOOM_MAX;
+        playCompletionChime();
+      }
+      if (completionElapsed <= 1.2) {
+        completionElapsed += delta;
+        const particleTime = Math.min(completionElapsed, 0.85);
+        completionParticleVelocities.forEach((velocity, index) => {
+          completionParticleDummy.position
+            .copy(characterRoot.position)
+            .addScaledVector(velocity, particleTime);
+          completionParticleDummy.position.y +=
+            0.48 - 0.7 * particleTime * particleTime;
+          const particleScale = Math.max(0, 1 - particleTime / 0.9);
+          completionParticleDummy.scale.setScalar(particleScale);
+          completionParticleDummy.rotation.z =
+            particleTime * (2.4 + index * 0.08);
+          completionParticleDummy.updateMatrix();
+          completionParticles.setMatrixAt(
+            index,
+            completionParticleDummy.matrix,
+          );
+        });
+        completionParticles.instanceMatrix.needsUpdate = true;
+        if (completionElapsed >= 0.85) worldZoomTarget = 1;
+        if (completionElapsed >= 1.2) completionParticles.visible = false;
+      }
       palmLeafSwayTime += delta;
       oceanTideTime += delta;
       oceanTideUniform.value = oceanTideTime;
@@ -2885,7 +3335,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
       }
       wasAutonomous = isAutonomous;
 
-      if (isAutonomous) {
+      if (isPrimaryBlocked) {
+        desiredPosition.copy(currentPosition);
+        isMoving = false;
+        playAnimation("sit", 0.2);
+      } else if (isAutonomous) {
         movementSpeed = AMBIENT_MOVE_SPEED;
 
         if (ambientPhase === "resting") {
@@ -3258,6 +3712,14 @@ float shoreOverlayWaterSignal( vec3 color ) {
       camera.zoom = worldZoomCurrent;
       camera.updateProjectionMatrix();
       camera.lookAt(cameraLookAt);
+      billboardObjects.forEach((object) => {
+        object.quaternion.copy(camera.quaternion);
+      });
+      const beaconPulse = 1 + Math.sin(clock.elapsedTime * 5.5) * 0.08;
+      primaryMarker.beacon.scale.setScalar(beaconPulse);
+      secondaryAgents.forEach((entry) => {
+        entry.marker.beacon.scale.setScalar(beaconPulse);
+      });
       outlineEffect.render(scene, camera);
     });
 
@@ -3301,7 +3763,10 @@ float shoreOverlayWaterSignal( vec3 color ) {
       <div
         ref={hostRef}
         className="world-3d-host"
-        aria-label={`${agentName}가 있는 2.5D 해변 사무실`}
+        aria-label={`${primarySeat.agentName} 외 ${Math.max(
+          0,
+          seats.length - 1,
+        )}마리 고양이가 있는 2.5D 해변 사무실`}
       />
 
       {failed && (
@@ -3324,11 +3789,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
       )}
 
       <div className="world-3d-location" aria-live="polite">
-        <span>{LOCATION_LABELS[location]}</span>
+        <span>{LOCATION_LABELS[primarySeat.location]}</span>
         <strong>
-          {AUTONOMOUS_STATUSES.has(status) && ready
+          {AUTONOMOUS_STATUSES.has(primarySeat.status) && ready
             ? ambientLabel
-            : statusLabel}
+            : primarySeat.statusLabel}
         </strong>
       </div>
     </>
