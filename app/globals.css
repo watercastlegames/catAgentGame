@@ -2269,13 +2269,13 @@ button {
   }
 }
 
-/* Four-key illustrated macro pad, contained inside the 3D world canvas. */
+/* Four-key macro pad: a canvas child that stays visible at the viewport bottom. */
 .keycap-menu {
-  position: absolute;
-  bottom: 10px;
+  position: fixed;
+  bottom: max(6px, env(safe-area-inset-bottom));
   left: 50%;
-  z-index: 12;
-  width: min(560px, calc(100% - 16px));
+  z-index: 45;
+  width: min(560px, calc(100vw - 18px));
   aspect-ratio: 2.805 / 1;
   overflow: hidden;
   filter: drop-shadow(0 16px 18px rgba(74, 56, 43, 0.22));
@@ -2431,8 +2431,8 @@ button {
 
 @media (max-width: 820px) {
   .keycap-menu {
-    bottom: 4px;
-    width: min(500px, calc(100% - 8px));
+    bottom: max(4px, env(safe-area-inset-bottom));
+    width: min(500px, calc(100vw - 8px));
   }
 
   .demo-shells {
@@ -2440,8 +2440,8 @@ button {
   }
 
   .radio-panel {
-    bottom: 8px;
-    max-height: 82svh;
+    bottom: calc(clamp(134px, 36vw, 174px) + env(safe-area-inset-bottom));
+    max-height: calc(100svh - clamp(148px, 39vw, 188px));
   }
 }
 

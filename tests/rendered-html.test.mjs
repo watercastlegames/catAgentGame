@@ -76,6 +76,7 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /keycap-menu-layer-normal/);
   assert.match(page, /keycap-menu-layer-pressed-/);
   assert.match(page, /world-stage[\s\S]*keycap-menu/);
+  assert.doesNotMatch(page, /keycap-menu-pressed-\$\{pressedRadioIndex\} hud-fade/);
   assert.doesNotMatch(page, /className="radio-dials"/);
   assert.match(page, /비용 없는 화면 시연/);
   assert.match(page, /고양이 에이전트에게 업무 맡기기/);
@@ -201,7 +202,8 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(css, /\.keycap-menu-pressed-1 \.keycap-menu-layer-pressed-1/);
   assert.match(css, /\.keycap-menu-button\.selected::after[\s\S]*box-shadow:\s*none/);
   assert.doesNotMatch(css, /--keycap-art/);
-  assert.match(css, /\.keycap-menu\s*\{[\s\S]*position:\s*absolute/);
+  assert.match(css, /\.keycap-menu\s*\{[\s\S]*position:\s*fixed/);
+  assert.match(css, /env\(safe-area-inset-bottom\)/);
   assert.doesNotMatch(css, /translateY\(7px\)/);
   assert.match(world3d, /"prewalking"/);
   assert.match(world3d, /AMBIENT_MOVE_SPEED = 0\.46/);

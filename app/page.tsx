@@ -1228,9 +1228,7 @@ export default function Home() {
           />
 
           <nav
-            className={`keycap-menu keycap-menu-pressed-${pressedRadioIndex} hud-fade ${
-              hudDormant && !radioOpen ? "is-dormant" : ""
-            }`}
+            className={`keycap-menu keycap-menu-pressed-${pressedRadioIndex}`}
             aria-label="하단 메뉴"
           >
             <div className="keycap-menu-art" aria-hidden="true">
