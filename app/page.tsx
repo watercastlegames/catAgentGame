@@ -1233,7 +1233,15 @@ export default function Home() {
             }`}
             aria-label="하단 메뉴"
           >
-            <div className="keycap-menu-art" aria-hidden="true" />
+            <div className="keycap-menu-art" aria-hidden="true">
+              <span className="keycap-menu-layer keycap-menu-layer-normal" />
+              {RADIO_MENU.map(({ key }, index) => (
+                <span
+                  key={`pressed-${key}`}
+                  className={`keycap-menu-layer keycap-menu-layer-pressed-${index + 1}`}
+                />
+              ))}
+            </div>
             {RADIO_MENU.map(({ key, ariaLabel }, index) => (
               <button
                 type="button"

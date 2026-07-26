@@ -2271,7 +2271,6 @@ button {
 
 /* Four-key illustrated macro pad, contained inside the 3D world canvas. */
 .keycap-menu {
-  --keycap-art: url("/art/menu-keycaps-base-v4.png");
   position: absolute;
   bottom: 10px;
   left: 50%;
@@ -2284,39 +2283,55 @@ button {
   isolation: isolate;
 }
 
-.keycap-menu-pressed-1 {
-  --keycap-art: url("/art/menu-keycaps-pressed-1-v1.png");
-}
-
-.keycap-menu-pressed-2 {
-  --keycap-art: url("/art/menu-keycaps-pressed-2-v1.png");
-}
-
-.keycap-menu-pressed-3 {
-  --keycap-art: url("/art/menu-keycaps-pressed-3-v1.png");
-}
-
-.keycap-menu-pressed-4 {
-  --keycap-art: url("/art/menu-keycaps-pressed-4-v1.png");
-}
-
 .keycap-menu-art {
   position: absolute;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
-  transition: filter 70ms ease;
 }
 
-.keycap-menu-art::before {
+.keycap-menu-layer {
   position: absolute;
   top: 0;
   left: -7.5%;
   width: 115.5%;
   aspect-ratio: 1.5 / 1;
-  background: var(--keycap-art) center / 100% 100% no-repeat;
-  content: "";
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  opacity: 0;
   transform: translateY(-25.6%);
+  pointer-events: none;
+}
+
+.keycap-menu-layer-normal {
+  z-index: 0;
+  background-image: url("/art/menu-keycaps-base-v4.png");
+  opacity: 1;
+}
+
+.keycap-menu-layer-pressed-1 {
+  background-image: url("/art/menu-keycaps-pressed-1-v1.png");
+}
+
+.keycap-menu-layer-pressed-2 {
+  background-image: url("/art/menu-keycaps-pressed-2-v1.png");
+}
+
+.keycap-menu-layer-pressed-3 {
+  background-image: url("/art/menu-keycaps-pressed-3-v1.png");
+}
+
+.keycap-menu-layer-pressed-4 {
+  background-image: url("/art/menu-keycaps-pressed-4-v1.png");
+}
+
+.keycap-menu-pressed-1 .keycap-menu-layer-pressed-1,
+.keycap-menu-pressed-2 .keycap-menu-layer-pressed-2,
+.keycap-menu-pressed-3 .keycap-menu-layer-pressed-3,
+.keycap-menu-pressed-4 .keycap-menu-layer-pressed-4 {
+  z-index: 1;
+  opacity: 1;
 }
 
 .keycap-menu-button {
@@ -2345,18 +2360,16 @@ button {
 
 .keycap-menu-button::after {
   z-index: 1;
-  border: 2px solid transparent;
+  border: 0;
   box-shadow: inset 0 0 0 rgba(81, 55, 39, 0);
   transition:
-    border-color 120ms ease,
     box-shadow 70ms ease,
     background 70ms ease;
 }
 
 .keycap-menu-button:hover::after,
 .keycap-menu-button:focus-visible::after {
-  border-color: rgba(255, 250, 221, 0.8);
-  box-shadow: inset 0 0 16px rgba(255, 245, 205, 0.24);
+  box-shadow: none;
 }
 
 .keycap-menu-button:focus-visible {
@@ -2365,19 +2378,12 @@ button {
 }
 
 .keycap-menu-button.selected::after {
-  border-color: rgba(255, 250, 220, 0.72);
-  box-shadow:
-    inset 0 0 0 2px rgba(104, 77, 55, 0.12),
-    inset 0 0 18px rgba(255, 244, 199, 0.2);
-}
-
-.keycap-menu:has(.keycap-menu-button.is-pressed) .keycap-menu-art {
-  filter: brightness(0.98) saturate(1.02);
+  background: transparent;
+  box-shadow: none;
 }
 
 .keycap-menu-button.is-pressed::after,
 .keycap-menu-button:active::after {
-  border-color: rgba(86, 59, 40, 0.16);
   background: rgba(82, 54, 36, 0.025);
   box-shadow:
     inset 0 8px 13px rgba(80, 53, 35, 0.1),
@@ -2433,7 +2439,6 @@ button {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .keycap-menu-art,
   .keycap-menu-button::after {
     transition: none;
   }
