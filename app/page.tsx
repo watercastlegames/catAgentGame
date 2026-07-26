@@ -174,6 +174,17 @@ const DEMO_EXAMPLES = [
     department: "general" as Department,
   },
 ];
+const RADIO_MENU: Array<{ key: RadioPage; ariaLabel: string }> = [
+  { key: "mission", ariaLabel: "작업 맡기기" },
+  { key: "sessions", ariaLabel: "PC 연결" },
+  { key: "status", ariaLabel: "진행 상태" },
+  { key: "activity", ariaLabel: "활동 기록" },
+];
+const KEYCAP_CLICK_SOUNDS = [
+  "/audio/keycap-click-1.mp3",
+  "/audio/keycap-click-2.mp3",
+  "/audio/keycap-click-3.mp3",
+];
 
 function normalizeUsage(usage?: Usage | null) {
   if (!usage) return null;
@@ -268,6 +279,9 @@ export default function Home() {
   const [acorns, setAcorns] = useState(0);
   const [decorChoice, setDecorChoice] = useState("coral");
   const [selectedSeat, setSelectedSeat] = useState<SeatId | null>(null);
+  const [pressedRadioKey, setPressedRadioKey] = useState<RadioPage | null>(
+    null,
+  );
 
   const relayEventCursor = useRef(0);
   const taskToThreadRef = useRef(new Map<string, string>());
@@ -281,6 +295,9 @@ export default function Home() {
   const hudTimerRef = useRef<number | null>(null);
   const demoStartedRef = useRef(false);
   const completedTaskIdsRef = useRef(new Set<string>());
+  const keycapAudioPoolRef = useRef<HTMLAudioElement[]>([]);
+  const keycapAudioIndexRef = useRef(0);
+  const keycapPressTimerRef = useRef<number | null>(null);
 
   const approvalEvent = approvalQueue[0] ?? null;
   const latestEvents = useMemo(() => events.slice(0, 10), [events]);
@@ -704,8 +721,22 @@ export default function Home() {
   }, [companionToken, runFreeDemo]);
 
   useEffect(() => {
+    keycapAudioPoolRef.current = KEYCAP_CLICK_SOUNDS.map((source) => {
+      const audio = new Audio(source);
+      audio.preload = "auto";
+      audio.volume = 0.58;
+      audio.load();
+      return audio;
+    });
     return () => {
       demoTimersRef.current.forEach((timer) => window.clearTimeout(timer));
+      if (keycapPressTimerRef.current) {
+        window.clearTimeout(keycapPressTimerRef.current);
+      }
+      keycapAudioPoolRef.current.forEach((audio) => {
+        audio.pause();
+        audio.removeAttribute("src");
+      });
       audioContextRef.current?.close().catch(() => undefined);
     };
   }, []);
@@ -1097,6 +1128,29 @@ export default function Home() {
     window.localStorage.setItem(DECOR_KEY, value);
   }
 
+  function activateRadioMenu(page: RadioPage) {
+    const audioPool = keycapAudioPoolRef.current;
+    const sound = audioPool[keycapAudioIndexRef.current % audioPool.length];
+    keycapAudioIndexRef.current += 1;
+    if (sound) {
+      sound.currentTime = 0;
+      void sound.play().catch(() => undefined);
+    }
+
+    if (keycapPressTimerRef.current) {
+      window.clearTimeout(keycapPressTimerRef.current);
+    }
+    setPressedRadioKey(page);
+    keycapPressTimerRef.current = window.setTimeout(() => {
+      setPressedRadioKey(null);
+      keycapPressTimerRef.current = null;
+    }, 130);
+
+    setRadioPage(page);
+    setRadioOpen(true);
+    resetHudTimer();
+  }
+
   return (
     <main
       className={`app-shell decor-${decorChoice} ${
@@ -1199,6 +1253,32 @@ export default function Home() {
         </div>
       </section>
 
+      <nav
+        className={`keycap-menu hud-fade ${
+          hudDormant && !radioOpen ? "is-dormant" : ""
+        }`}
+        aria-label="하단 메뉴"
+      >
+        <div className="keycap-menu-art" aria-hidden="true" />
+        {RADIO_MENU.map(({ key, ariaLabel }, index) => (
+          <button
+            type="button"
+            key={key}
+            aria-label={ariaLabel}
+            aria-current={radioPage === key ? "page" : undefined}
+            className={[
+              "keycap-menu-button",
+              `keycap-menu-button-${index + 1}`,
+              radioPage === key ? "selected" : "",
+              pressedRadioKey === key ? "is-pressed" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            onClick={() => activateRadioMenu(key)}
+          />
+        ))}
+      </nav>
+
       {radioOpen && (
         <aside className="control-panel radio-panel" aria-label="캠핑 라디오">
           <div className="radio-hardware">
@@ -1213,27 +1293,6 @@ export default function Home() {
               닫기
             </button>
           </div>
-          <nav className="radio-dials" aria-label="라디오 채널">
-            {(
-              [
-                ["mission", "F1", "업무"],
-                ["sessions", "F2", "연결"],
-                ["status", "F3", "상태"],
-                ["activity", "F4", "기록"],
-              ] as Array<[RadioPage, string, string]>
-            ).map(([key, channel, label]) => (
-              <button
-                type="button"
-                key={key}
-                className={radioPage === key ? "selected" : ""}
-                onClick={() => setRadioPage(key)}
-              >
-                <small>{channel}</small>
-                {label}
-              </button>
-            ))}
-          </nav>
-
           <div className="radio-screen">
             {radioPage === "mission" && (
               <section className="panel-section task-composer">

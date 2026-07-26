@@ -68,6 +68,11 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /SEAT_ASSIGNMENTS_KEY/);
   assert.match(page, /runFreeDemo/);
   assert.match(page, /hudDormant/);
+  assert.match(page, /KEYCAP_CLICK_SOUNDS/);
+  assert.match(page, /keycapAudioPoolRef/);
+  assert.match(page, /activateRadioMenu/);
+  assert.match(page, /keycap-menu-button/);
+  assert.doesNotMatch(page, /className="radio-dials"/);
   assert.match(page, /비용 없는 화면 시연/);
   assert.match(page, /고양이 에이전트에게 업무 맡기기/);
   assert.match(page, /내 PC 세션 연결/);
@@ -179,6 +184,9 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /AUTONOMOUS_STATUSES/);
   assert.match(world3d, /ambientPhase/);
   assert.match(world3d, /"settling"/);
+  assert.match(css, /menu-keycaps-base-v4\.png/);
+  assert.match(css, /\.keycap-menu-button\.is-pressed::before/);
+  assert.match(css, /translateY\(7px\)/);
   assert.match(world3d, /"prewalking"/);
   assert.match(world3d, /AMBIENT_MOVE_SPEED = 0\.46/);
   assert.match(world3d, /TASK_MOVE_SPEED = 1\.35/);
@@ -451,6 +459,13 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
         import.meta.url,
       ),
     ),
+    access(
+      new URL("../public/art/menu-keycaps-base-v4.png", import.meta.url),
+    ),
+    access(new URL("../public/audio/keycap-click-1.mp3", import.meta.url)),
+    access(new URL("../public/audio/keycap-click-2.mp3", import.meta.url)),
+    access(new URL("../public/audio/keycap-click-3.mp3", import.meta.url)),
+    access(new URL("../public/audio/ATTRIBUTION.txt", import.meta.url)),
     access(new URL("../public/concept-approval.jpg", import.meta.url)),
     access(new URL("../bridge/server.mjs", import.meta.url)),
   ]);
