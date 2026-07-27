@@ -148,6 +148,38 @@ const SEAT_WORLD_POSITIONS: Record<SeatId, THREE.Vector3> = {
   "seat-4": new THREE.Vector3(2.18, 0, 1.18),
 };
 
+// 이름표와 차단 비콘은 씬의 어떤 오브젝트·외곽선보다 위에 그린다.
+// OutlineEffect 는 본편을 그린 뒤 autoClear:false 로 외곽선을 한 번 더 덧그린다.
+// 즉 외곽선은 이름표가 이미 그려진 화면 위에 나중에 칠해지므로, 같은 패스 안의
+// renderOrder·depthTest 를 아무리 올려도 외곽선이 이름표를 갉아먹는다.
+// 그래서 마커만 전용 레이어로 빼서, 외곽선 패스가 끝난 뒤 깊이를 비우고 따로 그린다.
+const WORLD_LAYER = 0;
+const MARKER_OVERLAY_LAYER = 1;
+const MARKER_LABEL_RENDER_ORDER = 240;
+const MARKER_BEACON_RENDER_ORDER = 241;
+
+// 작업 중일 때 마커가 옮겨갈 자리 — 좌석 대기 지점 기준의 로컬 오프셋.
+// z 값은 각 좌석의 워크스테이션이 대기 지점보다 얼마나 뒤(-Z)에 있는지에서 나온다.
+//   seat-1 텐트          (-2.05,-3.65) - (-2.05,-2.48) = -1.17
+//   seat-2 로우 모니터    ( 2.12, 3.42) - ( 2.12, 4.12) = -0.70   ← 꾹꾹이 데스크
+//   seat-3 원형 랩탑      (-2.20,-0.42) - (-2.20, 0.78) = -1.20
+//   seat-4 폴딩 랩탑      ( 2.18,-0.18) - ( 2.18, 1.18) = -1.36
+// y 값은 라벨(로컬 1.12)이 모니터 상단(로우 모니터 기준 약 1.03)을 넘도록 잡은 여유값이다.
+const MARKER_DESK_LIFT_Y = 0.12;
+const SEAT_DESK_MARKER_OFFSETS: Record<SeatId, THREE.Vector3> = {
+  "seat-1": new THREE.Vector3(0, MARKER_DESK_LIFT_Y, -1.17),
+  "seat-2": new THREE.Vector3(0, MARKER_DESK_LIFT_Y, -0.7),
+  "seat-3": new THREE.Vector3(0, MARKER_DESK_LIFT_Y, -1.2),
+  "seat-4": new THREE.Vector3(0, MARKER_DESK_LIFT_Y, -1.36),
+};
+const MARKER_HEAD_OFFSET = new THREE.Vector3(0, 0, 0);
+const MARKER_MOVE_EASE = 7.5;
+
+function markerAnchorFor(seatId: SeatId | "queue", working: boolean) {
+  if (!working || seatId === "queue") return MARKER_HEAD_OFFSET;
+  return SEAT_DESK_MARKER_OFFSETS[seatId] ?? MARKER_HEAD_OFFSET;
+}
+
 type AmbientAnimation = {
   key: string;
   suffix: string;
@@ -2024,19 +2056,21 @@ function createAgentMarker(agentName: string) {
     map: texture,
     transparent: true,
     alphaTest: 0.02,
+    depthTest: false,
     depthWrite: false,
     toneMapped: false,
   });
   disableOutline(material);
   const label = new THREE.Mesh(new THREE.PlaneGeometry(0.94, 0.235), material);
   label.position.y = 1.12;
-  label.renderOrder = 30;
+  label.renderOrder = MARKER_LABEL_RENDER_ORDER;
   marker.add(label);
 
   const beacon = new THREE.Group();
   beacon.name = `blocked-beacon-${agentName}`;
   const beaconMaterial = new THREE.MeshBasicMaterial({
     color: 0xd86c5f,
+    depthTest: false,
     depthWrite: false,
     toneMapped: false,
   });
@@ -2059,8 +2093,16 @@ function createAgentMarker(agentName: string) {
   beacon.add(ring, bar, dot);
   beacon.position.y = 1.45;
   beacon.visible = false;
-  beacon.renderOrder = 31;
+  beacon.renderOrder = MARKER_BEACON_RENDER_ORDER;
+  ring.renderOrder = MARKER_BEACON_RENDER_ORDER;
+  bar.renderOrder = MARKER_BEACON_RENDER_ORDER;
+  dot.renderOrder = MARKER_BEACON_RENDER_ORDER;
   marker.add(beacon);
+  // 마커 전체를 오버레이 레이어로 옮긴다 — 본편·외곽선 패스에서는 아예 빠지고
+  // 외곽선이 다 칠해진 뒤의 마지막 패스에서만 그려진다.
+  marker.traverse((object) => {
+    object.layers.set(MARKER_OVERLAY_LAYER);
+  });
   return { marker, label, beacon, texture };
 }
 
@@ -2867,6 +2909,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
             : SEAT_WORLD_POSITIONS[seat.seatId];
         entry.root.position.copy(target);
         entry.marker.beacon.visible = seat.blocked;
+        // 책상에서 일하는 동안에는 머리 위가 아니라 모니터 위쪽에 뜬다.
+        entry.marker.marker.position.lerp(
+          markerAnchorFor(seat.seatId, seat.status === "working"),
+          1 - Math.exp(-delta * MARKER_MOVE_EASE),
+        );
         const nextKey = seat.blocked
           ? "sit"
           : ["moving", "queued", "briefing", "reporting"].includes(seat.status)
@@ -3237,6 +3284,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const primaryView = seatsRef.current[0] ?? DEFAULT_SEAT_VIEW;
       const isPrimaryBlocked = primaryView.blocked;
       primaryMarker.beacon.visible = isPrimaryBlocked;
+      // 주인공도 동일 규칙 — 작업 중이면 마커가 책상 모니터 위로 옮겨간다.
+      primaryMarker.marker.position.lerp(
+        markerAnchorFor(primarySeatId, primaryView.status === "working"),
+        1 - Math.exp(-delta * MARKER_MOVE_EASE),
+      );
       syncSecondaryAgents(delta);
       const connectionState = connectionRef.current;
       radioLampMaterial.color.setHex(
@@ -3720,7 +3772,20 @@ float shoreOverlayWaterSignal( vec3 color ) {
       secondaryAgents.forEach((entry) => {
         entry.marker.beacon.scale.setScalar(beaconPulse);
       });
+      camera.layers.set(WORLD_LAYER);
       outlineEffect.render(scene, camera);
+      // 마커 오버레이 패스 — 외곽선까지 끝난 화면 위에 깊이를 비우고 이름표·비콘만 그린다.
+      // 배경을 null 로 두지 않으면 두 번째 render 가 화면 전체를 다시 지운다.
+      const previousBackground = scene.background;
+      const previousAutoClear = renderer.autoClear;
+      camera.layers.set(MARKER_OVERLAY_LAYER);
+      scene.background = null;
+      renderer.autoClear = false;
+      renderer.clearDepth();
+      renderer.render(scene, camera);
+      scene.background = previousBackground;
+      renderer.autoClear = previousAutoClear;
+      camera.layers.set(WORLD_LAYER);
     });
 
     return () => {

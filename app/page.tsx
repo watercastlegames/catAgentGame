@@ -19,6 +19,7 @@ import {
   removeApproval,
   resolveRuntimeKey,
 } from "./runtime-state.mjs";
+import { type CatCue, type WorldAudio, createWorldAudio } from "./world-audio";
 
 type Department = "general" | "coding" | "design" | "music";
 type AgentStatus =
@@ -185,6 +186,16 @@ const KEYCAP_CLICK_SOUNDS = [
   "/audio/keycap-click-2.mp3",
 ];
 const SHOW_LEGACY_OVERLAYS = false;
+const AUDIO_ENABLED_KEY = "agent-forest-audio-v1";
+// 상태가 바뀌는 순간에만 고양이가 운다. 없는 상태는 조용히 넘어간다.
+//  업무 접수·분석 → 짧은 인사, 보고·완료 → 기본 야옹, 승인 대기 → 조르는 울음.
+const CAT_CUE_BY_STATUS: Partial<Record<AgentStatus, CatCue>> = {
+  queued: "greet",
+  briefing: "greet",
+  reporting: "report",
+  completed: "report",
+  waiting_approval: "demand",
+};
 
 function normalizeUsage(usage?: Usage | null) {
   if (!usage) return null;
@@ -282,6 +293,7 @@ export default function Home() {
   const [pressedRadioKey, setPressedRadioKey] = useState<RadioPage | null>(
     null,
   );
+  const [audioEnabled, setAudioEnabled] = useState(true);
 
   const relayEventCursor = useRef(0);
   const taskToThreadRef = useRef(new Map<string, string>());
@@ -291,7 +303,10 @@ export default function Home() {
   );
   const demoTimersRef = useRef<number[]>([]);
   const alreadyAlertedRef = useRef(new Set<string>());
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const worldAudioRef = useRef<WorldAudio | null>(null);
+  const audioPreferenceHydratedRef = useRef(false);
+  const catCueStatusRef = useRef(new Map<string, AgentStatus>());
+  const catCuePrimedRef = useRef(false);
   const hudTimerRef = useRef<number | null>(null);
   const demoStartedRef = useRef(false);
   const completedTaskIdsRef = useRef(new Set<string>());
@@ -379,7 +394,7 @@ export default function Home() {
   }, []);
 
   const playBlockedChime = useCallback(() => {
-    const context = audioContextRef.current;
+    const context = worldAudioRef.current?.getContext() ?? null;
     if (!context || context.state !== "running") return;
     const now = context.currentTime;
     [660, 495].forEach((frequency, index) => {
@@ -696,23 +711,84 @@ export default function Home() {
 
   useEffect(() => {
     queueMicrotask(resetHudTimer);
+    // 자동재생 정책상 첫 제스처 전에는 어떤 소리도 나지 않는다.
     const unlockAudio = () => {
-      if (!audioContextRef.current && "AudioContext" in window) {
-        audioContextRef.current = new AudioContext();
-      }
-      void audioContextRef.current?.resume();
+      worldAudioRef.current?.unlock();
     };
     const events = ["pointermove", "pointerdown", "keydown", "wheel", "touchstart"];
     events.forEach((name) => {
       window.addEventListener(name, resetHudTimer, { passive: true });
     });
-    window.addEventListener("pointerdown", unlockAudio, { passive: true });
+    const unlockEvents = ["pointerdown", "keydown", "touchstart"];
+    unlockEvents.forEach((name) => {
+      window.addEventListener(name, unlockAudio, { passive: true });
+    });
     return () => {
       if (hudTimerRef.current) window.clearTimeout(hudTimerRef.current);
       events.forEach((name) => window.removeEventListener(name, resetHudTimer));
-      window.removeEventListener("pointerdown", unlockAudio);
+      unlockEvents.forEach((name) =>
+        window.removeEventListener(name, unlockAudio),
+      );
     };
   }, [resetHudTimer]);
+
+  useEffect(() => {
+    const audio = createWorldAudio();
+    worldAudioRef.current = audio;
+    const startsEnabled =
+      window.localStorage.getItem(AUDIO_ENABLED_KEY) !== "off";
+    if (!startsEnabled) {
+      audio.setEnabled(false);
+      queueMicrotask(() => setAudioEnabled(false));
+    }
+    const handleVisibility = () => {
+      audio.setSuspended(document.visibilityState !== "visible");
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      worldAudioRef.current = null;
+      audio.dispose();
+    };
+  }, []);
+
+  useEffect(() => {
+    // 첫 effect는 저장값 복원이 끝나기 전이므로 기본값 "on"으로 덮어쓰지 않는다.
+    if (!audioPreferenceHydratedRef.current) {
+      audioPreferenceHydratedRef.current = true;
+      return;
+    }
+    worldAudioRef.current?.setEnabled(audioEnabled);
+    window.localStorage.setItem(
+      AUDIO_ENABLED_KEY,
+      audioEnabled ? "on" : "off",
+    );
+  }, [audioEnabled]);
+
+  // 키보드 루프는 "작업 중" 고양이 수를 따라가고, 고양이 울음은 상태 전이에서만 난다.
+  useEffect(() => {
+    const audio = worldAudioRef.current;
+    if (!audio) return;
+    const previous = catCueStatusRef.current;
+    const seen = new Set<string>();
+    let typingCount = 0;
+    for (const runtime of runtimeList) {
+      seen.add(runtime.threadId);
+      if (runtime.status === "working") typingCount += 1;
+      const before = previous.get(runtime.threadId);
+      if (before === runtime.status) continue;
+      previous.set(runtime.threadId, runtime.status);
+      if (!catCuePrimedRef.current) continue;
+      const cue = CAT_CUE_BY_STATUS[runtime.status];
+      if (cue) audio.playCat(cue);
+    }
+    for (const threadId of previous.keys()) {
+      if (!seen.has(threadId)) previous.delete(threadId);
+    }
+    audio.setTypingCount(typingCount);
+    // 첫 렌더에서 복원된 상태까지 울어대지 않도록 한 박자 늦게 연다.
+    catCuePrimedRef.current = true;
+  }, [runtimeList]);
 
   useEffect(() => {
     if (demoStartedRef.current || companionToken) return;
@@ -741,7 +817,6 @@ export default function Home() {
         audio.pause();
         audio.removeAttribute("src");
       });
-      audioContextRef.current?.close().catch(() => undefined);
     };
   }, []);
 
@@ -1224,12 +1299,39 @@ export default function Home() {
             }
             completionSignal={completionSignal}
             onSeatClick={(seatId) => {
+              // 쓰다듬는 반응 — 짧게 인사하고 잠깐 골골거린다.
+              worldAudioRef.current?.playCat("greet");
+              worldAudioRef.current?.playCat("purr");
               setSelectedSeat(seatId);
               setRadioPage("status");
               setRadioOpen(true);
             }}
             onRadioClick={() => setRadioOpen(true)}
           />
+
+          <button
+            type="button"
+            className={`sound-toggle hud-fade ${hudDormant ? "is-dormant" : ""}`}
+            aria-pressed={audioEnabled}
+            aria-label={audioEnabled ? "소리 끄기" : "소리 켜기"}
+            title={audioEnabled ? "소리 끄기" : "소리 켜기"}
+            onClick={() => {
+              worldAudioRef.current?.unlock();
+              setAudioEnabled((current) => !current);
+            }}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M4 9.5h3.2L12 5.4v13.2L7.2 14.5H4z" />
+              {audioEnabled ? (
+                <>
+                  <path className="wave" d="M15.4 9.1a4.1 4.1 0 0 1 0 5.8" />
+                  <path className="wave" d="M17.9 6.6a7.6 7.6 0 0 1 0 10.8" />
+                </>
+              ) : (
+                <path className="wave" d="M16 9.4l5.2 5.2M21.2 9.4L16 14.6" />
+              )}
+            </svg>
+          </button>
 
           <nav
             className={`keycap-menu keycap-menu-pressed-${pressedRadioIndex}`}
@@ -1652,6 +1754,7 @@ export default function Home() {
                   </button>
                 )}
                 <div className="legal-links">
+                  <a href="/cats">고양이 스타일 전체 보기</a>
                   <a href="/legal#terms">이용약관</a>
                   <a href="/legal#privacy">개인정보처리방침</a>
                   <a href="/legal#license">라이선스</a>

@@ -43,14 +43,41 @@ test("server-renders the Agent Forest integration UI", async () => {
 });
 
 test("ships local bridge hooks, responsive styles, and 2.5D assets", async () => {
-  const [page, world3d, navigation, css, layout, packageJson] = await Promise.all([
-    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/agent-world-3d.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/navigation.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
-    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../package.json", import.meta.url), "utf8"),
-  ]);
+  const [page, world3d, navigation, css, layout, packageJson, worldAudio] =
+    await Promise.all([
+      readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/agent-world-3d.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../app/navigation.mjs", import.meta.url), "utf8"),
+      readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+      readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+      readFile(new URL("../package.json", import.meta.url), "utf8"),
+      readFile(new URL("../app/world-audio.ts", import.meta.url), "utf8"),
+    ]);
+
+  // 해변 앰비언스 3종 + 타건 루프 + 고양이 4종 + 배경음악, 하악질은 제외.
+  assert.match(worldAudio, /AMB_Beach_LowKey_Gull_Loop_01\.mp3/);
+  assert.match(worldAudio, /AMB_Beach_LowKey_Gull_Loop_02\.mp3/);
+  assert.match(worldAudio, /AMB_Island_Deserted_Loop_01\.mp3/);
+  assert.match(worldAudio, /KBD_Thock_Type_Loop_01\.mp3/);
+  assert.match(worldAudio, /CAT_Meow_Short_Greet_01\.mp3/);
+  assert.match(worldAudio, /CAT_Meow_Normal_01\.mp3/);
+  assert.match(worldAudio, /CAT_Meow_Demand_01\.mp3/);
+  assert.match(worldAudio, /CAT_Purr_Loop_01\.mp3/);
+  assert.match(worldAudio, /TY_Dusk_alt01\.mp3/);
+  assert.doesNotMatch(worldAudio, /CAT_Hiss_Angry_01\.mp3/);
+  assert.doesNotMatch(page, /CAT_Hiss_Angry_01/);
+  assert.match(worldAudio, /source\.loop = true/);
+  assert.match(worldAudio, /decodeAudioData/);
+  assert.match(worldAudio, /backgroundStarted/);
+  assert.match(page, /createWorldAudio/);
+  assert.match(page, /CAT_CUE_BY_STATUS/);
+  assert.match(page, /setTypingCount/);
+  assert.match(page, /playCat\("greet"\)/);
+  assert.match(page, /playCat\("purr"\)/);
+  assert.match(page, /AUDIO_ENABLED_KEY/);
+  assert.match(page, /audioPreferenceHydratedRef/);
+  assert.match(page, /className={`sound-toggle hud-fade/);
+  assert.match(css, /\.sound-toggle \{/);
 
   assert.match(page, /new EventSource/);
   assert.match(page, /127\.0\.0\.1:4317/);
@@ -306,6 +333,14 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   );
   assert.match(world3d, /CHARACTER_HEIGHT = 0\.86/);
   assert.match(world3d, /outlineEffect\.render/);
+  // 이름표·비콘은 외곽선 패스가 끝난 뒤 별도 오버레이 패스에서만 그려져야 한다.
+  assert.match(world3d, /MARKER_OVERLAY_LAYER = 1/);
+  assert.match(world3d, /object\.layers\.set\(MARKER_OVERLAY_LAYER\)/);
+  assert.match(
+    world3d,
+    /outlineEffect\.render\(scene, camera\);[\s\S]{0,600}camera\.layers\.set\(MARKER_OVERLAY_LAYER\);[\s\S]{0,200}renderer\.clearDepth\(\);[\s\S]{0,120}renderer\.render\(scene, camera\)/,
+  );
+  assert.match(world3d, /scene\.background = null;/);
   assert.match(world3d, /playAnimation/);
   assert.doesNotMatch(
     world3d,
@@ -497,6 +532,34 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     access(new URL("../public/audio/keycap-click-1.mp3", import.meta.url)),
     access(new URL("../public/audio/keycap-click-2.mp3", import.meta.url)),
     access(new URL("../public/audio/ATTRIBUTION.txt", import.meta.url)),
+    access(
+      new URL(
+        "../public/audio/AMB_Beach_LowKey_Gull_Loop_01.mp3",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/audio/AMB_Beach_LowKey_Gull_Loop_02.mp3",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/audio/AMB_Island_Deserted_Loop_01.mp3",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL("../public/audio/KBD_Thock_Type_Loop_01.mp3", import.meta.url),
+    ),
+    access(new URL("../public/audio/CAT_Meow_Normal_01.mp3", import.meta.url)),
+    access(
+      new URL("../public/audio/CAT_Meow_Short_Greet_01.mp3", import.meta.url),
+    ),
+    access(new URL("../public/audio/CAT_Meow_Demand_01.mp3", import.meta.url)),
+    access(new URL("../public/audio/CAT_Purr_Loop_01.mp3", import.meta.url)),
+    access(new URL("../public/audio/TY_Dusk_alt01.mp3", import.meta.url)),
     access(new URL("../public/concept-approval.jpg", import.meta.url)),
     access(new URL("../bridge/server.mjs", import.meta.url)),
   ]);

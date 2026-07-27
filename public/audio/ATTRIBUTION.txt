@@ -5,3 +5,24 @@ https://freesound.org/s/789629
 
 "Keychron k10 space_bar" by Sadiquecat (CC0)
 https://freesound.org/s/789630
+
+
+World audio (2026-07-27 추가) — SonFootballerTycoon 저장소에서 그대로 가져옴
+검수 문서: D:\UnityProjects\testSimulation\SonFootballerTycoon\Docs\ElevenLabs_키보드_바닷가_고양이_검수_20260727.html
+
+ElevenLabs eleven_text_to_sound_v2 (prompt_influence 0.75) 생성분
+  출처 D:\UnityProjects\testSimulation\SonFootballerTycoon\Docs\ElevenLabsSfx_Beach_20260727\
+    AMB_Beach_LowKey_Gull_Loop_01.mp3
+    AMB_Beach_LowKey_Gull_Loop_02.mp3
+    AMB_Island_Deserted_Loop_01.mp3
+  출처 D:\UnityProjects\testSimulation\SonFootballerTycoon\Docs\ElevenLabsSfx_20260727\
+    KBD_Thock_Type_Loop_01.mp3
+    CAT_Meow_Short_Greet_01.mp3
+    CAT_Meow_Normal_01.mp3
+    CAT_Meow_Demand_01.mp3
+    CAT_Purr_Loop_01.mp3
+  CAT_Hiss_Angry_01.mp3 은 사용하지 않기로 해서 가져오지 않음.
+
+Suno 생성 배경음악
+  출처 D:\UnityProjects\testSimulation\SonFootballerTycoon\Assets\09.Sounds\SunoCandidates_20260720\
+    TY_Dusk_alt01.mp3
