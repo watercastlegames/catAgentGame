@@ -140,15 +140,15 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /MeshoptDecoder/);
   assert.match(world3d, /Lowpoly_Cat_Blue\.fbx/);
   assert.match(world3d, /Lowpoly_Cat_Animations_IP\.fbx/);
-  assert.match(world3d, /tent-workstation-meshy6-web-v3\.glb/);
-  assert.match(world3d, /round-laptop-workstation-meshy6-web-v3\.glb/);
+  assert.match(world3d, /tent-workstation-flat-source-v4\.glb/);
+  assert.match(world3d, /round-laptop-workstation-flat-source-v4\.glb/);
   assert.match(
     world3d,
-    /folding-laptop-radio-workstation-meshy6-web-v3\.glb/,
+    /folding-laptop-radio-workstation-flat-source-v4\.glb/,
   );
   assert.match(
     world3d,
-    /low-monitor-cat-keycap-workstation-meshy6-web-v3\.glb/,
+    /low-monitor-cat-keycap-workstation-flat-source-v4\.glb/,
   );
   assert.match(world3d, /palm-tree-meshy6-web-v1\.glb/);
   assert.match(world3d, /camping-supplies-cluster-meshy6-web-v1\.glb/);
@@ -170,8 +170,9 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /desk-keycap-2-top-flat-v1\.png/);
   assert.match(world3d, /desk-keycap-3-top-flat-v1\.png/);
   assert.match(world3d, /desk-keycap-4-top-flat-v1\.png/);
-  assert.match(world3d, /workstations-flat-v2/);
-  assert.match(world3d, /createWorkstationKeyboardCleanup/);
+  assert.match(world3d, /camping-style-locked-v4/);
+  assert.match(world3d, /flat-source-v4\.glb/);
+  assert.doesNotMatch(world3d, /createWorkstationKeyboardCleanup/);
   assert.match(world3d, /LOW_MONITOR_STATION_ROTATION_Y = -0\.06/);
   assert.match(
     world3d,
@@ -458,25 +459,31 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     ),
     access(
       new URL(
-        "../public/art/workstations-flat-v2/tent-workstation-flat-v2.png",
+        "../public/models/camping-style-locked-v4/tent-workstation-flat-source-v4.glb",
         import.meta.url,
       ),
     ),
     access(
       new URL(
-        "../public/art/workstations-flat-v2/round-laptop-workstation-flat-v2.png",
+        "../public/models/camping-style-locked-v4/round-laptop-workstation-flat-source-v4.glb",
         import.meta.url,
       ),
     ),
     access(
       new URL(
-        "../public/art/workstations-flat-v2/folding-laptop-radio-workstation-flat-v2.png",
+        "../public/models/camping-style-locked-v4/folding-laptop-radio-workstation-flat-source-v4.glb",
         import.meta.url,
       ),
     ),
     access(
       new URL(
-        "../public/art/workstations-flat-v2/low-monitor-cat-keycap-workstation-flat-v2.png",
+        "../public/models/camping-style-locked-v4/low-monitor-cat-keycap-workstation-flat-source-v4.glb",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-locked-v4/source-rebuild-manifest.json",
         import.meta.url,
       ),
     ),

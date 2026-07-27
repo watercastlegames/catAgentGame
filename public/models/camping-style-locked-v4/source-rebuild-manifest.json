@@ -1,0 +1,40 @@
+{
+  "version": 4,
+  "mode": "source-glb-rebuild",
+  "runtimeCoverMeshes": false,
+  "paletteColors": 10,
+  "models": [
+    {
+      "source": "tent-workstation-meshy6-web-v3.glb",
+      "output": "tent-workstation-flat-source-v4.glb",
+      "embeddedTexture": true,
+      "unlitMaterial": true,
+      "primitiveCount": 3,
+      "removedKeyboardTriangles": 250
+    },
+    {
+      "source": "round-laptop-workstation-meshy6-web-v3.glb",
+      "output": "round-laptop-workstation-flat-source-v4.glb",
+      "embeddedTexture": true,
+      "unlitMaterial": true,
+      "primitiveCount": 3,
+      "removedKeyboardTriangles": 684
+    },
+    {
+      "source": "folding-laptop-radio-workstation-meshy6-web-v3.glb",
+      "output": "folding-laptop-radio-workstation-flat-source-v4.glb",
+      "embeddedTexture": true,
+      "unlitMaterial": true,
+      "primitiveCount": 3,
+      "removedKeyboardTriangles": 1739
+    },
+    {
+      "source": "low-monitor-cat-keycap-workstation-meshy6-web-v3.glb",
+      "output": "low-monitor-cat-keycap-workstation-flat-source-v4.glb",
+      "embeddedTexture": true,
+      "unlitMaterial": true,
+      "primitiveCount": 1,
+      "removedKeyboardTriangles": 0
+    }
+  ]
+}
