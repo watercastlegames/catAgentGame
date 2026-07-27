@@ -119,13 +119,13 @@ const CAT_ANIMATIONS_URL =
 const PALM_TREE_MODEL_URL =
   "/models/palm-tree-meshy6-web-v1.glb";
 const TENT_WORKSTATION_MODEL_URL =
-  "/models/camping-style-locked-v4/tent-workstation-flat-source-v4.glb?rev=5";
+  "/models/camping-style-locked-v4/tent-workstation-flat-source-v4.glb?rev=6";
 const ROUND_LAPTOP_STATION_MODEL_URL =
-  "/models/camping-style-locked-v4/round-laptop-workstation-flat-source-v4.glb?rev=5";
+  "/models/camping-style-locked-v4/round-laptop-workstation-flat-source-v4.glb?rev=6";
 const FOLDING_LAPTOP_STATION_MODEL_URL =
-  "/models/camping-style-locked-v4/folding-laptop-radio-workstation-flat-source-v4.glb?rev=5";
+  "/models/camping-style-locked-v4/folding-laptop-radio-workstation-flat-source-v4.glb?rev=6";
 const LOW_MONITOR_STATION_MODEL_URL =
-  "/models/camping-style-locked-v4/low-monitor-cat-keycap-workstation-flat-source-v4.glb?rev=5";
+  "/models/camping-style-locked-v4/low-monitor-cat-keycap-workstation-flat-source-v4.glb?rev=6";
 const CAMPING_SUPPLIES_MODEL_URL =
   "/models/camping-style-locked-v1/camping-supplies-cluster-meshy6-web-v1.glb";
 const CAMPING_LANTERN_MODEL_URL =
@@ -3154,6 +3154,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
     const clock = new THREE.Clock();
     let palmLeafSwayTime = 0;
     let oceanTideTime = 0;
+    let outlineGapVisibility = 1;
 
     const updateSize = () => {
       const width = Math.max(host.clientWidth, 1);
@@ -3826,6 +3827,18 @@ float shoreOverlayWaterSignal( vec3 color ) {
       camera.zoom = worldZoomCurrent;
       camera.updateProjectionMatrix();
       camera.lookAt(cameraLookAt);
+      const worldViewIsMoving =
+        activePointers.size > 0 ||
+        Math.abs(worldYawTarget - worldYawCurrent) > 0.0005 ||
+        Math.abs(worldPitchTarget - worldPitchCurrent) > 0.0005 ||
+        Math.abs(worldZoomTarget - worldZoomCurrent) > 0.0005;
+      outlineGapVisibility = THREE.MathUtils.damp(
+        outlineGapVisibility,
+        worldViewIsMoving ? 0 : 1,
+        worldViewIsMoving ? 24 : 4,
+        delta,
+      );
+      outlineEffect.setGapStrength(outlineGapVisibility);
       billboardObjects.forEach((object) => {
         object.quaternion.copy(camera.quaternion);
       });

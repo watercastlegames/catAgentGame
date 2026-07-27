@@ -329,7 +329,11 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /specularIntensity = 0\.12/);
   assert.match(world3d, /SketchOutlineEffect/);
   assert.match(sketchOutline, /paperGap/);
-  assert.match(sketchOutline, /if \(paperGap > 0\.79\) discard/);
+  assert.match(sketchOutline, /outlineGapStrength/);
+  assert.match(sketchOutline, /gapThreshold = mix\(1\.05, 0\.79/);
+  assert.match(sketchOutline, /setGapStrength/);
+  assert.match(world3d, /worldViewIsMoving/);
+  assert.match(world3d, /outlineEffect\.setGapStrength/);
   assert.match(world3d, /SkeletonUtils/);
   assert.match(world3d, /SeatView/);
   assert.match(world3d, /SEAT_WORLD_POSITIONS/);

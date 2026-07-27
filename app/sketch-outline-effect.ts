@@ -60,6 +60,7 @@ const outlineFragmentShader = `
 
   uniform vec3 outlineColor;
   uniform float outlineAlpha;
+  uniform float outlineGapStrength;
 
   void main() {
     #include <clipping_planes_fragment>
@@ -69,7 +70,8 @@ const outlineFragmentShader = `
     float crossWave = sin(gl_FragCoord.x * -0.047 + gl_FragCoord.y * 0.137);
     float fineWave = sin((gl_FragCoord.x + gl_FragCoord.y) * 0.213);
     float paperGap = slowWave * 0.52 + crossWave * 0.33 + fineWave * 0.15;
-    if (paperGap > 0.79) discard;
+    float gapThreshold = mix(1.05, 0.79, outlineGapStrength);
+    if (paperGap > gapThreshold) discard;
 
     gl_FragColor = vec4(outlineColor, outlineAlpha);
     #include <tonemapping_fragment>
@@ -88,6 +90,7 @@ function firstMaterial(object: THREE.Mesh) {
 export class SketchOutlineEffect {
   enabled = true;
   autoClear = true;
+  private gapStrength = 1;
 
   private readonly outlineMaterial: THREE.ShaderMaterial;
 
@@ -106,6 +109,7 @@ export class SketchOutlineEffect {
             value: new THREE.Color().fromArray(options.defaultColor),
           },
           outlineAlpha: { value: options.defaultAlpha },
+          outlineGapStrength: { value: this.gapStrength },
         },
       ]),
       vertexShader: outlineVertexShader,
@@ -115,6 +119,12 @@ export class SketchOutlineEffect {
       fog: true,
       toneMapped: true,
     });
+  }
+
+  setGapStrength(value: number) {
+    this.gapStrength = THREE.MathUtils.clamp(value, 0, 1);
+    this.outlineMaterial.uniforms.outlineGapStrength.value =
+      this.gapStrength;
   }
 
   render(scene: THREE.Scene, camera: THREE.Camera) {

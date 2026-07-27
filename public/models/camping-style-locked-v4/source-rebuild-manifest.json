@@ -2,7 +2,7 @@
   "version": 4,
   "mode": "source-glb-rebuild",
   "runtimeCoverMeshes": false,
-  "paletteColors": 10,
+  "paletteColors": 9,
   "models": [
     {
       "source": "tent-workstation-meshy6-web-v3.glb",
