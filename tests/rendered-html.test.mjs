@@ -203,7 +203,8 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(css, /\.keycap-menu\s*\{[\s\S]*position:\s*absolute/);
   assert.match(css, /width:\s*min\(448px,\s*calc\(80% - 14px\)\)/);
   assert.match(css, /width:\s*min\(400px,\s*calc\(80% - 6px\)\)/);
-  assert.match(css, /min-height:\s*calc\(100svh - 16px\)/);
+  assert.match(css, /height:\s*100dvh/);
+  assert.match(css, /\.world-stage\s*\{[\s\S]*height:\s*100%[\s\S]*min-height:\s*0/);
   assert.match(css, /env\(safe-area-inset-bottom\)/);
   assert.doesNotMatch(css, /translateY\(7px\)/);
   assert.match(world3d, /"prewalking"/);
