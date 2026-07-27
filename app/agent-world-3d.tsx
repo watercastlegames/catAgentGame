@@ -2,13 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { OutlineEffect } from "three/addons/effects/OutlineEffect.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 import { findAvoidancePath2D } from "./navigation.mjs";
+import { SketchOutlineEffect } from "./sketch-outline-effect";
 
 export type AgentWorldLocation =
   | "entrance"
@@ -91,9 +91,9 @@ const LOCATION_LABELS: Record<AgentWorldLocation, string> = {
   office: "Personal Office",
 };
 
-const ILLUSTRATION_OUTLINE_COLOR = new THREE.Color(0x6f5040);
-const ILLUSTRATION_OUTLINE_THICKNESS = 0.005;
-const ILLUSTRATION_OUTLINE_ALPHA = 0.8;
+const ILLUSTRATION_OUTLINE_COLOR = new THREE.Color(0x735b4f);
+const ILLUSTRATION_OUTLINE_THICKNESS = 0.0038;
+const ILLUSTRATION_OUTLINE_ALPHA = 0.72;
 const FAR_OCEAN_STYLE_COLOR = 0x77cbbd;
 const CHARACTER_HEIGHT = 0.86;
 const DEFAULT_CHARACTER_YAW = 0.6;
@@ -135,10 +135,10 @@ const TROPICAL_FOLIAGE_MODEL_URL =
 const SHORELINE_DECOR_MODEL_URL =
   "/models/camping-style-locked-v1/shoreline-rock-starfish-shell-cluster-meshy6-web-v1.glb";
 const DESK_KEYCAP_TEXTURE_URLS = [
-  "/art/desk-keycap-1-top-v1.png",
-  "/art/desk-keycap-2-top-v1.png",
-  "/art/desk-keycap-3-top-v1.png",
-  "/art/desk-keycap-4-top-v1.png",
+  "/art/desk-keycap-1-top-flat-v1.png",
+  "/art/desk-keycap-2-top-flat-v1.png",
+  "/art/desk-keycap-3-top-flat-v1.png",
+  "/art/desk-keycap-4-top-flat-v1.png",
 ];
 const AUTONOMOUS_STATUSES = new Set(["idle", "completed", "failed"]);
 const SEAT_WORLD_POSITIONS: Record<SeatId, THREE.Vector3> = {
@@ -332,6 +332,7 @@ type IslandPropPlacement = {
 type MeshyWorkstationPlacement = {
   id: string;
   url: string;
+  styleTextureUrl: string;
   position: THREE.Vector3;
   rotationY: number;
   height: number;
@@ -478,6 +479,8 @@ const MESHY_WORKSTATION_PLACEMENTS: MeshyWorkstationPlacement[] = [
   {
     id: TENT_WORKSTATION_OBSTACLE.id,
     url: TENT_WORKSTATION_MODEL_URL,
+    styleTextureUrl:
+      "/art/workstations-flat-v2/tent-workstation-flat-v2.png",
     position: TENT_WORKSTATION_POSITION,
     rotationY: 0.08,
     height: 1.82,
@@ -487,6 +490,8 @@ const MESHY_WORKSTATION_PLACEMENTS: MeshyWorkstationPlacement[] = [
   {
     id: ROUND_LAPTOP_STATION_OBSTACLE.id,
     url: ROUND_LAPTOP_STATION_MODEL_URL,
+    styleTextureUrl:
+      "/art/workstations-flat-v2/round-laptop-workstation-flat-v2.png",
     position: ROUND_LAPTOP_STATION_POSITION,
     rotationY: 0.08,
     height: 1.04,
@@ -496,6 +501,8 @@ const MESHY_WORKSTATION_PLACEMENTS: MeshyWorkstationPlacement[] = [
   {
     id: FOLDING_LAPTOP_STATION_OBSTACLE.id,
     url: FOLDING_LAPTOP_STATION_MODEL_URL,
+    styleTextureUrl:
+      "/art/workstations-flat-v2/folding-laptop-radio-workstation-flat-v2.png",
     position: FOLDING_LAPTOP_STATION_POSITION,
     rotationY: -0.12,
     height: 1.08,
@@ -505,6 +512,8 @@ const MESHY_WORKSTATION_PLACEMENTS: MeshyWorkstationPlacement[] = [
   {
     id: DESK_OBSTACLE.id,
     url: LOW_MONITOR_STATION_MODEL_URL,
+    styleTextureUrl:
+      "/art/workstations-flat-v2/low-monitor-cat-keycap-workstation-flat-v2.png",
     position: LOW_MONITOR_STATION_POSITION,
     rotationY: LOW_MONITOR_STATION_ROTATION_Y,
     height: 1.12,
@@ -1889,6 +1898,7 @@ function createMeshyPropTemplate(
   anisotropy: number,
   outlineThickness = ILLUSTRATION_OUTLINE_THICKNESS,
   outlineAlpha = ILLUSTRATION_OUTLINE_ALPHA,
+  styleTexture?: THREE.Texture,
 ) {
   const template = new THREE.Group();
   const visual = source.clone(true);
@@ -1900,30 +1910,49 @@ function createMeshyPropTemplate(
       ? object.material
       : [object.material];
     const styledMaterials = materials.map((sourceMaterial) => {
-      const material = sourceMaterial.clone();
-      if (
-        material instanceof THREE.MeshStandardMaterial ||
-        material instanceof THREE.MeshPhysicalMaterial
-      ) {
-        material.color.multiply(tint);
-        material.metalness = 0;
-        material.roughness = 1;
-        material.emissive.set(0x000000);
-        material.envMapIntensity = 0;
-        material.side = THREE.DoubleSide;
-        if (material.map) {
-          material.map.colorSpace = THREE.SRGBColorSpace;
-          material.map.anisotropy = anisotropy;
-        }
-      } else if (
-        material instanceof THREE.MeshBasicMaterial ||
-        material instanceof THREE.MeshToonMaterial
-      ) {
-        material.color.multiply(tint);
-        material.side = THREE.DoubleSide;
-        if (material.map) {
-          material.map.colorSpace = THREE.SRGBColorSpace;
-          material.map.anisotropy = anisotropy;
+      let material: THREE.Material;
+      if (styleTexture) {
+        const sourceColor =
+          "color" in sourceMaterial &&
+          sourceMaterial.color instanceof THREE.Color
+            ? sourceMaterial.color
+            : new THREE.Color(0xffffff);
+        material = new THREE.MeshBasicMaterial({
+          name: `${sourceMaterial.name || "workstation"}-flat-illustration`,
+          color: sourceColor.clone().multiply(tint),
+          map: styleTexture,
+          side: THREE.DoubleSide,
+          transparent: sourceMaterial.transparent,
+          opacity: sourceMaterial.opacity,
+          alphaTest: sourceMaterial.alphaTest,
+          toneMapped: false,
+        });
+      } else {
+        material = sourceMaterial.clone();
+        if (
+          material instanceof THREE.MeshStandardMaterial ||
+          material instanceof THREE.MeshPhysicalMaterial
+        ) {
+          material.color.multiply(tint);
+          material.metalness = 0;
+          material.roughness = 1;
+          material.emissive.set(0x000000);
+          material.envMapIntensity = 0;
+          material.side = THREE.DoubleSide;
+          if (material.map) {
+            material.map.colorSpace = THREE.SRGBColorSpace;
+            material.map.anisotropy = anisotropy;
+          }
+        } else if (
+          material instanceof THREE.MeshBasicMaterial ||
+          material instanceof THREE.MeshToonMaterial
+        ) {
+          material.color.multiply(tint);
+          material.side = THREE.DoubleSide;
+          if (material.map) {
+            material.map.colorSpace = THREE.SRGBColorSpace;
+            material.map.anisotropy = anisotropy;
+          }
         }
       }
       material.userData.outlineParameters = {
@@ -1953,6 +1982,81 @@ function createMeshyPropTemplate(
   );
   template.add(visual);
   return template;
+}
+
+type KeyboardCleanupSpec = {
+  position: THREE.Vector3;
+  width: number;
+  depth: number;
+  rotationY?: number;
+};
+
+const WORKSTATION_KEYBOARD_CLEANUP: Partial<
+  Record<MeshyWorkstationPlacement["id"], KeyboardCleanupSpec>
+> = {
+  [TENT_WORKSTATION_OBSTACLE.id]: {
+    position: new THREE.Vector3(-0.03, 0.825, -0.02),
+    width: 0.58,
+    depth: 0.22,
+  },
+  [ROUND_LAPTOP_STATION_OBSTACLE.id]: {
+    position: new THREE.Vector3(-0.09, 0.64, -0.01),
+    width: 0.56,
+    depth: 0.3,
+  },
+  [FOLDING_LAPTOP_STATION_OBSTACLE.id]: {
+    position: new THREE.Vector3(-0.48, 0.76, -0.02),
+    width: 0.56,
+    depth: 0.29,
+  },
+};
+
+function createWorkstationKeyboardCleanup(workstationId: string) {
+  const spec = WORKSTATION_KEYBOARD_CLEANUP[workstationId];
+  if (!spec) return null;
+
+  const group = new THREE.Group();
+  group.name = `${workstationId}-simplified-keyboard`;
+  group.position.copy(spec.position);
+  group.rotation.y = spec.rotationY ?? 0;
+
+  const keyboardMaterial = new THREE.MeshBasicMaterial({
+    color: 0xf4ead8,
+    toneMapped: false,
+  });
+  keyboardMaterial.userData.outlineParameters = {
+    thickness: ILLUSTRATION_OUTLINE_THICKNESS * 0.82,
+    color: ILLUSTRATION_OUTLINE_COLOR.toArray(),
+    alpha: ILLUSTRATION_OUTLINE_ALPHA * 0.82,
+    visible: true,
+  };
+  const keyboard = new THREE.Mesh(
+    new RoundedBoxGeometry(spec.width, 0.026, spec.depth, 3, 0.025),
+    keyboardMaterial,
+  );
+  keyboard.name = `${workstationId}-single-color-keyboard`;
+  group.add(keyboard);
+
+  const trackpadMaterial = new THREE.MeshBasicMaterial({
+    color: 0xdac9b4,
+    toneMapped: false,
+  });
+  disableOutline(trackpadMaterial);
+  const trackpad = new THREE.Mesh(
+    new RoundedBoxGeometry(
+      spec.width * 0.24,
+      0.008,
+      spec.depth * 0.28,
+      2,
+      0.012,
+    ),
+    trackpadMaterial,
+  );
+  trackpad.name = `${workstationId}-simple-trackpad`;
+  trackpad.position.set(0, 0.018, spec.depth * 0.2);
+  group.add(trackpad);
+
+  return group;
 }
 
 function smoothstep(edge0: number, edge1: number, value: number) {
@@ -2221,7 +2325,7 @@ export default function AgentWorld3D({
       "드래그: 월드 회전 · 휠/두 손가락: 확대 및 축소";
     host.appendChild(renderer.domElement);
 
-    const outlineEffect = new OutlineEffect(renderer, {
+    const outlineEffect = new SketchOutlineEffect(renderer, {
       defaultThickness: ILLUSTRATION_OUTLINE_THICKNESS,
       defaultColor: ILLUSTRATION_OUTLINE_COLOR.toArray(),
       defaultAlpha: ILLUSTRATION_OUTLINE_ALPHA,
@@ -2515,6 +2619,17 @@ float shoreOverlayWaterSignal( vec3 color ) {
       texture.anisotropy = maximumAnisotropy;
       return texture;
     });
+    const workstationFlatTextures = MESHY_WORKSTATION_PLACEMENTS.map(
+      ({ styleTextureUrl }) => {
+        const texture = textureLoader.load(styleTextureUrl);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        texture.flipY = false;
+        texture.anisotropy = maximumAnisotropy;
+        texture.minFilter = THREE.LinearMipmapLinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        return texture;
+      },
+    );
 
     const {
       interactionGroup,
@@ -2626,8 +2741,12 @@ float shoreOverlayWaterSignal( vec3 color ) {
           result.value.scene,
           new THREE.Color(0xffffff),
           maximumAnisotropy,
+          ILLUSTRATION_OUTLINE_THICKNESS,
+          ILLUSTRATION_OUTLINE_ALPHA,
+          workstationFlatTextures[index],
         );
         visual.scale.setScalar(placement.height);
+        const keyboardCleanup = createWorkstationKeyboardCleanup(placement.id);
         workstation.add(
           visual,
           createMeshyPropShadow(
@@ -2636,6 +2755,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
             0.1,
           ),
         );
+        if (keyboardCleanup) workstation.add(keyboardCleanup);
         if (placement.id === DESK_OBSTACLE.id) {
           workstation.add(interactionGroup);
         }
@@ -3880,6 +4000,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
         materials.forEach(disposeMaterial);
       });
       renderer.dispose();
+      outlineEffect.dispose();
       renderer.domElement.remove();
     };
   }, []);

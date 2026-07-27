@@ -43,8 +43,16 @@ test("server-renders the Agent Forest integration UI", async () => {
 });
 
 test("ships local bridge hooks, responsive styles, and 2.5D assets", async () => {
-  const [page, world3d, navigation, css, layout, packageJson, worldAudio] =
-    await Promise.all([
+  const [
+    page,
+    world3d,
+    navigation,
+    css,
+    layout,
+    packageJson,
+    worldAudio,
+    sketchOutline,
+  ] = await Promise.all([
       readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/agent-world-3d.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/navigation.mjs", import.meta.url), "utf8"),
@@ -52,6 +60,10 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
       readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
       readFile(new URL("../package.json", import.meta.url), "utf8"),
       readFile(new URL("../app/world-audio.ts", import.meta.url), "utf8"),
+      readFile(
+        new URL("../app/sketch-outline-effect.ts", import.meta.url),
+        "utf8",
+      ),
     ]);
 
   // 해변 앰비언스 3종 + 타건 루프 + 고양이 4종 + 배경음악, 하악질은 제외.
@@ -154,10 +166,12 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /MESHY_DECORATION_ASSETS/);
   assert.match(world3d, /createCodingStationInteractionOverlay/);
   assert.match(world3d, /low-monitor-workstation-live-code-screen/);
-  assert.match(world3d, /desk-keycap-1-top-v1\.png/);
-  assert.match(world3d, /desk-keycap-2-top-v1\.png/);
-  assert.match(world3d, /desk-keycap-3-top-v1\.png/);
-  assert.match(world3d, /desk-keycap-4-top-v1\.png/);
+  assert.match(world3d, /desk-keycap-1-top-flat-v1\.png/);
+  assert.match(world3d, /desk-keycap-2-top-flat-v1\.png/);
+  assert.match(world3d, /desk-keycap-3-top-flat-v1\.png/);
+  assert.match(world3d, /desk-keycap-4-top-flat-v1\.png/);
+  assert.match(world3d, /workstations-flat-v2/);
+  assert.match(world3d, /createWorkstationKeyboardCleanup/);
   assert.match(world3d, /LOW_MONITOR_STATION_ROTATION_Y = -0\.06/);
   assert.match(
     world3d,
@@ -312,7 +326,9 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /-coconut-/);
   assert.match(world3d, /emissive\.set\(0x000000\)/);
   assert.match(world3d, /specularIntensity = 0\.12/);
-  assert.match(world3d, /OutlineEffect/);
+  assert.match(world3d, /SketchOutlineEffect/);
+  assert.match(sketchOutline, /paperGap/);
+  assert.match(sketchOutline, /if \(paperGap > 0\.79\) discard/);
   assert.match(world3d, /SkeletonUtils/);
   assert.match(world3d, /SeatView/);
   assert.match(world3d, /SEAT_WORLD_POSITIONS/);
@@ -321,8 +337,8 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /blocked-beacon/);
   assert.match(world3d, /camping-radio-connection-lamp/);
   assert.match(world3d, /0x6f5040/);
-  assert.match(world3d, /ILLUSTRATION_OUTLINE_THICKNESS = 0\.005/);
-  assert.match(world3d, /ILLUSTRATION_OUTLINE_ALPHA = 0\.8/);
+  assert.match(world3d, /ILLUSTRATION_OUTLINE_THICKNESS = 0\.0038/);
+  assert.match(world3d, /ILLUSTRATION_OUTLINE_ALPHA = 0\.72/);
   assert.doesNotMatch(world3d, /WORKSTATION_OUTLINE_THICKNESS/);
   assert.doesNotMatch(world3d, /WORKSTATION_OUTLINE_ALPHA/);
   assert.match(world3d, /FAR_OCEAN_STYLE_COLOR = 0x77cbbd/);
@@ -413,6 +429,54 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     access(
       new URL(
         "../public/art/desk-keycap-4-top-v1.png",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/art/desk-keycap-1-top-flat-v1.png",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/art/desk-keycap-2-top-flat-v1.png",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/art/desk-keycap-3-top-flat-v1.png",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/art/desk-keycap-4-top-flat-v1.png",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/art/workstations-flat-v2/tent-workstation-flat-v2.png",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/art/workstations-flat-v2/round-laptop-workstation-flat-v2.png",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/art/workstations-flat-v2/folding-laptop-radio-workstation-flat-v2.png",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/art/workstations-flat-v2/low-monitor-cat-keycap-workstation-flat-v2.png",
         import.meta.url,
       ),
     ),
