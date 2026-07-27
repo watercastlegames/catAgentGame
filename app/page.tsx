@@ -184,6 +184,7 @@ const KEYCAP_CLICK_SOUNDS = [
   "/audio/keycap-click-1.mp3",
   "/audio/keycap-click-2.mp3",
 ];
+const SHOW_LEGACY_OVERLAYS = false;
 
 function normalizeUsage(usage?: Usage | null) {
   if (!usage) return null;
@@ -1168,7 +1169,8 @@ export default function Home() {
         hudDormant ? "hud-dormant" : ""
       }`}
     >
-      <header className={`app-header hud-fade ${hudDormant ? "is-dormant" : ""}`}>
+      {SHOW_LEGACY_OVERLAYS && (
+        <header className={`app-header hud-fade ${hudDormant ? "is-dormant" : ""}`}>
         <div className="brand">
           <span className="brand-mark" aria-hidden="true" />
           <div>
@@ -1186,10 +1188,12 @@ export default function Home() {
           <b>RADIO</b>
           <small>{approvalQueue.length ? `${approvalQueue.length} WAIT` : "F1–F4"}</small>
         </button>
-      </header>
+        </header>
+      )}
 
       <section className="world-card" aria-label="AI 에이전트 숲">
-        <div className={`world-toolbar hud-fade ${hudDormant ? "is-dormant" : ""}`}>
+        {SHOW_LEGACY_OVERLAYS && (
+          <div className={`world-toolbar hud-fade ${hudDormant ? "is-dormant" : ""}`}>
           <div>
             <span className="live-pill">
               <i />
@@ -1201,7 +1205,8 @@ export default function Home() {
             <span>{focusedRuntime ? STATUS_COPY[focusedRuntime.status] : "대기 중"}</span>
             <strong>{focusedRuntime?.agentName ?? "코치 모모"}</strong>
           </div>
-        </div>
+          </div>
+        )}
 
         <div
           className={`world-stage world-stage-3d ${
@@ -1267,28 +1272,33 @@ export default function Home() {
             ))}
           </nav>
 
-          <div
-            className={`demo-shells hud-fade ${hudDormant ? "is-dormant" : ""}`}
-            aria-label="무료 시연 예시"
-          >
-            {DEMO_EXAMPLES.map((example) => (
-              <button
-                type="button"
-                key={example.label}
-                onClick={() => runFreeDemo(example)}
-              >
-                <span aria-hidden="true" />
-                {example.label}
-              </button>
-            ))}
-          </div>
+          {SHOW_LEGACY_OVERLAYS && (
+            <div
+              className={`demo-shells hud-fade ${hudDormant ? "is-dormant" : ""}`}
+              aria-label="무료 시연 예시"
+            >
+              {DEMO_EXAMPLES.map((example) => (
+                <button
+                  type="button"
+                  key={example.label}
+                  onClick={() => runFreeDemo(example)}
+                >
+                  <span aria-hidden="true" />
+                  {example.label}
+                </button>
+              ))}
+            </div>
+          )}
 
-          <div className={`world-caption hud-fade ${hudDormant ? "is-dormant" : ""}`}>
-            <span>2.5D WebGL · AUTONOMOUS CAT MOTION ACTIVE</span>
-            <b>고양이 자율 행동 · 책상 객체 충돌 회피 · 최대 4개 세션</b>
-          </div>
+          {SHOW_LEGACY_OVERLAYS && (
+            <div className={`world-caption hud-fade ${hudDormant ? "is-dormant" : ""}`}>
+              <span>2.5D WebGL · AUTONOMOUS CAT MOTION ACTIVE</span>
+              <b>고양이 자율 행동 · 책상 객체 충돌 회피 · 최대 4개 세션</b>
+            </div>
+          )}
 
-          {focusedRuntime?.status === "completed" &&
+          {SHOW_LEGACY_OVERLAYS &&
+            focusedRuntime?.status === "completed" &&
             focusedRuntime.activeTask?.result && (
               <button
                 type="button"
@@ -1305,7 +1315,7 @@ export default function Home() {
         </div>
       </section>
 
-      {radioOpen && (
+      {SHOW_LEGACY_OVERLAYS && radioOpen && (
         <aside className="control-panel radio-panel" aria-label="캠핑 라디오">
           <div className="radio-hardware">
             <span className={`radio-lamp ${bridgeState}`} />
