@@ -158,26 +158,71 @@ const MARKER_OVERLAY_LAYER = 1;
 const MARKER_LABEL_RENDER_ORDER = 240;
 const MARKER_BEACON_RENDER_ORDER = 241;
 
-// 작업 중일 때 마커가 옮겨갈 자리 — 좌석 대기 지점 기준의 로컬 오프셋.
-// z 값은 각 좌석의 워크스테이션이 대기 지점보다 얼마나 뒤(-Z)에 있는지에서 나온다.
-//   seat-1 텐트          (-2.05,-3.65) - (-2.05,-2.48) = -1.17
-//   seat-2 로우 모니터    ( 2.12, 3.42) - ( 2.12, 4.12) = -0.70   ← 꾹꾹이 데스크
-//   seat-3 원형 랩탑      (-2.20,-0.42) - (-2.20, 0.78) = -1.20
-//   seat-4 폴딩 랩탑      ( 2.18,-0.18) - ( 2.18, 1.18) = -1.36
-// y 값은 라벨(로컬 1.12)이 모니터 상단(로우 모니터 기준 약 1.03)을 넘도록 잡은 여유값이다.
+// 타건 중 이름표는 고양이의 로컬 오프셋이 아니라 실제 모니터의 월드 좌표에 고정한다.
+// 모니터 회전과 화면 크기, 이름표 높이까지 반영해 화면 상단과 일정한 간격을 유지한다.
+const MARKER_LABEL_LOCAL_Y = 1.12;
+const MARKER_LABEL_HEIGHT = 0.235;
 const MARKER_DESK_LIFT_Y = 0.12;
-const SEAT_DESK_MARKER_OFFSETS: Record<SeatId, THREE.Vector3> = {
-  "seat-1": new THREE.Vector3(0, MARKER_DESK_LIFT_Y, -1.17),
-  "seat-2": new THREE.Vector3(0, MARKER_DESK_LIFT_Y, -0.7),
-  "seat-3": new THREE.Vector3(0, MARKER_DESK_LIFT_Y, -1.2),
-  "seat-4": new THREE.Vector3(0, MARKER_DESK_LIFT_Y, -1.36),
+const MONITOR_MARKER_GAP = 0.075;
+const LOW_MONITOR_SCREEN_WORLD_POSITION =
+  LOW_MONITOR_SCREEN_LOCAL_POSITION.clone()
+    .applyAxisAngle(
+      new THREE.Vector3(0, 1, 0),
+      LOW_MONITOR_STATION_ROTATION_Y,
+    )
+    .add(LOW_MONITOR_STATION_POSITION);
+const LOW_MONITOR_WORKING_MARKER_WORLD_POSITION =
+  LOW_MONITOR_SCREEN_WORLD_POSITION.clone();
+LOW_MONITOR_WORKING_MARKER_WORLD_POSITION.y =
+  LOW_MONITOR_SCREEN_WORLD_POSITION.y +
+  LOW_MONITOR_SCREEN_SIZE.y / 2 +
+  MONITOR_MARKER_GAP +
+  MARKER_LABEL_HEIGHT / 2 -
+  MARKER_LABEL_LOCAL_Y;
+
+const SEAT_WORKING_MARKER_WORLD_POSITIONS: Record<SeatId, THREE.Vector3> = {
+  "seat-1": new THREE.Vector3(
+    TENT_WORKSTATION_POSITION.x,
+    MARKER_DESK_LIFT_Y,
+    TENT_WORKSTATION_POSITION.z,
+  ),
+  "seat-2": LOW_MONITOR_WORKING_MARKER_WORLD_POSITION,
+  "seat-3": new THREE.Vector3(
+    ROUND_LAPTOP_STATION_POSITION.x,
+    MARKER_DESK_LIFT_Y,
+    ROUND_LAPTOP_STATION_POSITION.z,
+  ),
+  "seat-4": new THREE.Vector3(
+    FOLDING_LAPTOP_STATION_POSITION.x,
+    MARKER_DESK_LIFT_Y,
+    FOLDING_LAPTOP_STATION_POSITION.z,
+  ),
 };
-const MARKER_HEAD_OFFSET = new THREE.Vector3(0, 0, 0);
 const MARKER_MOVE_EASE = 7.5;
 
-function markerAnchorFor(seatId: SeatId | "queue", working: boolean) {
-  if (!working || seatId === "queue") return MARKER_HEAD_OFFSET;
-  return SEAT_DESK_MARKER_OFFSETS[seatId] ?? MARKER_HEAD_OFFSET;
+function markerAnchorFor(
+  root: THREE.Object3D,
+  seatId: SeatId | "queue",
+  working: boolean,
+  target: THREE.Vector3,
+) {
+  if (!working || seatId === "queue") return target.set(0, 0, 0);
+  root.updateWorldMatrix(true, false);
+  return root.worldToLocal(
+    target.copy(SEAT_WORKING_MARKER_WORLD_POSITIONS[seatId]),
+  );
+}
+
+function typingMonitorAnchorFor(
+  root: THREE.Object3D,
+  isTyping: boolean,
+  target: THREE.Vector3,
+) {
+  if (!isTyping) return target.set(0, 0, 0);
+  root.updateWorldMatrix(true, false);
+  return root.worldToLocal(
+    target.copy(LOW_MONITOR_WORKING_MARKER_WORLD_POSITION),
+  );
 }
 
 type AmbientAnimation = {
@@ -2061,8 +2106,11 @@ function createAgentMarker(agentName: string) {
     toneMapped: false,
   });
   disableOutline(material);
-  const label = new THREE.Mesh(new THREE.PlaneGeometry(0.94, 0.235), material);
-  label.position.y = 1.12;
+  const label = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.94, MARKER_LABEL_HEIGHT),
+    material,
+  );
+  label.position.y = MARKER_LABEL_LOCAL_Y;
   label.renderOrder = MARKER_LABEL_RENDER_ORDER;
   marker.add(label);
 
@@ -2660,6 +2708,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
     const primaryMarker = createAgentMarker(
       seatsRef.current[0]?.agentName ?? "코치 모모",
     );
+    const primaryMarkerAnchorTarget = new THREE.Vector3();
     characterRoot.add(primaryClickProxy, primaryMarker.marker);
     clickableObjects.push(primaryClickProxy);
     billboardObjects.push(primaryMarker.label, primaryMarker.beacon);
@@ -2786,6 +2835,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       actions: Map<string, THREE.AnimationAction>;
       currentKey: string;
       marker: ReturnType<typeof createAgentMarker>;
+      markerAnchorTarget: THREE.Vector3;
       clickProxy: THREE.Object3D | null;
     };
     const secondaryAgents = new Map<string, SecondaryAgent>();
@@ -2881,6 +2931,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
         actions,
         currentKey: initial ? "idle" : "",
         marker,
+        markerAnchorTarget: new THREE.Vector3(),
         clickProxy,
       };
       scene.add(root);
@@ -2911,7 +2962,12 @@ float shoreOverlayWaterSignal( vec3 color ) {
         entry.marker.beacon.visible = seat.blocked;
         // 책상에서 일하는 동안에는 머리 위가 아니라 모니터 위쪽에 뜬다.
         entry.marker.marker.position.lerp(
-          markerAnchorFor(seat.seatId, seat.status === "working"),
+          markerAnchorFor(
+            entry.root,
+            seat.seatId,
+            seat.status === "working",
+            entry.markerAnchorTarget,
+          ),
           1 - Math.exp(-delta * MARKER_MOVE_EASE),
         );
         const nextKey = seat.blocked
@@ -3284,11 +3340,6 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const primaryView = seatsRef.current[0] ?? DEFAULT_SEAT_VIEW;
       const isPrimaryBlocked = primaryView.blocked;
       primaryMarker.beacon.visible = isPrimaryBlocked;
-      // 주인공도 동일 규칙 — 작업 중이면 마커가 책상 모니터 위로 옮겨간다.
-      primaryMarker.marker.position.lerp(
-        markerAnchorFor(primarySeatId, primaryView.status === "working"),
-        1 - Math.exp(-delta * MARKER_MOVE_EASE),
-      );
       syncSecondaryAgents(delta);
       const connectionState = connectionRef.current;
       radioLampMaterial.color.setHex(
@@ -3735,6 +3786,16 @@ float shoreOverlayWaterSignal( vec3 color ) {
       wasKneadingLastFrame = isKneading;
       characterRoot.position.x = currentPosition.x;
       characterRoot.position.z = currentPosition.z;
+      // 실제 키캡 애니메이션이 재생되는 동안만 이름표를 모니터 위에 고정한다.
+      // 자율 꾹꾹이와 실제 작업 상태 모두 같은 타건 판정을 사용한다.
+      primaryMarker.marker.position.lerp(
+        typingMonitorAnchorFor(
+          characterRoot,
+          isKneading,
+          primaryMarkerAnchorTarget,
+        ),
+        1 - Math.exp(-delta * MARKER_MOVE_EASE),
+      );
       characterVisual.position.y = 0;
       characterVisual.rotation.z = 0;
       blobShadow.scale.setScalar(1);

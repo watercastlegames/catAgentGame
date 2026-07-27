@@ -336,6 +336,16 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   // 이름표·비콘은 외곽선 패스가 끝난 뒤 별도 오버레이 패스에서만 그려져야 한다.
   assert.match(world3d, /MARKER_OVERLAY_LAYER = 1/);
   assert.match(world3d, /object\.layers\.set\(MARKER_OVERLAY_LAYER\)/);
+  assert.match(world3d, /LOW_MONITOR_WORKING_MARKER_WORLD_POSITION/);
+  assert.match(world3d, /typingMonitorAnchorFor/);
+  assert.match(
+    world3d,
+    /typingMonitorAnchorFor\([\s\S]{0,160}characterRoot,[\s\S]{0,80}isKneading/,
+  );
+  assert.doesNotMatch(
+    world3d,
+    /markerAnchorFor\(primarySeatId,\s*primaryView\.status === "working"\)/,
+  );
   assert.match(
     world3d,
     /outlineEffect\.render\(scene, camera\);[\s\S]{0,600}camera\.layers\.set\(MARKER_OVERLAY_LAYER\);[\s\S]{0,200}renderer\.clearDepth\(\);[\s\S]{0,120}renderer\.render\(scene, camera\)/,
