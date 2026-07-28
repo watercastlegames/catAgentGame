@@ -52,6 +52,7 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     packageJson,
     worldAudio,
     sketchOutline,
+    catNeeds,
   ] =
     await Promise.all([
       readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
@@ -65,6 +66,7 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
         new URL("../app/sketch-outline-effect.ts", import.meta.url),
         "utf8",
       ),
+      readFile(new URL("../app/cat-needs.ts", import.meta.url), "utf8"),
     ]);
 
   const [catGallery, catGalleryPage, catStyles, catBody] = await Promise.all([
@@ -115,11 +117,21 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(catGalleryPage, /from "\.\.\/cat-styles"/);
   assert.match(css, /\.cat-gallery-stage \{/);
   // 월드의 고양이는 그대로 Blue 하나다.
-  // 1번 키캡이 고양이 관리 메뉴다 — 스타일·체형을 고르면 월드에 반영된다.
+  // 1번 키캡이 고양이 관리 메뉴다 — 스타일을 고르면 월드에 반영되고 체형은 slim 고정이다.
   assert.match(page, /type RadioPage = "cats"/);
   assert.match(page, /key: "cats", ariaLabel: "고양이 관리"/);
+  assert.match(page, /key: "desk", ariaLabel: "자리 꾸미기"/);
+  assert.match(page, /key: "work", ariaLabel: "PC 연결과 업무 지시"/);
+  assert.match(page, /key: "status-log", ariaLabel: "진행 상태와 활동 기록"/);
   assert.match(page, /CAT_SHAPE_PRESETS/);
+  assert.doesNotMatch(page, /aria-label="고양이 체형"/);
   assert.match(page, /CAT_LOOK_KEY/);
+  assert.match(page, /agent-forest-shell-v1/);
+  assert.match(page, /NEEDS_KEY/);
+  assert.match(catNeeds, /agent-forest-cat-needs-v1/);
+  assert.match(catNeeds, /NEEDS_OFFLINE_CAP_MS = 12 \* 60 \* 60/);
+  assert.match(page, /LEGACY_ACORN_KEY/);
+  assert.match(page, /value \+ 10/);
   assert.match(page, /고양이 추가하기/);
   assert.match(page, /catStyle=\{catStyle\}/);
   assert.match(page, /catShape=\{catShape\}/);
@@ -196,6 +208,8 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /world-stage[\s\S]*keycap-menu/);
   assert.doesNotMatch(page, /keycap-menu-pressed-\$\{pressedRadioIndex\} hud-fade/);
   assert.match(page, /const SHOW_LEGACY_OVERLAYS = false/);
+  assert.match(page, /\{radioOpen && \(/);
+  assert.doesNotMatch(page, /SHOW_LEGACY_OVERLAYS && radioOpen/);
   assert.doesNotMatch(page, /className="radio-dials"/);
   assert.match(page, /비용 없는 화면 시연/);
   assert.match(page, /이 고양이에게 업무 맡기기/);

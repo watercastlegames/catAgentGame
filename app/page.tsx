@@ -22,6 +22,16 @@ import {
 import { type CatCue, type WorldAudio, createWorldAudio } from "./world-audio";
 import { CAT_STYLES } from "./cat-styles";
 import type { CatShape } from "./cat-body";
+import {
+  NEEDS_KEY,
+  type CatNeedsStore,
+  computeCatNeedState,
+  createDefaultCatNeedState,
+  ensureCatNeedState,
+  getHappinessBand,
+  getNeedTone,
+  parseCatNeedsStore,
+} from "./cat-needs";
 
 type Department = "general" | "coding" | "design" | "music";
 type AgentStatus =
@@ -122,7 +132,9 @@ type BridgeHealth = {
   pendingApprovals?: BridgeEvent[];
 };
 type CompanionTransport = "local" | "cloud";
-type RadioPage = "cats" | "sessions" | "status" | "activity";
+type RadioPage = "cats" | "desk" | "work" | "status-log";
+type WorkTab = "connect" | "task";
+type StatusLogTab = "status" | "log";
 
 const BRIDGE_URL =
   process.env.NEXT_PUBLIC_AGENT_BRIDGE_URL ?? "http://127.0.0.1:4317";
@@ -130,7 +142,8 @@ const COMPANION_TOKEN_KEY = "agent-forest-companion-token";
 const COMPANION_TRANSPORT_KEY = "agent-forest-companion-transport";
 const SELECTED_SESSION_KEY = "agent-forest-selected-session";
 const SEAT_ASSIGNMENTS_KEY = "agent-forest-seat-assignments-v1";
-const ACORN_KEY = "agent-forest-acorns-v1";
+const LEGACY_ACORN_KEY = "agent-forest-acorns-v1";
+const SHELL_KEY = "agent-forest-shell-v1";
 const DECOR_KEY = "agent-forest-decor-v1";
 const DEMO_SEEN_KEY = "agent-forest-demo-seen-v1";
 const EVENT_HISTORY_KEY = "agent-forest-event-history-v1";
@@ -179,9 +192,9 @@ const DEMO_EXAMPLES = [
 ];
 const RADIO_MENU: Array<{ key: RadioPage; ariaLabel: string }> = [
   { key: "cats", ariaLabel: "고양이 관리" },
-  { key: "sessions", ariaLabel: "PC 연결" },
-  { key: "status", ariaLabel: "진행 상태" },
-  { key: "activity", ariaLabel: "활동 기록" },
+  { key: "desk", ariaLabel: "자리 꾸미기" },
+  { key: "work", ariaLabel: "PC 연결과 업무 지시" },
+  { key: "status-log", ariaLabel: "진행 상태와 활동 기록" },
 ];
 const KEYCAP_CLICK_SOUNDS = [
   "/audio/keycap-click-1.mp3",
@@ -190,6 +203,8 @@ const KEYCAP_CLICK_SOUNDS = [
 const SHOW_LEGACY_OVERLAYS = false;
 const AUDIO_ENABLED_KEY = "agent-forest-audio-v1";
 const CAT_LOOK_KEY = "agent-forest-cat-look-v1";
+const DEMO_CAT_ID = "agent-forest-demo-cat";
+const WORKSTATION_TIER_COSTS = [0, 50, 120, 250, 450] as const;
 // 체형은 프리셋으로만 고른다. 숫자 세 개를 그대로 노출하면 사장님이 만질 물건이 아니게 된다.
 const CAT_SHAPE_PRESETS: Array<{
   id: string;
@@ -315,9 +330,11 @@ export default function Home() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [radioOpen, setRadioOpen] = useState(false);
   const [radioPage, setRadioPage] = useState<RadioPage>("cats");
+  const [workTab, setWorkTab] = useState<WorkTab>("connect");
+  const [statusLogTab, setStatusLogTab] = useState<StatusLogTab>("status");
   const [hudDormant, setHudDormant] = useState(false);
   const [completionSignal, setCompletionSignal] = useState(0);
-  const [acorns, setAcorns] = useState(0);
+  const [shells, setShells] = useState(0);
   const [decorChoice, setDecorChoice] = useState("coral");
   const [selectedSeat, setSelectedSeat] = useState<SeatId | null>(null);
   const [pressedRadioKey, setPressedRadioKey] = useState<RadioPage | null>(
@@ -326,7 +343,8 @@ export default function Home() {
   const [audioEnabled, setAudioEnabled] = useState(true);
   // 고양이 외형 — 지금은 섬 전체가 한 마리라 전역 하나. 좌석별로 나눌 때 이 값이 기본값이 된다.
   const [catStyle, setCatStyle] = useState("Blue");
-  const [catShapeId, setCatShapeId] = useState("slim");
+  const catShapeId = "slim";
+  const [catNeeds, setCatNeeds] = useState<CatNeedsStore>({});
 
   const relayEventCursor = useRef(0);
   const taskToThreadRef = useRef(new Map<string, string>());
@@ -347,6 +365,7 @@ export default function Home() {
   const keycapAudioIndexRef = useRef(0);
   const keycapPressTimerRef = useRef<number | null>(null);
   const keycapFeedbackPrimedRef = useRef(false);
+  const catNeedsRef = useRef<CatNeedsStore>({});
 
   const approvalEvent = approvalQueue[0] ?? null;
   const latestEvents = useMemo(() => events.slice(0, 10), [events]);
@@ -379,6 +398,9 @@ export default function Home() {
       null
     );
   }, [runtimeList, selectedSeat, selectedThreadId]);
+  const focusedCatId = focusedRuntime?.threadId ?? DEMO_CAT_ID;
+  const focusedCatNeeds =
+    catNeeds[focusedCatId] ?? createDefaultCatNeedState();
   const pressedRadioIndex = pressedRadioKey
     ? RADIO_MENU.findIndex((item) => item.key === pressedRadioKey) + 1
     : 0;
@@ -386,6 +408,9 @@ export default function Home() {
   useEffect(() => {
     runtimesRef.current = runtimes;
   }, [runtimes]);
+  useEffect(() => {
+    catNeedsRef.current = catNeeds;
+  }, [catNeeds]);
   const seatViews = useMemo<SeatView[]>(() => {
     const active = runtimeList.slice(0, 5).map((runtime) => ({
       seatId: runtime.seatId,
@@ -604,9 +629,9 @@ export default function Home() {
         setCompletionSignal((value) => value + 1);
         if (event.taskId && !completedTaskIdsRef.current.has(event.taskId)) {
           completedTaskIdsRef.current.add(event.taskId);
-          setAcorns((value) => {
-            const next = value + 1;
-            window.localStorage.setItem(ACORN_KEY, String(next));
+          setShells((value) => {
+            const next = value + 10;
+            window.localStorage.setItem(SHELL_KEY, String(next));
             return next;
           });
         }
@@ -718,8 +743,25 @@ export default function Home() {
     let disposed = false;
     queueMicrotask(() => {
       if (disposed) return;
-      setAcorns(Number(window.localStorage.getItem(ACORN_KEY) ?? 0) || 0);
+      const savedShells = window.localStorage.getItem(SHELL_KEY);
+      const migratedShells =
+        savedShells === null
+          ? Number(window.localStorage.getItem(LEGACY_ACORN_KEY) ?? 0) || 0
+          : Number(savedShells) || 0;
+      if (savedShells === null) {
+        window.localStorage.setItem(SHELL_KEY, String(migratedShells));
+      }
+      setShells(migratedShells);
       setDecorChoice(window.localStorage.getItem(DECOR_KEY) ?? "coral");
+      const restoredNeeds = parseCatNeedsStore(
+        window.localStorage.getItem(NEEDS_KEY),
+      );
+      const nextNeeds = {
+        ...restoredNeeds,
+        [DEMO_CAT_ID]: ensureCatNeedState(restoredNeeds, DEMO_CAT_ID),
+      };
+      catNeedsRef.current = nextNeeds;
+      setCatNeeds(nextNeeds);
       try {
         const savedEvents = JSON.parse(
           window.localStorage.getItem(EVENT_HISTORY_KEY) ?? "[]",
@@ -741,6 +783,49 @@ export default function Home() {
       disposed = true;
     };
   }, []);
+
+  useEffect(() => {
+    const syncNeeds = () => {
+      const now = Date.now();
+      setCatNeeds((current) => {
+        const next = Object.fromEntries(
+          Object.entries(current).map(([threadId, state]) => [
+            threadId,
+            computeCatNeedState(state, now),
+          ]),
+        ) as CatNeedsStore;
+        const activeThreadIds = runtimeList.length
+          ? runtimeList.map((runtime) => runtime.threadId)
+          : [DEMO_CAT_ID];
+        activeThreadIds.forEach((threadId) => {
+          next[threadId] = ensureCatNeedState(next, threadId, now);
+        });
+        catNeedsRef.current = next;
+        window.localStorage.setItem(NEEDS_KEY, JSON.stringify(next));
+        return next;
+      });
+    };
+    const flushNeeds = () => {
+      window.localStorage.setItem(
+        NEEDS_KEY,
+        JSON.stringify(catNeedsRef.current),
+      );
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") flushNeeds();
+    };
+
+    queueMicrotask(syncNeeds);
+    const interval = window.setInterval(syncNeeds, 30_000);
+    document.addEventListener("visibilitychange", handleVisibility);
+    window.addEventListener("beforeunload", flushNeeds);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
+      window.removeEventListener("beforeunload", flushNeeds);
+      flushNeeds();
+    };
+  }, [runtimeList]);
 
   useEffect(() => {
     queueMicrotask(resetHudTimer);
@@ -791,15 +876,9 @@ export default function Home() {
       try {
         const saved = JSON.parse(
           window.localStorage.getItem(CAT_LOOK_KEY) ?? "{}",
-        ) as { style?: string; shape?: string };
+        ) as { style?: string };
         if (saved.style && CAT_STYLES.some((item) => item.id === saved.style)) {
           setCatStyle(saved.style);
-        }
-        if (
-          saved.shape &&
-          CAT_SHAPE_PRESETS.some((item) => item.id === saved.shape)
-        ) {
-          setCatShapeId(saved.shape);
         }
       } catch {
         window.localStorage.removeItem(CAT_LOOK_KEY);
@@ -807,21 +886,13 @@ export default function Home() {
     });
   }, []);
 
-  const catShape = useMemo(
-    () =>
-      (
-        CAT_SHAPE_PRESETS.find((item) => item.id === catShapeId) ??
-        CAT_SHAPE_PRESETS[0]
-      ).shape,
-    [catShapeId],
-  );
+  const catShape = CAT_SHAPE_PRESETS[0].shape;
 
-  const applyCatLook = useCallback((style: string, shapeId: string) => {
+  const applyCatLook = useCallback((style: string) => {
     setCatStyle(style);
-    setCatShapeId(shapeId);
     window.localStorage.setItem(
       CAT_LOOK_KEY,
-      JSON.stringify({ style, shape: shapeId }),
+      JSON.stringify({ style, updatedAt: Date.now() }),
     );
   }, []);
 
@@ -1380,7 +1451,8 @@ export default function Home() {
               worldAudioRef.current?.playCat("greet");
               worldAudioRef.current?.playCat("purr");
               setSelectedSeat(seatId);
-              setRadioPage("status");
+              setStatusLogTab("status");
+              setRadioPage("status-log");
               setRadioOpen(true);
             }}
             onRadioClick={() => setRadioOpen(true)}
@@ -1483,7 +1555,8 @@ export default function Home() {
                 type="button"
                 className="result-printer"
                 onClick={() => {
-                  setRadioPage("status");
+                  setStatusLogTab("status");
+                  setRadioPage("status-log");
                   setRadioOpen(true);
                 }}
               >
@@ -1494,12 +1567,12 @@ export default function Home() {
         </div>
       </section>
 
-      {SHOW_LEGACY_OVERLAYS && radioOpen && (
+      {radioOpen && (
         <aside className="control-panel radio-panel" aria-label="캠핑 라디오">
           <div className="radio-hardware">
             <span className={`radio-lamp ${bridgeState}`} />
             <strong>AGENT FOREST RADIO</strong>
-            <span>{acorns} ACORNS</span>
+            <span>{shells} SHELLS</span>
             <button
               type="button"
               onClick={() => setRadioOpen(false)}
@@ -1520,11 +1593,38 @@ export default function Home() {
 
                 <div className="cat-roster">
                   <div className="cat-roster-head">
-                    <b>지금 일하는 고양이 1마리</b>
+                    <b>
+                      지금 일하는 고양이{" "}
+                      {Math.max(1, Math.min(4, runtimeList.length))}마리
+                    </b>
                     <small>
                       {focusedRuntime?.agentName ?? "코치 모모"} ·{" "}
                       {focusedRuntime ? STATUS_COPY[focusedRuntime.status] : "대기 중"}
                     </small>
+                  </div>
+                  <div
+                    className="cat-needs-summary"
+                    aria-label={`${focusedRuntime?.agentName ?? "코치 모모"} 욕구 상태`}
+                  >
+                    {(
+                      [
+                        ["hunger", "배고픔", focusedCatNeeds.hunger],
+                        ["toilet", "배설", focusedCatNeeds.toilet],
+                      ] as Array<[string, string, number]>
+                    ).map(([key, label, value]) => (
+                      <div className="cat-need-row" key={key}>
+                        <span>{label}</span>
+                        <i className={`need-track tone-${getNeedTone(value)}`}>
+                          <b style={{ width: `${Math.round(value)}%` }} />
+                        </i>
+                        <em>{Math.round(value)}</em>
+                      </div>
+                    ))}
+                    <div className="cat-happiness-line">
+                      <span>행복도</span>
+                      <strong>{Math.round(focusedCatNeeds.happiness)}</strong>
+                      <small>{getHappinessBand(focusedCatNeeds.happiness)}</small>
+                    </div>
                   </div>
 
                   <label className="cat-field-label">털 색 · 무늬</label>
@@ -1536,7 +1636,7 @@ export default function Home() {
                         role="radio"
                         aria-checked={catStyle === style.id}
                         className={catStyle === style.id ? "selected" : ""}
-                        onClick={() => applyCatLook(style.id, catShapeId)}
+                        onClick={() => applyCatLook(style.id)}
                         title={style.ko}
                       >
                         {style.id}
@@ -1544,33 +1644,96 @@ export default function Home() {
                     ))}
                   </div>
 
-                  <label className="cat-field-label">체형</label>
-                  <div className="cat-shape-row" role="radiogroup" aria-label="고양이 체형">
-                    {CAT_SHAPE_PRESETS.map((preset) => (
-                      <button
-                        type="button"
-                        key={preset.id}
-                        role="radio"
-                        aria-checked={catShapeId === preset.id}
-                        className={catShapeId === preset.id ? "selected" : ""}
-                        onClick={() => applyCatLook(catStyle, preset.id)}
-                      >
-                        <b>{preset.label}</b>
-                        <small>{preset.note}</small>
-                      </button>
-                    ))}
-                  </div>
-
                   <button
                     type="button"
                     className="cat-add-button"
-                    onClick={() => setRadioPage("sessions")}
+                    onClick={() => {
+                      setWorkTab("connect");
+                      setRadioPage("work");
+                    }}
                   >
                     고양이 추가하기
                     <small>내 PC의 Codex 세션을 하나 더 연결하면 그 세션이 새 고양이가 됩니다</small>
                   </button>
                 </div>
+              </section>
+            )}
 
+            {radioPage === "desk" && (
+              <section className="panel-section desk-panel">
+                <div className="section-heading">
+                  <div>
+                    <span className="section-kicker">MY WORKSTATIONS</span>
+                    <h2>자리 꾸미기</h2>
+                  </div>
+                  <span className="shell-balance">{shells} 조개</span>
+                </div>
+                <div className="desk-seat-tabs" role="tablist" aria-label="꾸밀 좌석">
+                  {(["seat-1", "seat-2", "seat-3", "seat-4"] as SeatId[]).map(
+                    (seatId, index) => (
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={(selectedSeat ?? "seat-1") === seatId}
+                        className={(selectedSeat ?? "seat-1") === seatId ? "selected" : ""}
+                        key={seatId}
+                        onClick={() => setSelectedSeat(seatId)}
+                      >
+                        자리 {index + 1}
+                      </button>
+                    ),
+                  )}
+                </div>
+                <div className="desk-tier-list">
+                  {WORKSTATION_TIER_COSTS.map((cost, tier) => (
+                    <article className={tier === 0 ? "unlocked" : ""} key={tier}>
+                      <span>TIER {tier}</span>
+                      <div>
+                        <strong>
+                          {tier === 0 ? "기본 업무 자리" : `자리 꾸미기 ${tier}단계`}
+                        </strong>
+                        <small>
+                          {tier === 0
+                            ? "현재 3D 월드에 배치된 기본 구성"
+                            : `해금 비용 ${cost} 조개 · 3D 실물 반영은 다음 개발 묶음`}
+                        </small>
+                      </div>
+                      <em>{tier === 0 ? "사용 중" : "준비 중"}</em>
+                    </article>
+                  ))}
+                </div>
+                <p className="desk-safety-note">
+                  꾸미기는 실제 Codex 작업과 분리되며 작업 중 애니메이션을
+                  중단하지 않습니다.
+                </p>
+              </section>
+            )}
+
+            {radioPage === "work" && (
+              <div className="radio-subtabs" role="tablist" aria-label="업무 메뉴">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={workTab === "connect"}
+                  className={workTab === "connect" ? "selected" : ""}
+                  onClick={() => setWorkTab("connect")}
+                >
+                  세션 연결
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={workTab === "task"}
+                  className={workTab === "task" ? "selected" : ""}
+                  onClick={() => setWorkTab("task")}
+                >
+                  업무 지시
+                </button>
+              </div>
+            )}
+
+            {radioPage === "work" && workTab === "task" && (
+              <section className="panel-section task-composer">
                 <div className="section-heading">
                   <div>
                     <span className="section-kicker">NEW MISSION</span>
@@ -1581,7 +1744,7 @@ export default function Home() {
                   <span className={selectedSession ? "ready" : ""} />
                   {selectedSession
                     ? `${selectedSession.title} · ${selectedSession.projectName}`
-                    : "F2에서 연결할 Codex 세션을 선택해 주세요"}
+                    : "WORK의 세션 연결에서 사용할 Codex 세션을 선택해 주세요"}
                 </div>
                 <div className="department-tabs" role="radiogroup" aria-label="담당 부서">
                   {(Object.entries(DEPARTMENTS) as [
@@ -1643,7 +1806,7 @@ export default function Home() {
               </section>
             )}
 
-            {radioPage === "sessions" && (
+            {radioPage === "work" && workTab === "connect" && (
               <section className="panel-section session-browser">
                 <div className="section-heading compact">
                   <div>
@@ -1746,7 +1909,30 @@ export default function Home() {
               </section>
             )}
 
-            {radioPage === "status" && (
+            {radioPage === "status-log" && (
+              <div className="radio-subtabs" role="tablist" aria-label="현황과 기록 메뉴">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={statusLogTab === "status"}
+                  className={statusLogTab === "status" ? "selected" : ""}
+                  onClick={() => setStatusLogTab("status")}
+                >
+                  진행 상태
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={statusLogTab === "log"}
+                  className={statusLogTab === "log" ? "selected" : ""}
+                  onClick={() => setStatusLogTab("log")}
+                >
+                  활동 기록
+                </button>
+              </div>
+            )}
+
+            {radioPage === "status-log" && statusLogTab === "status" && (
               <section className="panel-section active-task-card">
                 <div className="section-heading compact">
                   <div>
@@ -1832,7 +2018,7 @@ export default function Home() {
                 <div className="free-decor">
                   <div>
                     <strong>무료 해변 꾸미기</strong>
-                    <small>작업 완료로 모은 도토리 {acorns}개</small>
+                    <small>작업 완료로 모은 조개 {shells}개</small>
                   </div>
                   <div>
                     {[
@@ -1854,7 +2040,7 @@ export default function Home() {
               </section>
             )}
 
-            {radioPage === "activity" && (
+            {radioPage === "status-log" && statusLogTab === "log" && (
               <section className="panel-section activity-log">
                 <div className="section-heading compact">
                   <div>
