@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>최종 월드 모니터 단일 요인 제거 비교 · 2026-07-28</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --paper: #f7f0df;
+        --card: rgba(255, 253, 247, 0.94);
+        --ink: #493c34;
+        --muted: #796a5e;
+        --line: rgba(105, 84, 67, 0.2);
+        --brown: #765b4c;
+        --mint: #dcebd3;
+        --yellow: #f7e8b9;
+        --red: #f2c8bd;
+        --blue: #dceaf0;
+        --shadow: 0 18px 50px rgba(75, 57, 42, 0.13);
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family:
+          Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", system-ui,
+          sans-serif;
+        background:
+          radial-gradient(circle at 15% 8%, rgba(255, 255, 255, 0.9), transparent 32%),
+          linear-gradient(135deg, #e7efdc, var(--paper) 52%, #eadfcf);
+      }
+
+      main {
+        width: min(1480px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 36px 0 72px;
+      }
+
+      header,
+      section {
+        border: 1px solid rgba(110, 89, 69, 0.16);
+        border-radius: 26px;
+        background: var(--card);
+        box-shadow: var(--shadow);
+      }
+
+      header { padding: 34px; }
+      section { margin-top: 22px; padding: 28px; }
+
+      h1, h2, h3, p { margin-top: 0; }
+      h1 { max-width: 900px; margin-bottom: 14px; font-size: clamp(30px, 4vw, 58px); line-height: 1.06; }
+      h2 { margin-bottom: 8px; font-size: clamp(22px, 2.4vw, 34px); }
+      h3 { margin-bottom: 8px; font-size: 18px; }
+      p { color: var(--muted); line-height: 1.7; }
+
+      .eyebrow {
+        margin-bottom: 10px;
+        color: #7a705f;
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .badges,
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .badge,
+      .status {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 5px 10px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: #fffaf0;
+        font-size: 11px;
+        font-weight: 900;
+      }
+
+      .status.keep { background: var(--mint); }
+      .status.change { background: var(--yellow); }
+      .status.cause { background: var(--red); }
+      .status.test { background: var(--blue); }
+
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 24px;
+      }
+
+      .summary article {
+        padding: 17px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: rgba(255, 252, 244, 0.86);
+      }
+
+      .summary strong { display: block; margin: 10px 0 5px; font-size: 17px; }
+      .summary span:last-child { color: var(--muted); font-size: 13px; line-height: 1.55; }
+
+      .section-head {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 20px;
+      }
+
+      .section-head p { max-width: 680px; margin-bottom: 0; }
+
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .card {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: #fffdf8;
+      }
+
+      .card-media {
+        display: grid;
+        grid-template-columns: 42% 58%;
+        min-height: 245px;
+        border-bottom: 1px solid var(--line);
+        background: #dfe9d7;
+      }
+
+      .full {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        object-position: center;
+        border-right: 1px solid var(--line);
+      }
+
+      .monitor-zoom {
+        position: relative;
+        overflow: hidden;
+        min-height: 245px;
+        background: #efe7d5;
+      }
+
+      .monitor-zoom img {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 453.846%;
+        max-width: none;
+        transform: translate(-66.102%, -56.561%);
+        transform-origin: 0 0;
+      }
+
+      .zoom-label {
+        position: absolute;
+        right: 9px;
+        bottom: 9px;
+        z-index: 2;
+        padding: 5px 8px;
+        border-radius: 999px;
+        color: #fff;
+        background: rgba(64, 51, 43, 0.76);
+        font-size: 10px;
+        font-weight: 900;
+      }
+
+      .card-copy { padding: 17px; }
+      .card-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .metric { margin: 10px 0 8px; color: var(--brown); font-size: 13px; font-weight: 900; }
+      .card-copy p { min-height: 66px; margin-bottom: 0; font-size: 13px; }
+
+      .compare-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.5fr) minmax(280px, 0.7fr);
+        gap: 18px;
+      }
+
+      .compare-canvas {
+        position: relative;
+        overflow: hidden;
+        aspect-ratio: 590 / 884;
+        max-height: 760px;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: #e7ead8;
+      }
+
+      .compare-canvas img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+
+      #compareAfter { clip-path: inset(0 0 0 50%); }
+
+      .divider {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 50%;
+        width: 2px;
+        background: #fff;
+        box-shadow: 0 0 0 1px rgba(68, 53, 43, 0.35);
+        transform: translateX(-1px);
+      }
+
+      .compare-label {
+        position: absolute;
+        top: 12px;
+        z-index: 3;
+        padding: 7px 10px;
+        border-radius: 999px;
+        color: #fff;
+        background: rgba(58, 46, 38, 0.75);
+        font-size: 11px;
+        font-weight: 900;
+      }
+
+      .compare-label.before { left: 12px; }
+      .compare-label.after { right: 12px; }
+
+      .controls { display: grid; align-content: start; gap: 12px; }
+
+      .control {
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 17px;
+        background: #fffaf0;
+      }
+
+      label, select, input { width: 100%; }
+      label { display: block; margin-bottom: 9px; font-size: 12px; font-weight: 900; }
+      select { padding: 11px; border: 1px solid var(--line); border-radius: 11px; color: var(--ink); background: #fff; }
+      input[type="range"] { accent-color: var(--brown); }
+      .control strong { display: block; margin-bottom: 8px; font-size: 18px; }
+      .control p { margin-bottom: 0; font-size: 13px; }
+
+      table { width: 100%; border-collapse: collapse; }
+      th, td { padding: 13px 12px; border-bottom: 1px solid var(--line); text-align: left; font-size: 13px; }
+      th { color: var(--muted); font-size: 11px; letter-spacing: 0.05em; }
+
+      .finding {
+        padding: 20px;
+        border: 1px solid rgba(157, 111, 75, 0.22);
+        border-radius: 18px;
+        background: linear-gradient(135deg, #fff7dc, #f4e1d4);
+      }
+
+      .finding strong { display: block; margin-bottom: 8px; font-size: 20px; }
+      .finding p { margin-bottom: 0; color: var(--ink); }
+
+      details { margin-top: 15px; padding: 15px; border: 1px solid var(--line); border-radius: 15px; }
+      summary { cursor: pointer; font-weight: 900; }
+      code { color: #7f4036; }
+
+      @media (max-width: 980px) {
+        .summary, .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .compare-layout { grid-template-columns: 1fr; }
+      }
+
+      @media (max-width: 620px) {
+        main { width: min(100% - 18px, 1480px); padding-top: 10px; }
+        header, section { padding: 18px; border-radius: 18px; }
+        .summary, .cards { grid-template-columns: 1fr; }
+        .section-head { display: block; }
+        .card-media { min-height: 220px; }
+        th, td { padding: 10px 7px; font-size: 11px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">Controlled static ablation test · 2026-07-28</p>
+        <h1>코딩 화면을 완전히 뺀 최종 월드에서 무엇이 달라지는가?</h1>
+        <p>
+          실제 최종 월드의 동일 카메라·동일 590×884 화면을 매번 새로 로드하고,
+          캐릭터·환경 애니메이션 시간을 0초에 고정한 뒤 기준 상태에서 한 항목만
+          제거하거나 바꿨습니다. 꾹꾹이 때 표시되는 실시간 코딩 화면과 눌림
+          키캡 레이어는 모든 캡처에서 강제로 숨겼습니다. 각 카드 왼쪽은 전체
+          월드, 오른쪽은 같은 모니터 영역을 확대한 화면입니다.
+        </p>
+        <div class="badges">
+          <span class="badge">실제 월드 렌더 경로</span>
+          <span class="badge">단일 요인만 변경</span>
+          <span class="badge">동일 모니터 좌표 130×80px</span>
+          <span class="badge">코딩 화면 오버레이 없음</span>
+          <span class="badge">애니메이션 시간 0초 고정</span>
+          <span class="badge">RGB 차이 정량 측정</span>
+        </div>
+
+        <div class="summary">
+          <article>
+            <span class="status cause">가장 큰 전역 변화</span>
+            <strong>톤매핑</strong>
+            <span>제거하면 밝아지지만 월드 전체 색조까지 변해 직접 해결책은 아닙니다.</span>
+          </article>
+          <article>
+            <span class="status cause">실질 개선 후보</span>
+            <strong>틴트·아웃라인</strong>
+            <span>베젤의 탁함과 가장자리 점 노이즈를 각각 줄입니다.</span>
+          </article>
+          <article>
+            <span class="status keep">원인 아님</span>
+            <strong>재질 정규화·비네팅</strong>
+            <span>현재 모니터 영역에서는 제거 전후 차이가 거의 없습니다.</span>
+          </article>
+          <article>
+            <span class="status test">캡처 오류 수정</span>
+            <strong>코딩 오버레이 제외</strong>
+            <span>이전 캡처의 강제 코딩 화면을 제거해 원본 모니터 재질만 비교합니다.</span>
+          </article>
+        </div>
+      </header>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">One factor at a time</p>
+            <h2>정지 기준 + 6개 단일 변경</h2>
+          </div>
+          <div class="legend">
+            <span class="status cause">원인 후보</span>
+            <span class="status test">개선 실험</span>
+            <span class="status keep">영향 미미</span>
+          </div>
+        </div>
+        <div class="cards" id="cards"></div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Interactive overlay</p>
+            <h2>기준 화면과 1:1 겹쳐보기</h2>
+          </div>
+          <p>변경 항목을 고른 뒤 슬라이더를 움직이면 같은 위치의 전후 차이를 확인할 수 있습니다.</p>
+        </div>
+        <div class="compare-layout">
+          <div class="compare-canvas">
+            <img id="compareBefore" alt="기준 최종 월드" />
+            <img id="compareAfter" alt="단일 항목 변경 월드" />
+            <span class="compare-label before">기준</span>
+            <span class="compare-label after" id="afterLabel">톤매핑 제거</span>
+            <span class="divider" id="divider"></span>
+          </div>
+          <div class="controls">
+            <div class="control">
+              <label for="variantSelect">제거·변경 항목</label>
+              <select id="variantSelect"></select>
+            </div>
+            <div class="control">
+              <label for="splitRange">좌우 분할 위치</label>
+              <input id="splitRange" type="range" min="0" max="100" value="50" />
+              <strong id="splitValue">50%</strong>
+            </div>
+            <div class="control">
+              <strong id="metricValue"></strong>
+              <p id="findingValue"></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Measured difference</p>
+            <h2>모니터 영역 변화량</h2>
+          </div>
+          <p>기준 이미지의 동일한 130×80px 영역에서 RGB 채널별 절대 차이를 계산했습니다.</p>
+        </div>
+        <div style="overflow-x: auto">
+          <table>
+            <thead>
+              <tr>
+                <th>단일 변경</th>
+                <th>평균 RGB 차이</th>
+                <th>8 이상 변경 채널</th>
+                <th>육안 판정</th>
+              </tr>
+            </thead>
+            <tbody id="metricsBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <p class="eyebrow">Conclusion</p>
+        <h2>현재 확인된 진짜 원인</h2>
+        <div class="finding">
+          <strong>한 가지 후처리만의 문제는 아닙니다.</strong>
+          <p>
+            실시간 코딩 화면이 전혀 없는 상태에서도 원본 Meshy 모니터 화면의
+            얼룩과 불균일한 색이 그대로 보입니다. 모니터 틴트와 스케치 아웃라인이
+            이를 추가로 강조하고 있으며, 재질 강제변환과 CSS 비네팅은 현재
+            모니터 영역에 거의 영향을 주지 않습니다. 따라서 정적 원본을 개선할
+            때는 <b>모니터 원본 텍스처 정리 + 모니터 틴트 제거 + 모니터 아웃라인
+            약화</b> 순서가 안전합니다. 톤매핑 전체 제거는 월드 전반의 색을
+            바꾸므로 국소 해결책에서 제외합니다.
+          </p>
+        </div>
+        <details>
+          <summary>진단용 URL 모드</summary>
+          <p>
+            정상 URL에는 아무 변화가 없습니다. 비교 캡처는
+            모든 URL에 <code>&amp;monitorCapture=static</code>을 붙이고
+            <code>?monitorAblation=baseline</code>,
+            <code>no-tone-mapping</code>, <code>no-tint</code>,
+            <code>no-material-normalization</code>,
+            <code>no-monitor-outline</code>, <code>no-vignette</code>,
+            <code>two-x-render-scale</code>로 생성했습니다. 이 모드에서는
+            실시간 코딩 화면, 눌림 키캡, 캐릭터·환경 애니메이션이 모두
+            정지합니다.
+          </p>
+        </details>
+      </section>
+    </main>
+
+    <script>
+      const basePath =
+        "tmp/validation/monitor-world-ablation-static-20260728/";
+      const baseline = {
+        title: "정지 기준 · 코딩 오버레이 없음",
+        file: "01-baseline-static-world.png",
+        status: "기준",
+        statusClass: "cause",
+        metric: "0.000",
+        changed: "0%",
+        finding:
+          "NeutralToneMapping, 갈색 틴트, 재질 정규화, 스케치 아웃라인, CSS 비네팅, 기본 렌더 배율을 적용하되 실시간 코딩 화면과 눌림 키캡은 완전히 제외한 상태입니다.",
+      };
+      const variants = [
+        {
+          title: "톤매핑 제거",
+          file: "02-no-tone-mapping.png",
+          status: "전역 변화",
+          statusClass: "cause",
+          metric: "8.180",
+          changed: "48.30%",
+          finding:
+            "모니터가 밝아지지만 월드 전체 색조와 대비도 함께 변해 전역 해결책으로는 부적합합니다.",
+        },
+        {
+          title: "모니터 틴트 제거",
+          file: "03-no-monitor-tint.png",
+          status: "개선 후보",
+          statusClass: "cause",
+          metric: "7.396",
+          changed: "19.59%",
+          finding:
+            "밝은 베젤의 탁함이 줄지만 화면 내부에 포함된 원본 텍스처 노이즈는 남습니다.",
+        },
+        {
+          title: "재질 강제변환 제거",
+          file: "04-no-material-normalization.png",
+          status: "영향 없음",
+          statusClass: "keep",
+          metric: "0.122",
+          changed: "0%",
+          finding:
+            "러프니스·메탈니스 강제값을 빼도 거의 동일합니다. 현재 문제의 핵심 원인이 아닙니다.",
+        },
+        {
+          title: "모니터 아웃라인 제거",
+          file: "05-no-monitor-outline.png",
+          status: "부분 개선",
+          statusClass: "cause",
+          metric: "2.039",
+          changed: "6.42%",
+          finding:
+            "베젤과 스탠드 가장자리의 점·톱니가 줄지만 화면 내부의 얼룩은 그대로입니다.",
+        },
+        {
+          title: "CSS 비네팅 제거",
+          file: "06-no-css-vignette.png",
+          status: "원인 아님",
+          statusClass: "keep",
+          metric: "0.000",
+          changed: "0%",
+          finding:
+            "현재 모니터 좌표에는 직접 변화가 없습니다. 화면 가장자리 분위기에만 영향을 줍니다.",
+        },
+        {
+          title: "2배 렌더 스케일",
+          file: "07-two-x-render-scale.png",
+          status: "선명도 실험",
+          statusClass: "test",
+          metric: "5.820",
+          changed: "25.00%",
+          finding:
+            "윤곽은 선명해지지만 원본 텍스처에 포함된 얼룩 자체를 없애지는 못합니다.",
+        },
+      ];
+
+      const cards = document.querySelector("#cards");
+      const allCards = [baseline, ...variants];
+      allCards.forEach((item, index) => {
+        const article = document.createElement("article");
+        article.className = "card";
+        article.innerHTML = `
+          <div class="card-media">
+            <img class="full" src="${basePath}${item.file}" alt="${item.title} 전체 월드" />
+            <div class="monitor-zoom">
+              <img src="${basePath}${item.file}" alt="${item.title} 모니터 확대" />
+              <span class="zoom-label">동일 영역 확대</span>
+            </div>
+          </div>
+          <div class="card-copy">
+            <div class="card-title">
+              <h3>${String(index + 1).padStart(2, "0")} · ${item.title}</h3>
+              <span class="status ${item.statusClass}">${item.status}</span>
+            </div>
+            <div class="metric">평균 RGB 차이 ${item.metric} · 변경 채널 ${item.changed}</div>
+            <p>${item.finding}</p>
+          </div>
+        `;
+        cards.appendChild(article);
+      });
+
+      const variantSelect = document.querySelector("#variantSelect");
+      variants.forEach((item, index) => {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = `${String(index + 2).padStart(2, "0")} · ${item.title}`;
+        variantSelect.appendChild(option);
+      });
+
+      const compareBefore = document.querySelector("#compareBefore");
+      const compareAfter = document.querySelector("#compareAfter");
+      const afterLabel = document.querySelector("#afterLabel");
+      const metricValue = document.querySelector("#metricValue");
+      const findingValue = document.querySelector("#findingValue");
+      const splitRange = document.querySelector("#splitRange");
+      const splitValue = document.querySelector("#splitValue");
+      const divider = document.querySelector("#divider");
+      compareBefore.src = `${basePath}${baseline.file}`;
+
+      function applyVariant() {
+        const item = variants[Number(variantSelect.value) || 0];
+        compareAfter.src = `${basePath}${item.file}`;
+        afterLabel.textContent = item.title;
+        metricValue.textContent =
+          `평균 RGB 차이 ${item.metric} · 변경 채널 ${item.changed}`;
+        findingValue.textContent = item.finding;
+      }
+
+      function applySplit() {
+        const value = Number(splitRange.value);
+        compareAfter.style.clipPath = `inset(0 0 0 ${value}%)`;
+        divider.style.left = `${value}%`;
+        splitValue.textContent = `${value}%`;
+      }
+
+      variantSelect.addEventListener("change", applyVariant);
+      splitRange.addEventListener("input", applySplit);
+      applyVariant();
+      applySplit();
+
+      const metricsBody = document.querySelector("#metricsBody");
+      variants.forEach((item) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${item.title}</td>
+          <td>${item.metric}</td>
+          <td>${item.changed}</td>
+          <td>${item.finding}</td>
+        `;
+        metricsBody.appendChild(row);
+      });
+    </script>
+  </body>
+</html>

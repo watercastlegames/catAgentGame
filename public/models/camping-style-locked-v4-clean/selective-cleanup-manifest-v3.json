@@ -1,0 +1,21 @@
+{
+  "version": 3,
+  "input": "public\\models\\camping-style-locked-v4\\low-monitor-cat-keycap-workstation-flat-source-v4.glb",
+  "output": "public\\models\\camping-style-locked-v4-clean\\low-monitor-cat-keycap-workstation-noise-clean-v3.glb",
+  "originalTexturePreserved": true,
+  "componentSizes": [
+    34304,
+    5882
+  ],
+  "cushionComponent": 1,
+  "changedObjectCount": 1,
+  "triangleCounts": {
+    "original-texture": 22360,
+    "clean-monitor-screen": 91,
+    "clean-monitor-frame": 2667,
+    "clean-four-key-keycaps": 4636,
+    "clean-table-top": 2795,
+    "clean-table-apron": 4109,
+    "clean-table-legs": 3528
+  }
+}

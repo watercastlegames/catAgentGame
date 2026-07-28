@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "id": "tent",
+      "input": "public\\models\\camping-style-locked-v4\\tent-workstation-flat-source-v4.glb",
+      "output": "public\\models\\camping-style-locked-v4-clean\\tent-workstation-noise-clean-v1.glb",
+      "triangleCounts": {
+        "original-texture": 35300,
+        "clean-tent-table": 364,
+        "clean-tent-cushion": 4736
+      }
+    },
+    {
+      "id": "round",
+      "input": "public\\models\\camping-style-locked-v4\\round-laptop-workstation-flat-source-v4.glb",
+      "output": "public\\models\\camping-style-locked-v4-clean\\round-laptop-workstation-noise-clean-v1.glb",
+      "triangleCounts": {
+        "original-texture": 28718,
+        "clean-round-table": 11859
+      }
+    },
+    {
+      "id": "folding",
+      "input": "public\\models\\camping-style-locked-v4\\folding-laptop-radio-workstation-flat-source-v4.glb",
+      "output": "public\\models\\camping-style-locked-v4-clean\\folding-laptop-radio-workstation-noise-clean-v1.glb",
+      "triangleCounts": {
+        "original-texture": 28653,
+        "clean-radio-front": 6378,
+        "clean-radio-body": 480,
+        "clean-folding-table": 2361,
+        "clean-folding-stool": 1352
+      }
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "version": 5,
+  "mode": "uv-selective-texture-cleanup",
+  "source": "public\\models\\camping-style-locked-v4\\low-monitor-cat-keycap-workstation-flat-source-v4.glb",
+  "shadingReference": "public\\models\\camping-style-locked-v3\\low-monitor-cat-keycap-workstation-meshy6-web-v3.glb",
+  "output": "public\\models\\camping-style-locked-v5-clean\\low-monitor-cat-keycap-workstation-texture-clean-v5.glb",
+  "preservedGeometry": true,
+  "preservedTextureOutlinePixels": true,
+  "triangleCounts": {
+    "monitor-screen": 494,
+    "monitor-frame": 1523,
+    "four-key-keyboard": 7273,
+    "chair-seat": 1940,
+    "table-top": 5818
+  }
+}

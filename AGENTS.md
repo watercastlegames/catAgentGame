@@ -2,6 +2,12 @@
 
 - PNG, JPG, HTML, PDF, source code, and other files must always be reported and delivered using a Windows absolute path that includes the drive letter, such as `D:\project\file.png`.
 - Never give the user only a relative path when reporting or delivering a file.
+- A clickable local-file Markdown link may be visually shortened to only the basename by the client. Therefore, never rely on the link alone when reporting a file.
+- For every reported file, print the complete Windows absolute path again as non-link plain text inside a fenced `text` block, wrapped in single quotes. This plain-text path is mandatory even when a clickable link is also provided.
+- Required output contains both forms: a clickable link such as
+  `['D:\project\output\result.png'](D:/project/output/result.png)`, followed by
+  a separate fenced `text` block whose only content is
+  `'D:\project\output\result.png'`.
 
 # Agent Forest 설치·연결 절차 (AI가 읽고 그대로 실행)
 

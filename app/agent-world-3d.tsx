@@ -8,6 +8,8 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 import { findAvoidancePath2D } from "./navigation.mjs";
+import { catStyleModelUrl } from "./cat-styles";
+import { type CatShape, fattenCat } from "./cat-body";
 import { SketchOutlineEffect } from "./sketch-outline-effect";
 
 export type AgentWorldLocation =
@@ -34,6 +36,10 @@ type AgentWorld3DProps = {
   seats: SeatView[];
   companionConnected: "connected" | "pairing" | "offline";
   completionSignal: number;
+  /** 팩의 스타일 id(예: "Blue"). 바뀌면 상위에서 key 로 씬을 다시 만든다. */
+  catStyle?: string;
+  /** 몸통을 부풀리는 정도. 없으면 원본 체형. */
+  catShape?: CatShape;
   onSeatClick?: (seatId: SeatId) => void;
   onRadioClick?: () => void;
 };
@@ -112,22 +118,21 @@ const DESK_CONTACT_MARGIN = 0.2;
 const DESK_KEYCAP_PRESS_DEPTH = 0.052;
 const DESK_KEYCAP_PRESS_HZ = 1.05;
 const MONITOR_CODE_FRAME_RATE = 8;
-const CAT_MODEL_URL =
-  "/models/PolyArt/Animals/Cats/FBX/Lowpoly_Cat_Blue.fbx";
 const CAT_ANIMATIONS_URL =
   "/models/PolyArt/Animals/Cats/FBX/Lowpoly_Cat_Animations_IP.fbx";
 const PALM_TREE_MODEL_URL =
   "/models/palm-tree-meshy6-web-v1.glb";
 const TENT_WORKSTATION_MODEL_URL =
-  "/models/camping-style-locked-v4/tent-workstation-flat-source-v4.glb?rev=6";
+  "/models/camping-style-hybrid-v1/tent-workstation-smooth-cartoon-v1.glb?rev=4";
 const ROUND_LAPTOP_STATION_MODEL_URL =
-  "/models/camping-style-locked-v4/round-laptop-workstation-flat-source-v4.glb?rev=6";
+  "/models/camping-style-hybrid-v1/round-laptop-workstation-smooth-cartoon-v1.glb?rev=4";
 const FOLDING_LAPTOP_STATION_MODEL_URL =
-  "/models/camping-style-locked-v4/folding-laptop-radio-workstation-flat-source-v4.glb?rev=6";
+  "/models/camping-style-hybrid-v1/folding-laptop-radio-workstation-smooth-cartoon-v1.glb?rev=4";
 const LOW_MONITOR_STATION_MODEL_URL =
-  "/models/camping-style-locked-v4/low-monitor-cat-keycap-workstation-flat-source-v4.glb?rev=6";
+  "/models/camping-style-hybrid-v1/low-monitor-cat-keycap-workstation-smooth-cartoon-v1.glb?rev=2";
+const DEFAULT_WORLD_RENDER_SCALE = 4;
 const CAMPING_SUPPLIES_MODEL_URL =
-  "/models/camping-style-locked-v1/camping-supplies-cluster-meshy6-web-v1.glb";
+  "/models/camping-style-hybrid-v1/camping-supplies-cluster-smooth-cartoon-v1.glb?rev=2";
 const CAMPING_LANTERN_MODEL_URL =
   "/models/camping-style-locked-v1/camping-lantern-meshy6-web-v1.glb";
 const TROPICAL_FOLIAGE_MODEL_URL =
@@ -2158,6 +2163,8 @@ export default function AgentWorld3D({
   seats,
   companionConnected,
   completionSignal,
+  catStyle = "Blue",
+  catShape,
   onSeatClick,
   onRadioClick,
 }: AgentWorld3DProps) {
@@ -2194,6 +2201,24 @@ export default function AgentWorld3D({
     const host = hostRef.current;
     if (!host) return;
 
+    const diagnosticParams = new URLSearchParams(window.location.search);
+    const monitorAblationMode = diagnosticParams.get("monitorAblation");
+    const suppressMonitorInteraction =
+      diagnosticParams.get("monitorCapture") === "static";
+    const forceMonitorDiagnosticScreen =
+      !suppressMonitorInteraction &&
+      diagnosticParams.get("monitorScreen") === "coding";
+    const requestedRenderScale = Number.parseFloat(
+      diagnosticParams.get("renderScale") ?? "",
+    );
+    const diagnosticRenderScale = Number.isFinite(requestedRenderScale)
+      ? THREE.MathUtils.clamp(requestedRenderScale, 0.75, 4)
+      : null;
+    const worldStage = host.closest<HTMLElement>(".world-stage-3d");
+    if (monitorAblationMode === "no-vignette") {
+      worldStage?.classList.add("monitor-ablation-no-vignette");
+    }
+
     let disposed = false;
     let renderer: THREE.WebGLRenderer;
 
@@ -2204,15 +2229,25 @@ export default function AgentWorld3D({
         powerPreference: "high-performance",
       });
     } catch {
+      worldStage?.classList.remove("monitor-ablation-no-vignette");
       queueMicrotask(() => setFailed(true));
       return;
     }
 
     renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.NeutralToneMapping;
+    renderer.toneMapping =
+      monitorAblationMode === "no-tone-mapping"
+        ? THREE.NoToneMapping
+        : THREE.NeutralToneMapping;
     renderer.toneMappingExposure = 1;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    const renderPixelRatio =
+      diagnosticRenderScale ??
+      (monitorAblationMode === "two-x-render-scale"
+        ? 2
+        : DEFAULT_WORLD_RENDER_SCALE);
+    renderer.setPixelRatio(renderPixelRatio);
     renderer.domElement.className = "world-3d-canvas";
+    renderer.domElement.dataset.renderScale = String(renderPixelRatio);
     renderer.domElement.setAttribute(
       "aria-label",
       "드래그하면 월드가 회전하고, 마우스 휠이나 두 손가락으로 확대하고 축소할 수 있습니다.",
@@ -2226,6 +2261,7 @@ export default function AgentWorld3D({
       defaultColor: ILLUSTRATION_OUTLINE_COLOR.toArray(),
       defaultAlpha: ILLUSTRATION_OUTLINE_ALPHA,
     });
+    outlineEffect.setPixelRatio(renderPixelRatio);
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(FAR_OCEAN_STYLE_COLOR);
@@ -2523,6 +2559,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
     } = createCodingStationInteractionOverlay(
       deskKeycapTopTextures,
     );
+    if (monitorAblationMode === "screen-mipmaps") {
+      monitorScreenTexture.generateMipmaps = true;
+      monitorScreenTexture.minFilter = THREE.LinearMipmapLinearFilter;
+      monitorScreenTexture.needsUpdate = true;
+    }
     const deskKneadingLookTarget = LOW_MONITOR_KNEADING_LOCAL_TARGET.clone()
       .applyAxisAngle(
         new THREE.Vector3(0, 1, 0),
@@ -3013,7 +3054,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
     };
     const fbxLoader = new FBXLoader();
     Promise.all([
-      fbxLoader.loadAsync(CAT_MODEL_URL, (event) =>
+      fbxLoader.loadAsync(catStyleModelUrl(catStyle), (event) =>
         updateProgress(event, "model"),
       ),
       fbxLoader.loadAsync(CAT_ANIMATIONS_URL, (event) =>
@@ -3024,6 +3065,8 @@ float shoreOverlayWaterSignal( vec3 color ) {
         if (disposed) return;
 
         loadedAnimationClips = animationSource.animations;
+        // 체형 조정은 스키닝 전 바인드 포즈를 건드리므로 애니메이션을 물리기 전에 끝낸다.
+        if (catShape) fattenCat(model, catShape);
         model.rotation.y = characterYaw;
         characterModel = model;
         model.traverse((object) => {
@@ -3338,7 +3381,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
     updateSize();
 
     renderer.setAnimationLoop(() => {
-      const delta = Math.min(clock.getDelta(), 0.05);
+      const measuredDelta = Math.min(clock.getDelta(), 0.05);
+      const delta = suppressMonitorInteraction ? 0 : measuredDelta;
+      const animationTime = suppressMonitorInteraction ? 0 : clock.elapsedTime;
       const primaryView = seatsRef.current[0] ?? DEFAULT_SEAT_VIEW;
       const isPrimaryBlocked = primaryView.blocked;
       primaryMarker.beacon.visible = isPrimaryBlocked;
@@ -3353,7 +3398,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       );
       const lampPulse =
         connectionState === "pairing"
-          ? 0.84 + Math.sin(clock.elapsedTime * 4) * 0.16
+          ? 0.84 + Math.sin(animationTime * 4) * 0.16
           : 1;
       radioLamp.scale.setScalar(lampPulse);
 
@@ -3687,7 +3732,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
       } else if (kneadingBlend < 0.001) {
         kneadingElapsed = 0;
       }
-      const showDeskInteraction = kneadingBlend > 0.01;
+      const showDeskInteraction =
+        !suppressMonitorInteraction &&
+        (forceMonitorDiagnosticScreen || kneadingBlend > 0.01);
       monitorScreen.visible = showDeskInteraction;
       animatedDeskKeycaps.forEach((parts, index) => {
         parts.forEach(({ object }) => {
@@ -3710,14 +3757,17 @@ float shoreOverlayWaterSignal( vec3 color ) {
           object.position.y = restingY - pressDepth;
         });
       });
-      const nextMonitorScreenFrame = isKneading
+      const monitorIsCoding =
+        !suppressMonitorInteraction &&
+        (isKneading || forceMonitorDiagnosticScreen);
+      const nextMonitorScreenFrame = monitorIsCoding
         ? Math.floor(kneadingElapsed * MONITOR_CODE_FRAME_RATE)
         : -1;
       if (nextMonitorScreenFrame !== monitorScreenFrame) {
         monitorScreenFrame = nextMonitorScreenFrame;
         drawMonitorScreen(
           monitorScreenTexture,
-          isKneading,
+          monitorIsCoding,
           kneadingElapsed,
         );
       }
@@ -3842,7 +3892,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       billboardObjects.forEach((object) => {
         object.quaternion.copy(camera.quaternion);
       });
-      const beaconPulse = 1 + Math.sin(clock.elapsedTime * 5.5) * 0.08;
+      const beaconPulse = 1 + Math.sin(animationTime * 5.5) * 0.08;
       primaryMarker.beacon.scale.setScalar(beaconPulse);
       secondaryAgents.forEach((entry) => {
         entry.marker.beacon.scale.setScalar(beaconPulse);
@@ -3865,6 +3915,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
 
     return () => {
       disposed = true;
+      worldStage?.classList.remove("monitor-ablation-no-vignette");
       renderer.setAnimationLoop(null);
       resizeObserver.disconnect();
       renderer.domElement.removeEventListener(
@@ -3897,6 +3948,8 @@ float shoreOverlayWaterSignal( vec3 color ) {
       outlineEffect.dispose();
       renderer.domElement.remove();
     };
+    // catStyle·catShape 는 마운트 시점 값만 쓴다 — 바뀌면 상위에서 key 로 씬을 새로 만든다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

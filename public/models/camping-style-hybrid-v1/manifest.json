@@ -1,0 +1,123 @@
+{
+  "version": 1,
+  "mode": "smooth-full-color-cartoon-palette",
+  "palette": [
+    [
+      112,
+      88,
+      70
+    ],
+    [
+      151,
+      122,
+      91
+    ],
+    [
+      194,
+      157,
+      113
+    ],
+    [
+      225,
+      191,
+      144
+    ],
+    [
+      241,
+      232,
+      211
+    ],
+    [
+      173,
+      194,
+      161
+    ],
+    [
+      161,
+      204,
+      185
+    ],
+    [
+      139,
+      181,
+      216
+    ],
+    [
+      188,
+      174,
+      146
+    ]
+  ],
+  "models": [
+    {
+      "id": "tent-workstation",
+      "input": "public\\models\\camping-style-locked-v4\\tent-workstation-flat-source-v4.glb",
+      "textureInput": "public\\models\\camping-style-locked-v3\\tent-workstation-meshy6-web-v3.glb",
+      "output": "public\\models\\camping-style-hybrid-v1\\tent-workstation-smooth-cartoon-v1.glb",
+      "preview": "tmp\\style-analysis\\smooth-cartoon-hybrid-v1\\tent-workstation-smooth-cartoon-v1.png",
+      "paletteStrength": 0.7,
+      "textureSize": [
+        2048,
+        2048
+      ],
+      "sourceBytes": 1767932,
+      "outputBytes": 3622116
+    },
+    {
+      "id": "round-laptop-workstation",
+      "input": "public\\models\\camping-style-locked-v4\\round-laptop-workstation-flat-source-v4.glb",
+      "textureInput": "public\\models\\camping-style-locked-v3\\round-laptop-workstation-meshy6-web-v3.glb",
+      "output": "public\\models\\camping-style-hybrid-v1\\round-laptop-workstation-smooth-cartoon-v1.glb",
+      "preview": "tmp\\style-analysis\\smooth-cartoon-hybrid-v1\\round-laptop-workstation-smooth-cartoon-v1.png",
+      "paletteStrength": 0.7,
+      "textureSize": [
+        2048,
+        2048
+      ],
+      "sourceBytes": 1744688,
+      "outputBytes": 3913712
+    },
+    {
+      "id": "folding-laptop-radio-workstation",
+      "input": "public\\models\\camping-style-locked-v4\\folding-laptop-radio-workstation-flat-source-v4.glb",
+      "textureInput": "public\\models\\camping-style-locked-v3\\folding-laptop-radio-workstation-meshy6-web-v3.glb",
+      "output": "public\\models\\camping-style-hybrid-v1\\folding-laptop-radio-workstation-smooth-cartoon-v1.glb",
+      "preview": "tmp\\style-analysis\\smooth-cartoon-hybrid-v1\\folding-laptop-radio-workstation-smooth-cartoon-v1.png",
+      "paletteStrength": 0.7,
+      "textureSize": [
+        2048,
+        2048
+      ],
+      "sourceBytes": 1754160,
+      "outputBytes": 4299504
+    },
+    {
+      "id": "low-monitor-workstation",
+      "input": "public\\models\\camping-style-locked-v3\\low-monitor-cat-keycap-workstation-meshy6-web-v3.glb",
+      "textureInput": "public\\models\\camping-style-locked-v3\\low-monitor-cat-keycap-workstation-meshy6-web-v3.glb",
+      "output": "public\\models\\camping-style-hybrid-v1\\low-monitor-cat-keycap-workstation-smooth-cartoon-v1.glb",
+      "preview": "tmp\\style-analysis\\smooth-cartoon-hybrid-v1\\low-monitor-cat-keycap-workstation-smooth-cartoon-v1.png",
+      "paletteStrength": 0.7,
+      "textureSize": [
+        2048,
+        2048
+      ],
+      "sourceBytes": 731892,
+      "outputBytes": 2710868
+    },
+    {
+      "id": "camping-supplies",
+      "input": "public\\models\\camping-style-locked-v1\\camping-supplies-cluster-meshy6-web-v1.glb",
+      "textureInput": "public\\models\\camping-style-locked-v1\\camping-supplies-cluster-meshy6-web-v1.glb",
+      "output": "public\\models\\camping-style-hybrid-v1\\camping-supplies-cluster-smooth-cartoon-v1.glb",
+      "preview": "tmp\\style-analysis\\smooth-cartoon-hybrid-v1\\camping-supplies-cluster-smooth-cartoon-v1.png",
+      "paletteStrength": 0.72,
+      "textureSize": [
+        2048,
+        2048
+      ],
+      "sourceBytes": 909108,
+      "outputBytes": 3216356
+    }
+  ]
+}

@@ -20,6 +20,8 @@ import {
   resolveRuntimeKey,
 } from "./runtime-state.mjs";
 import { type CatCue, type WorldAudio, createWorldAudio } from "./world-audio";
+import { CAT_STYLES } from "./cat-styles";
+import type { CatShape } from "./cat-body";
 
 type Department = "general" | "coding" | "design" | "music";
 type AgentStatus =
@@ -120,7 +122,7 @@ type BridgeHealth = {
   pendingApprovals?: BridgeEvent[];
 };
 type CompanionTransport = "local" | "cloud";
-type RadioPage = "mission" | "sessions" | "status" | "activity";
+type RadioPage = "cats" | "sessions" | "status" | "activity";
 
 const BRIDGE_URL =
   process.env.NEXT_PUBLIC_AGENT_BRIDGE_URL ?? "http://127.0.0.1:4317";
@@ -176,7 +178,7 @@ const DEMO_EXAMPLES = [
   },
 ];
 const RADIO_MENU: Array<{ key: RadioPage; ariaLabel: string }> = [
-  { key: "mission", ariaLabel: "작업 맡기기" },
+  { key: "cats", ariaLabel: "고양이 관리" },
   { key: "sessions", ariaLabel: "PC 연결" },
   { key: "status", ariaLabel: "진행 상태" },
   { key: "activity", ariaLabel: "활동 기록" },
@@ -187,6 +189,34 @@ const KEYCAP_CLICK_SOUNDS = [
 ];
 const SHOW_LEGACY_OVERLAYS = false;
 const AUDIO_ENABLED_KEY = "agent-forest-audio-v1";
+const CAT_LOOK_KEY = "agent-forest-cat-look-v1";
+// 체형은 프리셋으로만 고른다. 숫자 세 개를 그대로 노출하면 사장님이 만질 물건이 아니게 된다.
+const CAT_SHAPE_PRESETS: Array<{
+  id: string;
+  label: string;
+  note: string;
+  shape: CatShape;
+}> = [
+  { id: "slim", label: "원래대로", note: "팩 기본 체형", shape: { belly: 1, sag: 0, legs: 1 } },
+  {
+    id: "slight",
+    label: "살짝",
+    note: "말 안 하면 모를 정도",
+    shape: { belly: 1.25, sag: 0.4, legs: 0.95 },
+  },
+  {
+    id: "normal",
+    label: "통통",
+    note: "통통한 집고양이",
+    shape: { belly: 1.45, sag: 0.6, legs: 0.9 },
+  },
+  {
+    id: "chonk",
+    label: "뚱냥이",
+    note: "배가 처지고 다리가 짧다",
+    shape: { belly: 1.7, sag: 1, legs: 0.7 },
+  },
+];
 // 상태가 바뀌는 순간에만 고양이가 운다. 없는 상태는 조용히 넘어간다.
 //  업무 접수·분석 → 짧은 인사, 보고·완료 → 기본 야옹, 승인 대기 → 조르는 울음.
 const CAT_CUE_BY_STATUS: Partial<Record<AgentStatus, CatCue>> = {
@@ -284,7 +314,7 @@ export default function Home() {
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [radioOpen, setRadioOpen] = useState(false);
-  const [radioPage, setRadioPage] = useState<RadioPage>("mission");
+  const [radioPage, setRadioPage] = useState<RadioPage>("cats");
   const [hudDormant, setHudDormant] = useState(false);
   const [completionSignal, setCompletionSignal] = useState(0);
   const [acorns, setAcorns] = useState(0);
@@ -294,6 +324,9 @@ export default function Home() {
     null,
   );
   const [audioEnabled, setAudioEnabled] = useState(true);
+  // 고양이 외형 — 지금은 섬 전체가 한 마리라 전역 하나. 좌석별로 나눌 때 이 값이 기본값이 된다.
+  const [catStyle, setCatStyle] = useState("Blue");
+  const [catShapeId, setCatShapeId] = useState("slim");
 
   const relayEventCursor = useRef(0);
   const taskToThreadRef = useRef(new Map<string, string>());
@@ -750,6 +783,46 @@ export default function Home() {
       worldAudioRef.current = null;
       audio.dispose();
     };
+  }, []);
+
+  // 고양이 외형 복원 — 저장돼 있으면 그 모습으로 섬을 연다.
+  useEffect(() => {
+    queueMicrotask(() => {
+      try {
+        const saved = JSON.parse(
+          window.localStorage.getItem(CAT_LOOK_KEY) ?? "{}",
+        ) as { style?: string; shape?: string };
+        if (saved.style && CAT_STYLES.some((item) => item.id === saved.style)) {
+          setCatStyle(saved.style);
+        }
+        if (
+          saved.shape &&
+          CAT_SHAPE_PRESETS.some((item) => item.id === saved.shape)
+        ) {
+          setCatShapeId(saved.shape);
+        }
+      } catch {
+        window.localStorage.removeItem(CAT_LOOK_KEY);
+      }
+    });
+  }, []);
+
+  const catShape = useMemo(
+    () =>
+      (
+        CAT_SHAPE_PRESETS.find((item) => item.id === catShapeId) ??
+        CAT_SHAPE_PRESETS[0]
+      ).shape,
+    [catShapeId],
+  );
+
+  const applyCatLook = useCallback((style: string, shapeId: string) => {
+    setCatStyle(style);
+    setCatShapeId(shapeId);
+    window.localStorage.setItem(
+      CAT_LOOK_KEY,
+      JSON.stringify({ style, shape: shapeId }),
+    );
   }, []);
 
   useEffect(() => {
@@ -1289,6 +1362,10 @@ export default function Home() {
           }`}
         >
           <AgentWorld3D
+            // 외형이 바뀌면 씬을 통째로 다시 만든다 — FBX가 달라지고 정점도 새로 부풀려야 한다.
+            key={`${catStyle}-${catShapeId}`}
+            catStyle={catStyle}
+            catShape={catShape}
             seats={seatViews}
             companionConnected={
               bridgeState === "connected"
@@ -1432,12 +1509,72 @@ export default function Home() {
             </button>
           </div>
           <div className="radio-screen">
-            {radioPage === "mission" && (
+            {radioPage === "cats" && (
               <section className="panel-section task-composer">
                 <div className="section-heading">
                   <div>
+                    <span className="section-kicker">MY CATS</span>
+                    <h2>고양이 관리</h2>
+                  </div>
+                </div>
+
+                <div className="cat-roster">
+                  <div className="cat-roster-head">
+                    <b>지금 일하는 고양이 1마리</b>
+                    <small>
+                      {focusedRuntime?.agentName ?? "코치 모모"} ·{" "}
+                      {focusedRuntime ? STATUS_COPY[focusedRuntime.status] : "대기 중"}
+                    </small>
+                  </div>
+
+                  <label className="cat-field-label">털 색 · 무늬</label>
+                  <div className="cat-style-grid" role="radiogroup" aria-label="고양이 스타일">
+                    {CAT_STYLES.map((style) => (
+                      <button
+                        type="button"
+                        key={style.id}
+                        role="radio"
+                        aria-checked={catStyle === style.id}
+                        className={catStyle === style.id ? "selected" : ""}
+                        onClick={() => applyCatLook(style.id, catShapeId)}
+                        title={style.ko}
+                      >
+                        {style.id}
+                      </button>
+                    ))}
+                  </div>
+
+                  <label className="cat-field-label">체형</label>
+                  <div className="cat-shape-row" role="radiogroup" aria-label="고양이 체형">
+                    {CAT_SHAPE_PRESETS.map((preset) => (
+                      <button
+                        type="button"
+                        key={preset.id}
+                        role="radio"
+                        aria-checked={catShapeId === preset.id}
+                        className={catShapeId === preset.id ? "selected" : ""}
+                        onClick={() => applyCatLook(catStyle, preset.id)}
+                      >
+                        <b>{preset.label}</b>
+                        <small>{preset.note}</small>
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="cat-add-button"
+                    onClick={() => setRadioPage("sessions")}
+                  >
+                    고양이 추가하기
+                    <small>내 PC의 Codex 세션을 하나 더 연결하면 그 세션이 새 고양이가 됩니다</small>
+                  </button>
+                </div>
+
+                <div className="section-heading">
+                  <div>
                     <span className="section-kicker">NEW MISSION</span>
-                    <h2>고양이 에이전트에게 업무 맡기기</h2>
+                    <h2>이 고양이에게 업무 맡기기</h2>
                   </div>
                 </div>
                 <div className="selected-session-line">

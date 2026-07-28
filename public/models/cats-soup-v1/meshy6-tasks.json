@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "generated_at": "2026-07-27",
+  "api_endpoint": "https://api.meshy.ai/openapi/v1/image-to-3d",
+  "ai_model": "meshy-6",
+  "tasks": [
+    {
+      "id": "019fa297-37ab-7d87-b559-69feea63adb1",
+      "status": "SUCCEEDED",
+      "consumed_credits": 30,
+      "source_image": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-references\\cats-soup-v1\\low-monitor-raised-four-key-workstation-ref-v2.png",
+      "source_image_bytes": 469581,
+      "preview_image": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-source\\cats-soup-v1\\low-monitor-raised-four-key-workstation-meshy6-preview-v1.png",
+      "alpha_preview_image": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-source\\cats-soup-v1\\low-monitor-raised-four-key-workstation-meshy6-alpha-preview-v1.png",
+      "original_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-source\\cats-soup-v1\\low-monitor-raised-four-key-workstation-meshy6-v1.glb",
+      "original_model_bytes": 13186324,
+      "pre_remeshed_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\assets\\meshy-source\\cats-soup-v1\\low-monitor-raised-four-key-workstation-meshy6-pre-remesh-v1.glb",
+      "pre_remeshed_model_bytes": 2983372,
+      "web_model": "D:\\soccerstarWebSource\\GameCreator\\catAgentGame\\public\\models\\cats-soup-v1\\low-monitor-raised-four-key-workstation-meshy6-web-v1.glb",
+      "web_model_bytes": 2619564,
+      "settings": {
+        "model_type": "standard",
+        "should_texture": true,
+        "enable_pbr": false,
+        "texture_resolution": "4k",
+        "should_remesh": true,
+        "topology": "triangle",
+        "target_polycount": 40000,
+        "save_pre_remeshed_model": true,
+        "image_enhancement": false,
+        "remove_lighting": true,
+        "target_formats": [
+          "glb"
+        ],
+        "alpha_thumbnail": true
+      },
+      "web_optimization": {
+        "texture_format": "jpeg",
+        "texture_max_dimension": 2048,
+        "texture_quality": 92,
+        "texture_chroma_subsampling": "4:4:4",
+        "vertex_count": 34777,
+        "triangle_count": 39188
+      }
+    }
+  ]
+}

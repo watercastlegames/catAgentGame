@@ -1,0 +1,423 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>최종 월드 렌더 스케일 비교 · 2026-07-28</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #493932;
+        --muted: #796c61;
+        --paper: #fffdf7;
+        --line: #ddcfba;
+        --coral: #e88771;
+        --green: #78976c;
+        --gold: #d79f55;
+        --shadow: 0 20px 54px rgba(83, 66, 47, 0.13);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 15% 0%, rgba(255, 243, 203, 0.9), transparent 34%),
+          linear-gradient(145deg, #eef4e7, #f8efdc);
+        font-family: Inter, Pretendard, "Noto Sans KR", system-ui, sans-serif;
+      }
+      main { width: min(1440px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 72px; }
+      header, section {
+        margin-bottom: 22px;
+        padding: 28px;
+        border: 1px solid rgba(221, 207, 186, 0.9);
+        border-radius: 26px;
+        background: rgba(255, 253, 247, 0.95);
+        box-shadow: var(--shadow);
+      }
+      h1, h2, h3, p { margin-top: 0; }
+      h1 { max-width: 900px; margin-bottom: 12px; font-size: clamp(30px, 5vw, 56px); line-height: 1.08; }
+      h2 { margin-bottom: 8px; font-size: clamp(23px, 3vw, 34px); }
+      h3 { margin-bottom: 6px; }
+      p { color: var(--muted); line-height: 1.7; }
+      .eyebrow {
+        margin-bottom: 10px;
+        color: var(--coral);
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      .badges, .legend { display: flex; flex-wrap: wrap; gap: 8px; }
+      .badge, .status {
+        display: inline-flex;
+        align-items: center;
+        padding: 7px 10px;
+        border-radius: 999px;
+        background: #f3ead8;
+        font-size: 11px;
+        font-weight: 900;
+      }
+      .status.best { color: #fff; background: var(--green); }
+      .status.cost { color: #fff; background: var(--gold); }
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 24px;
+      }
+      .summary article {
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: #fffaf0;
+      }
+      .summary strong { display: block; margin: 10px 0 5px; font-size: 24px; }
+      .summary span:last-child { color: var(--muted); font-size: 13px; line-height: 1.55; }
+      .crop-sheet {
+        display: block;
+        width: 100%;
+        margin-top: 18px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: #f3ead8;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 18px;
+      }
+      .card {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: #fffaf0;
+      }
+      .card img { display: block; width: 100%; aspect-ratio: 590 / 884; object-fit: cover; }
+      .card-copy { padding: 14px; }
+      .card-copy p { min-height: 64px; margin-bottom: 0; font-size: 12px; }
+      .metric { margin: 8px 0; color: var(--coral); font-size: 12px; font-weight: 900; }
+      .compare-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+        gap: 20px;
+        align-items: start;
+      }
+      .compare {
+        position: relative;
+        overflow: hidden;
+        max-width: 590px;
+        aspect-ratio: 590 / 884;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: #dce8d5;
+      }
+      .compare img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+      #after { clip-path: inset(0 0 0 50%); }
+      .divider {
+        position: absolute;
+        z-index: 4;
+        top: 0;
+        bottom: 0;
+        left: 50%;
+        width: 2px;
+        background: rgba(255, 255, 255, 0.95);
+        box-shadow: 0 0 0 1px rgba(73, 57, 50, 0.35);
+      }
+      .label {
+        position: absolute;
+        z-index: 5;
+        top: 12px;
+        padding: 7px 10px;
+        border-radius: 999px;
+        color: #fff;
+        background: rgba(73, 57, 50, 0.78);
+        font-size: 11px;
+        font-weight: 900;
+      }
+      .label.before { left: 12px; }
+      .label.after { right: 12px; }
+      .controls { display: grid; gap: 14px; }
+      .control {
+        padding: 16px;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: #fffaf0;
+      }
+      label { display: block; margin-bottom: 8px; font-size: 12px; font-weight: 900; }
+      select, input { width: 100%; }
+      select {
+        padding: 11px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        color: var(--ink);
+        background: #fff;
+        font: inherit;
+      }
+      table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+      th, td { padding: 12px 10px; border-bottom: 1px solid var(--line); text-align: left; font-size: 13px; }
+      th { color: var(--muted); font-size: 11px; }
+      .recommendation {
+        padding: 20px;
+        border: 1px solid #b9c9b1;
+        border-radius: 18px;
+        background: #edf4e8;
+      }
+      .recommendation strong { display: block; margin-bottom: 8px; font-size: 22px; }
+      @media (max-width: 1000px) {
+        .summary { grid-template-columns: 1fr; }
+        .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .compare-grid { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 620px) {
+        main { width: min(100% - 18px, 1440px); padding-top: 10px; }
+        header, section { padding: 18px; border-radius: 18px; }
+        .cards { grid-template-columns: 1fr; }
+        .crop-sheet { min-height: 190px; object-fit: cover; object-position: left center; }
+        th, td { padding: 9px 6px; font-size: 10px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">Render scale ladder · static world · 2026-07-28</p>
+        <h1>다른 효과는 건드리지 않고 렌더 스케일만 더 올려봤습니다.</h1>
+        <p>
+          현재 기본 상한인 1.5×부터 2×, 2.5×, 3×, 4×까지 동일한 월드와
+          고정 카메라를 다시 렌더했습니다. 코딩 화면과 눌림 키캡은 숨기고
+          애니메이션 시간도 0초로 고정해 렌더 스케일 이외의 차이를 막았습니다.
+        </p>
+        <div class="badges">
+          <span class="badge">동일 590×884 출력</span>
+          <span class="badge">동일 카메라</span>
+          <span class="badge">정지 프레임</span>
+          <span class="badge">오버레이 없음</span>
+          <span class="badge">렌더 스케일만 변경</span>
+        </div>
+        <div class="summary">
+          <article>
+            <span class="status">확실한 개선</span>
+            <strong>2×</strong>
+            <span>1.5×보다 모니터·키캡·화분 외곽선이 분명하게 정리됩니다.</span>
+          </article>
+          <article>
+            <span class="status best">권장 상한</span>
+            <strong>3×</strong>
+            <span>선명도가 사실상 포화되는 지점이며 4×와 육안 차이가 작습니다.</span>
+          </article>
+          <article>
+            <span class="status cost">비용 급증</span>
+            <strong>4×</strong>
+            <span>현재 1.5×보다 약 7.1배 많은 픽셀을 렌더해 상시 적용에는 부담이 큽니다.</span>
+          </article>
+        </div>
+      </header>
+
+      <section>
+        <p class="eyebrow">Pixel-level crop</p>
+        <h2>책상·모니터 동일 영역 확대</h2>
+        <p>원본 출력의 같은 영역을 최근접 보간으로 4배 확대했습니다.</p>
+        <img
+          class="crop-sheet"
+          src="tmp/validation/monitor-render-scale-20260728/monitor-render-scale-crops-20260728.png"
+          alt="1.5배부터 4배까지 책상과 모니터 확대 비교"
+        />
+      </section>
+
+      <section>
+        <p class="eyebrow">Full world captures</p>
+        <h2>전체 월드 5단계 비교</h2>
+        <div class="cards" id="cards"></div>
+      </section>
+
+      <section>
+        <p class="eyebrow">Interactive comparison</p>
+        <h2>1.5× 기준과 직접 겹쳐보기</h2>
+        <div class="compare-grid">
+          <div class="compare">
+            <img id="before" alt="1.5배 기준 화면" />
+            <img id="after" alt="선택한 렌더 스케일 화면" />
+            <span class="label before">1.5× 기준</span>
+            <span class="label after" id="afterLabel">3×</span>
+            <span class="divider" id="divider"></span>
+          </div>
+          <div class="controls">
+            <div class="control">
+              <label for="scaleSelect">비교할 렌더 스케일</label>
+              <select id="scaleSelect"></select>
+            </div>
+            <div class="control">
+              <label for="split">분할 위치</label>
+              <input id="split" type="range" min="0" max="100" value="50" />
+              <strong id="splitValue">50%</strong>
+            </div>
+            <div class="control">
+              <strong id="selectedMetric"></strong>
+              <p id="selectedFinding"></p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <p class="eyebrow">Pixel cost</p>
+        <h2>선명도와 렌더 비용</h2>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>배율</th>
+                <th>내부 렌더 크기</th>
+                <th>렌더 픽셀</th>
+                <th>1.5× 대비</th>
+                <th>경계 선명도</th>
+                <th>판정</th>
+              </tr>
+            </thead>
+            <tbody id="metrics"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <p class="eyebrow">Recommendation</p>
+        <h2>적용 방향</h2>
+        <div class="recommendation">
+          <strong>PC 고화질은 3×, 기본 PC·모바일은 최대 2×가 적절합니다.</strong>
+          <p>
+            3×는 현재 1.5×보다 내부 렌더 픽셀이 4배지만 선명도가 가장 안정적으로
+            올라옵니다. 4×는 픽셀 비용이 7.12배까지 증가하는 데 비해 3×보다
+            좋아지는 폭이 작습니다. 실제 배포에는 기기별 상한과 프레임 저하 시
+            자동으로 한 단계 내리는 적응형 렌더 스케일이 안전합니다.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const basePath = "tmp/validation/monitor-render-scale-20260728/";
+      const items = [
+        {
+          scale: 1.5,
+          file: "01-render-scale-1_5x.png",
+          backing: "883 × 1,326",
+          pixels: "1.17M",
+          cost: "1.00×",
+          sharpness: "62.540",
+          verdict: "현재 기준",
+          finding: "현재 기본 상한입니다. 작은 모니터와 키캡 가장자리가 다소 뭉개집니다.",
+        },
+        {
+          scale: 2,
+          file: "02-render-scale-2x.png",
+          backing: "1,178 × 1,768",
+          pixels: "2.08M",
+          cost: "1.78×",
+          sharpness: "67.334",
+          verdict: "확실한 개선",
+          finding: "비용 증가가 비교적 작고 1.5×보다 선명도가 눈에 띄게 좋아집니다.",
+        },
+        {
+          scale: 2.5,
+          file: "03-render-scale-2_5x.png",
+          backing: "1,472 × 2,210",
+          pixels: "3.25M",
+          cost: "2.78×",
+          sharpness: "71.423",
+          verdict: "중간 단계",
+          finding: "더 선명하지만 일부 대각선에서 소수점 샘플링 차이가 보입니다.",
+        },
+        {
+          scale: 3,
+          file: "04-render-scale-3x.png",
+          backing: "1,767 × 2,652",
+          pixels: "4.69M",
+          cost: "4.00×",
+          sharpness: "74.879",
+          verdict: "PC 고화질 권장",
+          finding: "외곽선과 작은 소품이 가장 안정적으로 정리되며 선명도가 포화됩니다.",
+        },
+        {
+          scale: 4,
+          file: "05-render-scale-4x.png",
+          backing: "2,356 × 3,536",
+          pixels: "8.33M",
+          cost: "7.12×",
+          sharpness: "74.336",
+          verdict: "비용 과다",
+          finding: "3×와 육안 차이는 작지만 렌더 픽셀 비용은 크게 증가합니다.",
+        },
+      ];
+
+      const cards = document.querySelector("#cards");
+      items.forEach((item) => {
+        const article = document.createElement("article");
+        article.className = "card";
+        article.innerHTML = `
+          <img src="${basePath}${item.file}" alt="${item.scale}배 전체 월드" />
+          <div class="card-copy">
+            <h3>${item.scale}×</h3>
+            <div class="metric">${item.backing} · ${item.cost} 비용</div>
+            <p>${item.finding}</p>
+          </div>
+        `;
+        cards.appendChild(article);
+      });
+
+      const before = document.querySelector("#before");
+      const after = document.querySelector("#after");
+      const select = document.querySelector("#scaleSelect");
+      const afterLabel = document.querySelector("#afterLabel");
+      const selectedMetric = document.querySelector("#selectedMetric");
+      const selectedFinding = document.querySelector("#selectedFinding");
+      const split = document.querySelector("#split");
+      const splitValue = document.querySelector("#splitValue");
+      const divider = document.querySelector("#divider");
+      const metrics = document.querySelector("#metrics");
+
+      before.src = `${basePath}${items[0].file}`;
+      items.slice(1).forEach((item, index) => {
+        const option = document.createElement("option");
+        option.value = String(index + 1);
+        option.textContent = `${item.scale}×`;
+        if (item.scale === 3) option.selected = true;
+        select.appendChild(option);
+      });
+
+      function updateSelected() {
+        const item = items[Number(select.value)];
+        after.src = `${basePath}${item.file}`;
+        afterLabel.textContent = `${item.scale}×`;
+        selectedMetric.textContent =
+          `${item.backing} · 1.5× 대비 픽셀 비용 ${item.cost}`;
+        selectedFinding.textContent = item.finding;
+      }
+
+      function updateSplit() {
+        const value = Number(split.value);
+        after.style.clipPath = `inset(0 0 0 ${value}%)`;
+        divider.style.left = `${value}%`;
+        splitValue.textContent = `${value}%`;
+      }
+
+      items.forEach((item) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${item.scale}×</td>
+          <td>${item.backing}</td>
+          <td>${item.pixels}</td>
+          <td>${item.cost}</td>
+          <td>${item.sharpness}</td>
+          <td>${item.verdict}</td>
+        `;
+        metrics.appendChild(row);
+      });
+
+      select.addEventListener("change", updateSelected);
+      split.addEventListener("input", updateSplit);
+      updateSelected();
+      updateSplit();
+    </script>
+  </body>
+</html>

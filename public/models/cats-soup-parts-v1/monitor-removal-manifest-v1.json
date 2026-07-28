@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "mode": "remove-monitor",
+  "input": "public\\models\\camping-style-locked-v4\\low-monitor-cat-keycap-workstation-flat-source-v4.glb",
+  "output": "public\\models\\cats-soup-parts-v1\\low-monitor-workstation-base-without-monitor-v1.glb",
+  "originalTexturePreserved": true,
+  "componentSizes": [
+    34304,
+    5882
+  ],
+  "cushionComponent": 1,
+  "changedObjectCount": 1,
+  "removedMonitorTriangles": 2758,
+  "triangleCounts": {
+    "original-texture": 37428
+  }
+}

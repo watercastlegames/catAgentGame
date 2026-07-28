@@ -61,19 +61,28 @@ const outlineFragmentShader = `
   uniform vec3 outlineColor;
   uniform float outlineAlpha;
   uniform float outlineGapStrength;
+  uniform float outlinePixelRatio;
 
   void main() {
     #include <clipping_planes_fragment>
     #include <logdepthbuf_fragment>
 
-    float slowWave = sin(gl_FragCoord.x * 0.115 + gl_FragCoord.y * 0.071);
-    float crossWave = sin(gl_FragCoord.x * -0.047 + gl_FragCoord.y * 0.137);
-    float fineWave = sin((gl_FragCoord.x + gl_FragCoord.y) * 0.213);
+    vec2 cssFragmentCoord =
+      gl_FragCoord.xy / max(outlinePixelRatio, 1.0);
+    float slowWave =
+      sin(cssFragmentCoord.x * 0.115 + cssFragmentCoord.y * 0.071);
+    float crossWave =
+      sin(cssFragmentCoord.x * -0.047 + cssFragmentCoord.y * 0.137);
+    float fineWave =
+      sin((cssFragmentCoord.x + cssFragmentCoord.y) * 0.213);
     float paperGap = slowWave * 0.52 + crossWave * 0.33 + fineWave * 0.15;
     float gapThreshold = mix(1.05, 0.79, outlineGapStrength);
-    if (paperGap > gapThreshold) discard;
+    float softenedGap =
+      1.0 - smoothstep(gapThreshold - 0.045, gapThreshold + 0.045, paperGap);
+    float gapAlpha = mix(1.0, softenedGap, outlineGapStrength);
+    if (gapAlpha < 0.01) discard;
 
-    gl_FragColor = vec4(outlineColor, outlineAlpha);
+    gl_FragColor = vec4(outlineColor, outlineAlpha * gapAlpha);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
     #include <fog_fragment>
@@ -110,6 +119,7 @@ export class SketchOutlineEffect {
           },
           outlineAlpha: { value: options.defaultAlpha },
           outlineGapStrength: { value: this.gapStrength },
+          outlinePixelRatio: { value: 1 },
         },
       ]),
       vertexShader: outlineVertexShader,
@@ -125,6 +135,10 @@ export class SketchOutlineEffect {
     this.gapStrength = THREE.MathUtils.clamp(value, 0, 1);
     this.outlineMaterial.uniforms.outlineGapStrength.value =
       this.gapStrength;
+  }
+
+  setPixelRatio(value: number) {
+    this.outlineMaterial.uniforms.outlinePixelRatio.value = Math.max(value, 1);
   }
 
   render(scene: THREE.Scene, camera: THREE.Camera) {

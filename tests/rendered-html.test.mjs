@@ -52,7 +52,8 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     packageJson,
     worldAudio,
     sketchOutline,
-  ] = await Promise.all([
+  ] =
+    await Promise.all([
       readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/agent-world-3d.tsx", import.meta.url), "utf8"),
       readFile(new URL("../app/navigation.mjs", import.meta.url), "utf8"),
@@ -66,6 +67,87 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
       ),
     ]);
 
+  const [catGallery, catGalleryPage, catStyles, catBody] = await Promise.all([
+    readFile(new URL("../app/cat-style-gallery.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/cats/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/cat-styles.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/cat-body.ts", import.meta.url), "utf8"),
+  ]);
+
+  // 체형 살찌우기는 몸통 뼈 가중치를 쓰는 바인드 포즈 정점 조작이어야 한다.
+  // (뼈 스케일은 클립 68개가 전부 .scale 트랙을 갖고 있어 매 프레임 덮어쓴다)
+  assert.match(catBody, /export function fattenCat/);
+  assert.match(catBody, /skinWeight/);
+  assert.match(catBody, /TORSO_BONE_PATTERN/);
+  assert.match(catBody, /computeVertexNormals/);
+  // 이제 월드에 붙었다 — 1번 키캡의 고양이 메뉴에서 고른 체형이 적용된다.
+  assert.match(world3d, /fattenCat/);
+
+  // 진열대는 팩의 스타일 15종을 전부 세운다. All/Animations 는 스타일이 아니라 제외.
+  for (const style of [
+    "Abyssian",
+    "Black",
+    "BlackWhite",
+    "Blue",
+    "Bobtail",
+    "British",
+    "Cream",
+    "Maine",
+    "Persian",
+    "Red",
+    "RedWhite",
+    "Siamese",
+    "Simple",
+    "Sphynx",
+    "White",
+  ]) {
+    assert.match(catStyles, new RegExp(`id: "${style}"`));
+  }
+  assert.doesNotMatch(catStyles, /id: "All"/);
+  assert.doesNotMatch(catStyles, /id: "Animations/);
+  assert.match(catStyles, /Lowpoly_Cat_\$\{styleId\}\.fbx/);
+  // 목록은 "use client" 없는 모듈에 둬야 서버 컴포넌트가 개수를 셀 수 있다.
+  assert.doesNotMatch(catStyles, /^"use client"/m);
+  assert.match(catGallery, /catStyleModelUrl/);
+  assert.match(catGallery, /LABEL_OVERLAY_LAYER/);
+  assert.match(catGallery, /outlineEffect\.render/);
+  assert.match(catGalleryPage, /CatStyleGallery/);
+  assert.match(catGalleryPage, /from "\.\.\/cat-styles"/);
+  assert.match(css, /\.cat-gallery-stage \{/);
+  // 월드의 고양이는 그대로 Blue 하나다.
+  // 1번 키캡이 고양이 관리 메뉴다 — 스타일·체형을 고르면 월드에 반영된다.
+  assert.match(page, /type RadioPage = "cats"/);
+  assert.match(page, /key: "cats", ariaLabel: "고양이 관리"/);
+  assert.match(page, /CAT_SHAPE_PRESETS/);
+  assert.match(page, /CAT_LOOK_KEY/);
+  assert.match(page, /고양이 추가하기/);
+  assert.match(page, /catStyle=\{catStyle\}/);
+  assert.match(page, /catShape=\{catShape\}/);
+  assert.doesNotMatch(page, /radioPage === "mission"/);
+  assert.match(world3d, /catStyleModelUrl\(catStyle\)/);
+  assert.match(world3d, /fattenCat\(model, catShape\)/);
+  // 후처리 비교 캡처는 꾹꾹이용 코딩 화면·눌림 키캡을 강제로 띄우지 않는다.
+  // monitorAblation 존재만으로 실시간 화면을 켰던 이전 회귀를 막는다.
+  assert.match(world3d, /get\("monitorCapture"\) === "static"/);
+  assert.match(world3d, /suppressMonitorInteraction/);
+  assert.match(world3d, /get\("monitorScreen"\) === "coding"/);
+  assert.match(world3d, /get\("renderScale"\)/);
+  assert.match(world3d, /THREE\.MathUtils\.clamp\(requestedRenderScale, 0\.75, 4\)/);
+  assert.match(world3d, /const DEFAULT_WORLD_RENDER_SCALE = 4/);
+  assert.match(
+    world3d,
+    /diagnosticRenderScale \?\?[\s\S]*DEFAULT_WORLD_RENDER_SCALE/,
+  );
+  assert.match(world3d, /dataset\.renderScale/);
+  assert.doesNotMatch(
+    world3d,
+    /monitorAblationMode\s*&&\s*monitorAblationMode\s*!==\s*"no-live-screen"/,
+  );
+  assert.match(css, /\.cat-style-grid button\.selected/);
+  // 1번 키캡 아트만 고양이 버전으로 갈아끼웠다(2~4번 키는 원본 그대로).
+  assert.match(css, /menu-keycaps-base-v5\.png/);
+  assert.match(css, /menu-keycaps-pressed-1-v2\.png/);
+  assert.match(css, /menu-keycaps-pressed-2-v2\.png/);
   // 해변 앰비언스 3종 + 타건 루프 + 고양이 4종 + 배경음악, 하악질은 제외.
   assert.match(worldAudio, /AMB_Beach_LowKey_Gull_Loop_01\.mp3/);
   assert.match(worldAudio, /AMB_Beach_LowKey_Gull_Loop_02\.mp3/);
@@ -116,7 +198,7 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /const SHOW_LEGACY_OVERLAYS = false/);
   assert.doesNotMatch(page, /className="radio-dials"/);
   assert.match(page, /비용 없는 화면 시연/);
-  assert.match(page, /고양이 에이전트에게 업무 맡기기/);
+  assert.match(page, /이 고양이에게 업무 맡기기/);
   assert.match(page, /내 PC 세션 연결/);
   assert.match(page, /선택한 Codex 세션에서 실행/);
   assert.match(page, /AUTONOMOUS CAT MOTION ACTIVE/);
@@ -138,20 +220,33 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /FBXLoader/);
   assert.match(world3d, /GLTFLoader/);
   assert.match(world3d, /MeshoptDecoder/);
-  assert.match(world3d, /Lowpoly_Cat_Blue\.fbx/);
+  assert.match(world3d, /catStyleModelUrl/);
   assert.match(world3d, /Lowpoly_Cat_Animations_IP\.fbx/);
-  assert.match(world3d, /tent-workstation-flat-source-v4\.glb/);
-  assert.match(world3d, /round-laptop-workstation-flat-source-v4\.glb/);
+  assert.match(world3d, /tent-workstation-smooth-cartoon-v1\.glb/);
+  assert.match(world3d, /round-laptop-workstation-smooth-cartoon-v1\.glb/);
   assert.match(
     world3d,
-    /folding-laptop-radio-workstation-flat-source-v4\.glb/,
+    /folding-laptop-radio-workstation-smooth-cartoon-v1\.glb/,
   );
   assert.match(
+    world3d,
+    /low-monitor-cat-keycap-workstation-smooth-cartoon-v1\.glb/,
+  );
+  assert.doesNotMatch(
     world3d,
     /low-monitor-cat-keycap-workstation-flat-source-v4\.glb/,
   );
+  assert.doesNotMatch(
+    world3d,
+    /low-monitor-cat-keycap-workstation-meshy6-web-v3\.glb/,
+  );
+  assert.doesNotMatch(world3d, /monitor-meshy6-web-v2\.glb/);
+  assert.doesNotMatch(world3d, /low-monitor-workstation-separated-monitor/);
   assert.match(world3d, /palm-tree-meshy6-web-v1\.glb/);
-  assert.match(world3d, /camping-supplies-cluster-meshy6-web-v1\.glb/);
+  assert.match(
+    world3d,
+    /camping-supplies-cluster-smooth-cartoon-v1\.glb/,
+  );
   assert.match(world3d, /camping-lantern-meshy6-web-v1\.glb/);
   assert.match(
     world3d,
@@ -170,8 +265,9 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /desk-keycap-2-top-flat-v1\.png/);
   assert.match(world3d, /desk-keycap-3-top-flat-v1\.png/);
   assert.match(world3d, /desk-keycap-4-top-flat-v1\.png/);
-  assert.match(world3d, /camping-style-locked-v4/);
-  assert.match(world3d, /flat-source-v4\.glb/);
+  assert.match(world3d, /camping-style-hybrid-v1/);
+  assert.doesNotMatch(world3d, /camping-style-locked-v4/);
+  assert.doesNotMatch(world3d, /flat-source-v4\.glb/);
   assert.doesNotMatch(world3d, /createWorkstationKeyboardCleanup/);
   assert.match(world3d, /LOW_MONITOR_STATION_ROTATION_Y = -0\.06/);
   assert.match(
@@ -229,11 +325,11 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /AUTONOMOUS_STATUSES/);
   assert.match(world3d, /ambientPhase/);
   assert.match(world3d, /"settling"/);
-  assert.match(css, /menu-keycaps-base-v4\.png/);
-  assert.match(css, /menu-keycaps-pressed-1-v1\.png/);
-  assert.match(css, /menu-keycaps-pressed-2-v1\.png/);
-  assert.match(css, /menu-keycaps-pressed-3-v1\.png/);
-  assert.match(css, /menu-keycaps-pressed-4-v1\.png/);
+  assert.match(css, /menu-keycaps-base-v5\.png/);
+  assert.match(css, /menu-keycaps-pressed-1-v2\.png/);
+  assert.match(css, /menu-keycaps-pressed-2-v2\.png/);
+  assert.match(css, /menu-keycaps-pressed-3-v2\.png/);
+  assert.match(css, /menu-keycaps-pressed-4-v2\.png/);
   assert.match(css, /\.keycap-menu-layer-normal[\s\S]*opacity:\s*1/);
   assert.match(
     css,
@@ -330,10 +426,19 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /SketchOutlineEffect/);
   assert.match(sketchOutline, /paperGap/);
   assert.match(sketchOutline, /outlineGapStrength/);
+  assert.match(sketchOutline, /outlinePixelRatio/);
+  assert.match(
+    sketchOutline,
+    /gl_FragCoord\.xy\s*\/\s*max\(outlinePixelRatio,\s*1\.0\)/,
+  );
+  assert.match(sketchOutline, /smoothstep\(gapThreshold - 0\.045/);
+  assert.match(sketchOutline, /setPixelRatio/);
   assert.match(sketchOutline, /gapThreshold = mix\(1\.05, 0\.79/);
   assert.match(sketchOutline, /setGapStrength/);
   assert.match(world3d, /worldViewIsMoving/);
   assert.match(world3d, /outlineEffect\.setGapStrength/);
+  assert.match(world3d, /outlineEffect\.setPixelRatio\(renderPixelRatio\)/);
+  assert.doesNotMatch(world3d, /disableWorldOutline/);
   assert.match(world3d, /SkeletonUtils/);
   assert.match(world3d, /SeatView/);
   assert.match(world3d, /SEAT_WORLD_POSITIONS/);
@@ -487,6 +592,18 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     ),
     access(
       new URL(
+        "../public/models/camping-style-locked-v4-clean/low-monitor-cat-keycap-workstation-noise-clean-v3.glb",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-locked-v4-clean/selective-cleanup-manifest-v3.json",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
         "../public/models/camping-style-locked-v4/source-rebuild-manifest.json",
         import.meta.url,
       ),
@@ -524,6 +641,42 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     access(
       new URL(
         "../public/models/camping-style-locked-v1/camping-supplies-cluster-meshy6-web-v1.glb",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-hybrid-v1/tent-workstation-smooth-cartoon-v1.glb",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-hybrid-v1/round-laptop-workstation-smooth-cartoon-v1.glb",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-hybrid-v1/folding-laptop-radio-workstation-smooth-cartoon-v1.glb",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-hybrid-v1/low-monitor-cat-keycap-workstation-smooth-cartoon-v1.glb",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-hybrid-v1/camping-supplies-cluster-smooth-cartoon-v1.glb",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/camping-style-hybrid-v1/manifest.json",
         import.meta.url,
       ),
     ),
@@ -583,6 +736,18 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     ),
     access(
       new URL(
+        "../public/models/cats-soup-v1/low-monitor-raised-four-key-workstation-meshy6-web-v1.glb",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
+        "../public/models/cats-soup-v1/meshy6-tasks.json",
+        import.meta.url,
+      ),
+    ),
+    access(
+      new URL(
         "../public/models/PolyArt/Animals/Cats/FBX/Lowpoly_Cat_Blue.fbx",
         import.meta.url,
       ),
@@ -599,20 +764,44 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
         import.meta.url,
       ),
     ),
+    ...[
+      "Abyssian",
+      "Black",
+      "BlackWhite",
+      "Blue",
+      "Bobtail",
+      "British",
+      "Cream",
+      "Maine",
+      "Persian",
+      "Red",
+      "RedWhite",
+      "Siamese",
+      "Simple",
+      "Sphynx",
+      "White",
+    ].map((style) =>
+      access(
+        new URL(
+          `../public/models/PolyArt/Animals/Cats/FBX/Lowpoly_Cat_${style}.fbx`,
+          import.meta.url,
+        ),
+      ),
+    ),
     access(
       new URL("../public/art/menu-keycaps-base-v4.png", import.meta.url),
     ),
     access(
-      new URL("../public/art/menu-keycaps-pressed-1-v1.png", import.meta.url),
+      new URL("../public/art/menu-keycaps-pressed-1-v2.png", import.meta.url),
     ),
     access(
-      new URL("../public/art/menu-keycaps-pressed-2-v1.png", import.meta.url),
+      new URL("../public/art/menu-keycaps-pressed-2-v2.png", import.meta.url),
     ),
     access(
-      new URL("../public/art/menu-keycaps-pressed-3-v1.png", import.meta.url),
+      new URL("../public/art/menu-keycaps-pressed-3-v2.png", import.meta.url),
     ),
     access(
-      new URL("../public/art/menu-keycaps-pressed-4-v1.png", import.meta.url),
+      new URL("../public/art/menu-keycaps-pressed-4-v2.png", import.meta.url),
     ),
     access(new URL("../public/audio/keycap-click-1.mp3", import.meta.url)),
     access(new URL("../public/audio/keycap-click-2.mp3", import.meta.url)),
@@ -645,6 +834,10 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     access(new URL("../public/audio/CAT_Meow_Demand_01.mp3", import.meta.url)),
     access(new URL("../public/audio/CAT_Purr_Loop_01.mp3", import.meta.url)),
     access(new URL("../public/audio/TY_Dusk_alt01.mp3", import.meta.url)),
+    access(new URL("../public/art/menu-keycaps-base-v5.png", import.meta.url)),
+    access(
+      new URL("../public/art/menu-keycaps-pressed-1-v2.png", import.meta.url),
+    ),
     access(new URL("../public/concept-approval.jpg", import.meta.url)),
     access(new URL("../bridge/server.mjs", import.meta.url)),
   ]);

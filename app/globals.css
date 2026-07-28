@@ -294,6 +294,10 @@ button {
   pointer-events: none;
 }
 
+.world-stage-3d.monitor-ablation-no-vignette::after {
+  display: none;
+}
+
 .world-3d-host,
 .world-3d-fallback {
   position: absolute;
@@ -1591,6 +1595,119 @@ button {
   text-align: center;
 }
 
+/* Cat style gallery: every style in the PolyArt pack standing on its own pedestal. */
+.cat-gallery-page {
+  width: min(100% - 28px, 1080px);
+  margin: 0 auto;
+  padding: 54px 0 80px;
+}
+
+.cat-gallery-page header {
+  padding: clamp(24px, 5vw, 46px);
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 26px;
+  background: rgba(255, 250, 232, 0.86);
+  box-shadow: var(--shadow-soft);
+}
+
+.cat-gallery-page h1 {
+  margin: 6px 0 8px;
+  color: var(--forest-900);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(30px, 6vw, 52px);
+  letter-spacing: -0.045em;
+}
+
+.cat-gallery-page header p {
+  margin: 0 0 14px;
+  color: #655d54;
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.cat-gallery-page header a {
+  color: #466a52;
+  font-weight: 850;
+}
+
+.cat-gallery {
+  margin-top: 18px;
+}
+
+.cat-gallery-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 11;
+  min-height: 380px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 26px;
+  background: #f4ead8;
+  box-shadow: var(--shadow-soft);
+}
+
+.cat-gallery-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.cat-gallery-progress {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  margin: 0;
+  padding: 7px 14px;
+  border-radius: 999px;
+  color: #5d4f42;
+  background: rgba(255, 250, 232, 0.9);
+  font-size: 12px;
+  font-weight: 800;
+  transform: translateX(-50%);
+}
+
+.cat-gallery-failed {
+  margin: 12px 0 0;
+  color: #a5473f;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.cat-gallery-list {
+  display: grid;
+  margin: 18px 0 0;
+  padding: 0;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
+  list-style: none;
+  counter-reset: cat-style;
+}
+
+.cat-gallery-list li {
+  display: grid;
+  padding: 11px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  border-radius: 14px;
+  background: rgba(255, 250, 232, 0.78);
+  gap: 2px;
+}
+
+.cat-gallery-list b {
+  color: var(--forest-900);
+  font-size: 14px;
+}
+
+.cat-gallery-list span {
+  color: #655d54;
+  font-size: 12.5px;
+}
+
+.cat-gallery-list code {
+  color: #6f6154;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
 /* Phase 1 — the island is the interface. Persistent controls collapse into one radio. */
 .app-shell {
   position: relative;
@@ -2290,6 +2407,127 @@ button {
   }
 }
 
+/* Cat roster: the first keycap opens this — change the cat, add another one. */
+.cat-roster {
+  display: grid;
+  margin-bottom: 18px;
+  padding: 14px 16px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 18px;
+  background: rgba(255, 250, 232, 0.7);
+  gap: 8px;
+}
+
+.cat-roster-head {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.cat-roster-head b {
+  font-size: 14px;
+}
+
+.cat-roster-head small {
+  color: #6f6558;
+  font-size: 12px;
+}
+
+.cat-field-label {
+  margin-top: 6px;
+  color: #857c6d;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+}
+
+.cat-style-grid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+}
+
+.cat-style-grid button {
+  padding: 7px 4px;
+  border: 1px solid rgba(120, 104, 84, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #5d5346;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cat-style-grid button.selected {
+  border-color: #7c9a80;
+  background: #dfeadf;
+  color: #33553d;
+}
+
+.cat-shape-row {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+
+.cat-shape-row button {
+  display: grid;
+  gap: 1px;
+  padding: 9px 10px;
+  border: 1px solid rgba(120, 104, 84, 0.28);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #5d5346;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cat-shape-row button b {
+  font-size: 13px;
+}
+
+.cat-shape-row button small {
+  color: #857c6d;
+  font-size: 11px;
+}
+
+.cat-shape-row button.selected {
+  border-color: #7c9a80;
+  background: #dfeadf;
+}
+
+.cat-shape-row button.selected b {
+  color: #33553d;
+}
+
+.cat-add-button {
+  display: grid;
+  gap: 2px;
+  margin-top: 10px;
+  padding: 11px 14px;
+  border: 1px dashed rgba(120, 104, 84, 0.5);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.55);
+  color: #4f6b55;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cat-add-button small {
+  color: #7d7466;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.cat-add-button:hover {
+  background: rgba(255, 255, 255, 0.85);
+}
+
 /* Sound switch: the only always-on chrome inside the world canvas. */
 .sound-toggle {
   position: absolute;
@@ -2368,9 +2606,10 @@ button {
   pointer-events: none;
 }
 
+/* v5 = v4 에서 1번 키 아이콘만 클립보드 → 고양이 얼굴로 교체(다른 키·패드는 원본 픽셀 그대로). */
 .keycap-menu-layer-normal {
   z-index: 0;
-  background-image: url("/art/menu-keycaps-base-v4.png");
+  background-image: url("/art/menu-keycaps-base-v5.png");
   opacity: 1;
 }
 
@@ -2382,19 +2621,19 @@ button {
 }
 
 .keycap-menu-layer-pressed-1 {
-  background-image: url("/art/menu-keycaps-pressed-1-v1.png");
+  background-image: url("/art/menu-keycaps-pressed-1-v2.png");
 }
 
 .keycap-menu-layer-pressed-2 {
-  background-image: url("/art/menu-keycaps-pressed-2-v1.png");
+  background-image: url("/art/menu-keycaps-pressed-2-v2.png");
 }
 
 .keycap-menu-layer-pressed-3 {
-  background-image: url("/art/menu-keycaps-pressed-3-v1.png");
+  background-image: url("/art/menu-keycaps-pressed-3-v2.png");
 }
 
 .keycap-menu-layer-pressed-4 {
-  background-image: url("/art/menu-keycaps-pressed-4-v1.png");
+  background-image: url("/art/menu-keycaps-pressed-4-v2.png");
 }
 
 .keycap-menu-pressed-1 .keycap-menu-layer-pressed-1,

@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "input": "public\\models\\camping-style-locked-v4\\low-monitor-cat-keycap-workstation-flat-source-v4.glb",
+  "output": "public\\models\\camping-style-locked-v4-clean\\low-monitor-cat-keycap-workstation-noise-clean-v2.glb",
+  "originalTexturePreserved": true,
+  "changedObjectCount": 1,
+  "triangleCounts": {
+    "original-texture": 23138,
+    "clean-monitor-screen": 494,
+    "clean-monitor-frame": 1523,
+    "clean-four-key-keyboard": 7273,
+    "clean-chair-seat": 1940,
+    "clean-table-top": 5818
+  }
+}

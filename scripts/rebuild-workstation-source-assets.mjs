@@ -30,33 +30,18 @@ const models = [
     output: "tent-workstation-flat-source-v4.glb",
     preview: "tent-workstation-flat-source-v4.png",
     renderedHeight: 1.82,
-    keyboard: {
-      position: [-0.03, 0.825, -0.02],
-      width: 0.58,
-      depth: 0.22,
-    },
   },
   {
     input: "round-laptop-workstation-meshy6-web-v3.glb",
     output: "round-laptop-workstation-flat-source-v4.glb",
     preview: "round-laptop-workstation-flat-source-v4.png",
     renderedHeight: 1.04,
-    keyboard: {
-      position: [-0.09, 0.44, -0.28],
-      width: 0.56,
-      depth: 0.3,
-    },
   },
   {
     input: "folding-laptop-radio-workstation-meshy6-web-v3.glb",
     output: "folding-laptop-radio-workstation-flat-source-v4.glb",
     preview: "folding-laptop-radio-workstation-flat-source-v4.png",
     renderedHeight: 1.08,
-    keyboard: {
-      position: [-0.48, 0.67, -0.02],
-      width: 0.56,
-      depth: 0.29,
-    },
   },
   {
     input: "low-monitor-cat-keycap-workstation-meshy6-web-v3.glb",
@@ -432,34 +417,7 @@ function createKeyboardPrimitives(transform, keyboard) {
     keyboard.position,
   );
   keyboardGeometry.dispose();
-
-  const trackpadWidth = transform.renderedLengthToLocal(
-    keyboard.width * 0.24,
-    0,
-  );
-  const trackpadDepth = transform.renderedLengthToLocal(
-    keyboard.depth * 0.28,
-    2,
-  );
-  const trackpadHeight = transform.renderedLengthToLocal(0.008, 1);
-  const trackpadGeometry = new RoundedBoxGeometry(
-    trackpadWidth,
-    trackpadHeight,
-    trackpadDepth,
-    2,
-    Math.min(trackpadWidth, trackpadDepth) * 0.08,
-  );
-  const trackpadPrimitive = geometryToPrimitiveData(
-    trackpadGeometry,
-    transform,
-    [
-      keyboard.position[0],
-      keyboard.position[1] + 0.018,
-      keyboard.position[2] + keyboard.depth * 0.2,
-    ],
-  );
-  trackpadGeometry.dispose();
-  return [keyboardPrimitive, trackpadPrimitive];
+  return [keyboardPrimitive];
 }
 
 function findMinimumMaximum(values, itemSize) {
@@ -572,28 +530,16 @@ function encodeSourceGlb({
     },
   ];
   if (keyboardPrimitives.length > 0) {
-    materials.push(
-      {
-        name: "single-color-keyboard-source",
-        doubleSided: true,
-        pbrMetallicRoughness: {
-          baseColorFactor: [0.956, 0.918, 0.847, 1],
-          metallicFactor: 0,
-          roughnessFactor: 1,
-        },
-        extensions: { KHR_materials_unlit: {} },
+    materials.push({
+      name: "single-color-keyboard-source",
+      doubleSided: true,
+      pbrMetallicRoughness: {
+        baseColorFactor: [0.956, 0.918, 0.847, 1],
+        metallicFactor: 0,
+        roughnessFactor: 1,
       },
-      {
-        name: "single-trackpad-source",
-        doubleSided: true,
-        pbrMetallicRoughness: {
-          baseColorFactor: [0.78, 0.706, 0.62, 1],
-          metallicFactor: 0,
-          roughnessFactor: 1,
-        },
-        extensions: { KHR_materials_unlit: {} },
-      },
-    );
+      extensions: { KHR_materials_unlit: {} },
+    });
   }
 
   const json = {

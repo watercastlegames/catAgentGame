@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agent Forest 통합 기획안 — 조개(Shell) 경제 &amp; 고양이/자리 꾸미기 메뉴 재설계 v1.0</title>
+<style>
+  :root {
+    --bg: #f6f1e7;
+    --card: #fffdf8;
+    --ink: #2f2a24;
+    --muted: #7c7167;
+    --line: #e3d9c9;
+    --accent: #d98552;
+    --accent-soft: #fdf0e5;
+    --sea: #4f8f9d;
+    --sea-soft: #e7f2f3;
+    --code: #f2ece1;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 15px/1.75 "Pretendard", "Malgun Gothic", -apple-system, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .layout {
+    max-width: 1400px; margin: 0 auto; padding: 32px 24px 96px;
+    display: grid; grid-template-columns: 268px minmax(0, 1fr); gap: 30px;
+    align-items: start;
+  }
+  .wrap { min-width: 0; }
+
+  aside.side {
+    position: sticky; top: 24px;
+    max-height: calc(100vh - 48px);
+    display: flex; flex-direction: column;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 16px; padding: 18px 14px 12px;
+  }
+  aside.side .side-title {
+    font-size: 11px; letter-spacing: .16em; text-transform: uppercase;
+    color: var(--accent); font-weight: 800; padding: 0 8px 12px;
+    border-bottom: 1px solid var(--line); margin-bottom: 10px;
+  }
+  /* position:relative 필수 — 부모 aside 가 sticky(=positioned) 라 이게 없으면
+     링크의 offsetParent 가 aside 가 되어 목차 자동 스크롤이 제목 높이만큼 어긋난다. */
+  aside.side nav { position: relative; overflow-y: auto; padding-right: 4px; }
+  aside.side nav::-webkit-scrollbar { width: 7px; }
+  aside.side nav::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+  aside.side nav a {
+    display: block; font-size: 13px; line-height: 1.45;
+    color: #6b6157; text-decoration: none;
+    padding: 7px 10px; border-radius: 8px;
+    border-left: 3px solid transparent; margin-bottom: 1px;
+  }
+  aside.side nav a:hover { background: #f6f0e5; color: var(--ink); }
+  aside.side nav a.active {
+    background: var(--accent-soft); color: var(--accent);
+    border-left-color: var(--accent); font-weight: 700;
+  }
+  aside.side nav a.flag { color: var(--accent); font-weight: 700; }
+  aside.side nav a.ap { color: var(--sea); }
+  aside.side nav a.ap.active { background: var(--sea-soft); color: var(--sea); border-left-color: var(--sea); }
+  aside.side .side-sep { height: 1px; background: var(--line); margin: 8px 6px; }
+  aside.side .side-foot {
+    font-size: 11px; color: var(--muted); padding: 10px 8px 0;
+    border-top: 1px solid var(--line); margin-top: 8px;
+  }
+
+  @media (max-width: 940px) {
+    .layout { grid-template-columns: minmax(0, 1fr); gap: 18px; padding-top: 20px; }
+    aside.side { position: static; max-height: none; }
+    aside.side nav { display: flex; flex-wrap: wrap; gap: 6px; overflow: visible; }
+    aside.side nav a { border-left: 0; border: 1px solid var(--line); padding: 5px 11px; font-size: 12.5px; }
+    aside.side nav a.active { border-color: var(--accent); }
+    aside.side .side-sep, aside.side .side-foot { display: none; }
+  }
+  header.top {
+    background: linear-gradient(155deg, #fef6ec 0%, #f2e4d0 55%, #e7dcc8 100%);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 34px 32px;
+    margin-bottom: 26px;
+  }
+  header.top .kicker {
+    font-size: 12px; letter-spacing: .18em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700;
+  }
+  header.top h1 { margin: 10px 0 14px; font-size: 27px; line-height: 1.35; letter-spacing: -.01em; }
+  header.top .meta { color: var(--muted); font-size: 13px; }
+  header.top .lede { margin-top: 16px; white-space: pre-line; font-size: 15px; color: #4a423a; }
+  section.sec {
+    scroll-margin-top: 24px;
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 16px; padding: 26px 28px; margin-bottom: 20px;
+  }
+  section.sec > h2 {
+    margin: 0 0 18px; font-size: 20px; letter-spacing: -.01em;
+    padding-bottom: 12px; border-bottom: 2px solid var(--accent-soft);
+  }
+  h3 { font-size: 16px; margin: 26px 0 10px; color: #463f37; }
+  h4 { font-size: 14.5px; margin: 20px 0 8px; color: #5b5248; }
+  p { margin: 10px 0; }
+  ul { margin: 10px 0; padding-left: 20px; }
+  li { margin: 5px 0; }
+  code {
+    background: var(--code); border: 1px solid #e6ddcd; border-radius: 5px;
+    padding: 1px 5px; font-size: 12.5px;
+    font-family: "Cascadia Mono", Consolas, "D2Coding", monospace;
+    word-break: break-all;
+  }
+  pre {
+    background: #2f2a24; color: #f0e8da; border-radius: 12px;
+    padding: 16px 18px; overflow-x: auto; font-size: 12.5px; line-height: 1.6;
+  }
+  pre code { background: none; border: 0; color: inherit; padding: 0; word-break: normal; }
+  .tw { overflow-x: auto; margin: 14px 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 520px; }
+  th, td { border: 1px solid var(--line); padding: 8px 11px; text-align: left; vertical-align: top; }
+  th { background: var(--sea-soft); color: #33565c; font-weight: 700; white-space: nowrap; }
+  tbody tr:nth-child(even) { background: #fbf7ef; }
+  td.mono { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12px; color: #6a6055; }
+  .eff { display: inline-block; width: 26px; text-align: center; border-radius: 6px; font-weight: 800; font-size: 12px; padding: 2px 0; }
+  .eff-S { background: #e3f1e4; color: #3d7444; }
+  .eff-M { background: #fdf0d8; color: #8a6520; }
+  .eff-L { background: #fbe1dc; color: #a04a3c; }
+  .callout {
+    border-left: 4px solid var(--accent); background: var(--accent-soft);
+    border-radius: 0 12px 12px 0; padding: 14px 18px; margin: 16px 0;
+  }
+  .callout.sea { border-left-color: var(--sea); background: var(--sea-soft); }
+  section.sec.decide { border: 2px solid var(--accent); background: linear-gradient(180deg, var(--accent-soft) 0%, var(--card) 42%); }
+  section.sec.decide > h2 { border-bottom-color: var(--accent); color: var(--accent); }
+  ol.decide-list { margin: 0; padding-left: 22px; }
+  ol.decide-list li { margin: 14px 0; }
+  ol.decide-list b { display: block; font-size: 15.5px; margin-bottom: 3px; }
+  ol.decide-list span { display: block; color: #5f564c; font-size: 13.5px; line-height: 1.7; }
+  .decide-note { margin-top: 18px; padding-top: 14px; border-top: 1px dashed var(--line); font-size: 13.5px; color: var(--muted); }
+  .qa { list-style: none; padding: 0; }
+  .qa li {
+    background: #fbf7ef; border: 1px solid var(--line); border-radius: 10px;
+    padding: 11px 14px; margin: 8px 0;
+  }
+  footer.bot { color: var(--muted); font-size: 12.5px; text-align: center; margin-top: 34px; }
+  a { color: var(--sea); }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1d1a17; --card: #262220; --ink: #ece4d8; --muted: #9b9186;
+      --line: #3b342d; --accent: #e29a68; --accent-soft: #37291f;
+      --sea: #7fb9c4; --sea-soft: #243437; --code: #322c26;
+    }
+    header.top { background: linear-gradient(155deg, #302722 0%, #262220 100%); }
+    aside.side nav a { color: #b0a598; }
+    aside.side nav a:hover { background: #302b26; }
+    th { background: #2c3a3c; color: #b9dde2; }
+    tbody tr:nth-child(even) { background: #2b2724; }
+    .qa li { background: #2b2724; }
+    ol.decide-list span { color: #b8ada0; }
+    pre { background: #14120f; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<aside class="side">
+  <div class="side-title">목차</div>
+  <nav id="toc"><a href="#decide" data-target="decide" class="flag">먼저 결정해 주셔야 하는 것</a><a href="#s0" data-target="s0">1. 한 장 요약</a><a href="#s1" data-target="s1">2. 재화 선택</a><a href="#s2" data-target="s2">3. 하단 키캡 4칸 최종 배치안</a><a href="#s3" data-target="s3">4. F1 고양이 패널</a><a href="#s4" data-target="s4">5. F2 자리 꾸미기</a><a href="#s5" data-target="s5">6. 재화 획득</a><a href="#s6" data-target="s6">7. 이코노미 시뮬레이션</a><a href="#s7" data-target="s7">8. 데이터 모델</a><a href="#s8" data-target="s8">9. 3D/아트 작업 목록</a><a href="#s9" data-target="s9">10. 구현 로드맵</a><a href="#s10" data-target="s10">11. 도구 신뢰를 지키는 규칙</a><a href="#s11" data-target="s11">12. 미결 질문</a><a href="#appendix-a" data-target="appendix-a" class="ap">부록 A · 리서치 레퍼런스</a><a href="#appendix-b" data-target="appendix-b" class="ap">부록 B · 구현 작업표</a><a href="#appendix-c" data-target="appendix-c" class="ap">부록 C · 데이터 모델</a><a href="#appendix-d" data-target="appendix-d" class="ap">부록 D · 검증 기록</a></nav>
+  <div class="side-foot">Agent Forest 메타게임 기획안 v1.0<br />2026-07-28</div>
+</aside>
+
+<div class="wrap">
+
+<header class="top">
+  <div class="kicker">Agent Forest · 메타게임 기획</div>
+  <h1>Agent Forest 통합 기획안 — 조개(Shell) 경제 &amp; 고양이/자리 꾸미기 메뉴 재설계 v1.0</h1>
+  <div class="meta">2026-07-28 작성 · 대상 저장소 <code>D:\soccerstarWebSource\GameCreator\catAgentGame</code> · 12개 에이전트 병렬 조사·설계·적대적 검증 결과 통합</div>
+  <div class="lede">하단 키캡 4칸을 1=고양이 관리, 2=자리 꾸미기(신설), 3=세션연결+업무지시(통합), 4=현황+기록(통합)으로 재편하며, SHOW_LEGACY_OVERLAYS 게이트 해제가 모든 작업의 선행 조건이다.
+재화는 표시 전용이던 도토리를 "조개(Shell)"로 개명·무손실 이전하고, 고양이 스타일 15종은 전부 무료로 유지하며 소비처는 좌석별 자리 꾸미기(티어0~4+아이템 12종)와 간식으로 한정한다.
+획득은 작업완료(건당 10개, 무제한)를 최상위로 승인처리/접속보너스/아이들이벤트/오프라인트리클/마일스톤 5채널을 더했고, 검증에서 드러난 "방치가 실사용보다 더 버는" 문제와 "5일 만에 소진" 문제를 수치 재조정으로 해소해 헤비유저 완주 약 6주·라이트유저 약 5개월로 페이싱했다.</div>
+</header>
+
+<section id="decide" class="sec decide">
+  <h2>먼저 결정해 주셔야 하는 것 4가지</h2>
+  <ol class="decide-list">
+    <li>
+      <b>재화 이름을 조개로 확정할지</b>
+      <span>리서치 1순위는 물고기였지만 씬에 물고기 3D가 없다. 물고기로 가면 신규 3D 제작 1건이 MVP 일정에 추가된다. 조개는 이미 해변에 렌더돼 있어 2D 아이콘 1장이면 끝난다. → 2절</span>
+    </li>
+    <li>
+      <b>키캡 4칸 재배치안(CAT / DESK / WORK / STATUS+LOG)을 받아들일지</b>
+      <span>1·2번을 고양이·자리꾸미기로 쓰면 기존 세션연결·진행상황·활동기록 3개가 2칸에 들어가야 한다. 세션연결은 업무지시와 묶어 3번으로 통합하는 안이다. 최근의 "키캡 4키만 남기는 미니멀 방향"과 충돌하는지 확인이 필요하다. → 3절</span>
+    </li>
+    <li>
+      <b>워크스테이션 3종(seat-1/3/4)의 로컬 좌표 실측을 언제 할지</b>
+      <span>소품을 책상 어디에 얹을지 정하는 앵커 좌표가 코드 어디에도 없다. 자리 꾸미기 구현의 최대 리스크 지점이고, 실측 전에는 seat-2 외 좌석 작업을 시작할 수 없다. → 12절</span>
+    </li>
+    <li>
+      <b>고양이 스타일을 좌석별로 따로 줄지</b>
+      <span>지금은 스타일·체형이 전역 단일 상태라 좌석 4개가 전부 같은 모습으로 보인다. 좌석별 개별화는 좌석마다 FBX를 따로 로드하는 큰 리팩터(L)가 선행돼야 한다. → 4절</span>
+    </li>
+  </ol>
+  <p class="decide-note">아래 본문은 위 4가지를 <b>조개 / 재배치 수용 / 실측은 MVP 안에서 / 좌석별 개별화는 3단계 폴리시로</b> 가정하고 쓴 것이다. 결정이 달라지면 해당 절만 갈아끼우면 된다.</p>
+</section>
+
+<section id="s0" class="sec">
+  <h2>1. 한 장 요약</h2>
+  <p><strong>무엇을 만드는가</strong>: 3D 해변 사무실에서 Codex 세션이 곧 고양이 1마리로 사는 이 앱에, (1) 고양이를 꾸미고 이름 짓고 간식 주는 "고양이 관리" 기능과 (2) 좌석(워크스테이션)을 화분·머그컵·키캡키보드·쿠션·의자로 단계별로 꾸미는 "자리 꾸미기" 기능을 추가한다. 지금 하단 키캡 4개는 코드는 다 있지만 SHOW_LEGACY_OVERLAYS 플래그에 가려 아무 것도 뜨지 않는 상태다 — 이 게이트를 부분 해제하는 게 모든 작업의 0순위 선행 조건이다.</p>
+<p><strong>왜 만드는가</strong>: 이미 있는 acorns(도토리) 재화는 task 완료마다 쌓이기만 하고 쓸 곳이 전혀 없는 표시 전용 값이다. 이걸 실제로 쓸 수 있는 재화로 승격시키고, 그 소비처로 사용자가 음성으로 요청한 고양이 커스터마이징과 자리 꾸미기를 붙인다.</p>
+<p><strong>최종 재화 이름 결론</strong>: <strong>조개(Shell)</strong>. 도토리는 숲/다람쥐 세계관 전용이라 고양이+해변 배경과 안 맞고, 물고기는 근거는 좋지만 뒷받침할 3D 자산이 없다. 조개는 해변 씬에 이미 실물 3D 클러스터(shoreline-rock-starfish-shell-cluster)가 배치돼 있어 신규 3D 자산 없이 2D 아이콘 1장만으로 개명이 끝난다.</p>
+</section>
+<section id="s1" class="sec">
+  <h2>2. 재화 선택</h2>
+  <h4>후보 비교표</h4>
+<div class="tw"><table><thead><tr><th>후보</th><th>판정</th><th>근거</th></tr></thead><tbody><tr><td>도토리(유지)</td><td>기각</td><td>화면에 다람쥐·숲 오브젝트가 하나도 없다. 브랜드 헤더조차 지금 화면에 안 뜨는 상태라 '숲이라 도토리' 논리도 성립 안 함</td></tr><tr><td>쿠키</td><td>기각</td><td>테마상 중립적이나 '간식(스낵) 구매' 기능과 이름이 겹쳐 "쿠키로 쿠키를 산다"는 자기지시적 혼동 소지</td></tr><tr><td>코인</td><td>차선(2순위)</td><td>장르 관습상 가장 안전한 범용 소프트 재화라 오인 리스크는 0에 가깝지만, 고양이·해변 테마와 직접 연결이 약함</td></tr><tr><td>하트</td><td>기각</td><td>라이프/호감도 관습이 굳어 있어 소프트 재화로 쓰면 '이거 다 쓰면 게임오버?' 오인 유발</td></tr><tr><td>별</td><td>기각</td><td>등급·시즌티어 마커 관습(Toon Blast 등)이라 소프트 재화로 쓰면 성취 등급으로 오인</td></tr><tr><td>다이아몬드</td><td>기각</td><td>유료 하드커런시 신호로 거의 예외 없이 굳어 있어, 결제 축이 없는 이 도구 앱에 쓰면 '결제해야 하나' 불신을 준다</td></tr><tr><td>물고기</td><td>기각(3순위)</td><td>고양이+해변 조합에 가장 디제틱하고 네코 아츠메 전례도 탄탄하나, 뒷받침할 3D 오브젝트가 씬에 없어 신규 에셋 제작이 선행돼야 한다</td></tr><tr><td><strong>조개</strong></td><td><strong>최종 채택</strong></td><td><code>public/models/camping-style-locked-v1/shoreline-rock-starfish-shell-cluster-meshy6-web-v1.glb</code>가 이미 씬 남서/남동 두 곳에 배치돼 있다. '왜 이게 여기 있나'가 이미 렌더된 실물로 해결되고, 해변에서 '주워 모으는' 수집물이라는 성격이 접속·대기 시 자동 적립되는 방식과 서사적으로 맞는다</td></tr></tbody></table></div>
+<h4>기존 acorns 마이그레이션</h4>
+<p>기존 <code>ACORN_KEY = "agent-forest-acorns-v1"</code>의 적립 로직(task.completed 1건당 지급)은 그대로 두고, 저장 키만 <code>SHELL_KEY = "agent-forest-shell-v1"</code>로 신설해 <strong>1회·1:1 무손실 이전</strong>한다. 앱 부팅 시 SHELL_KEY가 없으면 LEGACY_ACORN_KEY 값을 그대로 복사해 채운 뒤 이후로는 레거시 키를 다시 쓰지 않는다(코드는 <code>dataModel</code> 필드 참고). 표시 문구는 라디오 헤더의 <code>{acorns} ACORNS</code>와 상태 탭의 <code>도토리 {acorns}개</code>를 전부 <code>조개 {shell}개</code>로 통일 교체한다.</p>
+<h4>스타일(15종) 유료화 여부 — 최종 결론: 전부 무료</h4>
+<p>브레인스토밍 초안 중 하나는 커먼/레어/에픽 3그룹 유료 해금(60/100/160개)을 제안했으나, 이미 <code>/cats</code> 갤러리 페이지가 15종 전부를 무조건 무료로 공개 중이라는 사실과 정면으로 모순됐다. 최종적으로 <strong>전부 무료, 즉시 변경</strong>으로 확정한다 — 이미 공개된 자산을 다시 잠그는 모순을 피하고, 이번 기획 전체가 채택한 "코스메틱=순수 연출, 재화 게이트 없음" 원칙(4절)과도 일치시킨다. 대신 재화 소비처는 자리 꾸미기와 간식 두 곳으로 집중시켜, 스타일 무료화로 줄어든 소비처를 보완한다(7절 시뮬레이션에 반영됨).</p>
+</section>
+<section id="s2" class="sec">
+  <h2>3. 하단 키캡 4칸 최종 배치안</h2>
+  <h4>선행 조건</h4>
+<p><code>app/page.tsx</code>의 <code>SHOW_LEGACY_OVERLAYS = false</code> 플래그가 cats/sessions/status/activity 4탭이 든 <code>&lt;aside className="radio-panel"&gt;</code> 전체를 가리고 있어, 지금은 키캡을 눌러도 패널이 안 뜬다. 이 조건문에서 <code>SHOW_LEGACY_OVERLAYS &amp;&amp;</code> 부분만 제거해 패널을 되살린다(상수 선언 자체는 유지 — 테스트가 상수 선언 문자열만 단언하고 있어 안 깨짐). <strong>이 1줄 변경 없이는 이하 모든 UI 작업이 화면에 나타나지 않는다.</strong></p>
+<h4>최종 4탭 배치</h4>
+<p>세 초안이 2번 키캡의 용도(자리 꾸미기 vs 세션 유지)와 세션 화면의 최종 위치(1번 하위 vs 3번 통합)를 서로 다르게 설계해 충돌했다. 최종적으로 <strong>세션 연결은 '업무 지시'와 함께 3번 키캡으로 통합</strong>한다 — 세션 연결 없이는 업무 지시 자체가 불가능한 필수 전제 관계라, 두 화면을 분리하면 사용자가 화면을 오가야 해서 도구 사용을 방해하기 때문이다.</p>
+<div class="tw"><table><thead><tr><th>키</th><th>이전 용도</th><th>최종 용도</th><th>콘텐츠</th><th>아이콘</th></tr></thead><tbody><tr><td>1</td><td>고양이(cats)</td><td><strong>CAT — 고양이 관리</strong> (유지)</td><td>이름/스타일/체형/간식/'고양이 추가하기' 버튼</td><td>기존 고양이 얼굴 그대로(변경 불필요)</td></tr><tr><td>2</td><td>세션(sessions)</td><td><strong>DESK — 자리 꾸미기</strong> (신설)</td><td>좌석 탭(seat-1~4) + 티어 진행바 + 슬롯별 아이템 그리드</td><td>신규 제작 필요</td></tr><tr><td>3</td><td>진행상황(status)</td><td><strong>WORK — 세션 연결 + 업무 지시</strong> (통합)</td><td>6자리 코드 페어링/세션 목록 + 부서 선택 + 프롬프트 입력 + 실행 버튼</td><td>신규 제작 필요</td></tr><tr><td>4</td><td>기록(activity)</td><td><strong>STATUS+LOG — 현황+기록</strong> (통합)</td><td>포커스 좌석 현재 작업 상세 + 최근 이벤트 40건 로그 + 화면 테마 3색(산호/민트/노을) + 법적 링크</td><td>신규 제작 필요</td></tr></tbody></table></div>
+<p>키캡 아이콘은 4개가 한 장의 공유 스프라이트(base-v5 + 눌림상태별 이미지)에 위치별로 그려져 있어, 의미가 통해도 픽셀은 그 위치에 고정돼 있다. 따라서 2/3/4번은 전부 새로 그려야 하고, '재사용'으로 비용을 아낄 수 있는 건 1번(고양이 얼굴)뿐이다.</p>
+<p>기존 화면 테마 3색 선택기(coral/mint/sunset, DECOR_KEY)는 UI 전체 색 테마이지 자리 꾸미기가 아니다 — 4번 탭에 그대로 남기되 '화면 테마'라는 라벨로 자리 꾸미기(2번)와 명확히 구분한다.</p>
+<h4>화면 흐름도</h4>
+<pre><code>[하단 키캡 4버튼] 클릭
+   |
+   +-- 1 CAT ------&gt; 고양이 관리 패널
+   |                  +- 이름 입력/추천(6자 이내)
+   |                  +- 스타일 15종(전부 무료, 즉시 변경)
+   |                  +- 체형 4단계(원래대로/살짝/통통/뚱냥이)
+   |                  +- 간식 급여(기본 무료 1일1회 + 유료 2종)
+   |                  +- [고양이 추가하기] 버튼 -&gt; 3 WORK 탭으로 이동
+   |
+   +-- 2 DESK -----&gt; 자리 꾸미기 패널
+   |                  +- 좌석 탭(seat-1~4, 좌석마다 형상이 달라 개별 진행)
+   |                  +- 티어 진행바(0~4, 다음 티어까지 필요 조개 표시)
+   |                  +- 슬롯별 아이템 그리드(deskTop/inputDevice/seatCushion/floorAmbient)
+   |
+   +-- 3 WORK -----&gt; 세션 연결 + 업무 지시 패널
+   |                  +- 6자리 코드 페어링 / 내 PC 세션 목록
+   |                  +- 부서 선택(코딩/디자인/음악/일반)
+   |                  +- 업무 프롬프트 입력
+   |                  +- [선택한 Codex 세션에서 실행]
+   |
+   +-- 4 STATUS+LOG -&gt; 현황+기록 패널
+                      +- 포커스 좌석 현재 작업(제목/설명/결과/토큰 사용량/중단 버튼)
+                      +- 최근 이벤트 40건 로그 + '기록 지우기'
+                      +- 화면 테마 3색(산호/민트/노을 — 자리 꾸미기와 다른 기능임을 라벨로 명시)
+                      +- 약관/개인정보/라이선스 링크</code></pre>
+</section>
+<section id="s3" class="sec">
+  <h2>4. F1 고양이 패널</h2>
+  <h4>고양이 추가</h4>
+<p>'고양이 추가하기'는 곧 Codex 세션 페어링이다(세션 1개 = 좌석 1개 = 고양이 1마리, 최대 4마리 동시 접속·5번째부터 대기열). 버튼은 3번 WORK 탭으로 이동시키며, 별도 오버레이나 모달을 새로 만들지 않는다 — 기존 탭 이동 패턴을 그대로 재사용해 구현 비용을 낮춘다.</p>
+<h4>이름 짓기</h4>
+<p>텍스트 인풋 1개 + '다른 이름 추천' 버튼. 기본 추천 이름 풀 20개(기존 부서 기본이름 모모/토토/보리/코코와 중복 없음):</p>
+<p>나비 · 두부 · 콩이 · 초코 · 모카 · 딸기 · 만두 · 몽실이 · 호두 · 감자 · 뭉치 · 요롱이 · 미미 · 까망이 · 노랑이 · 흰둥이 · 마루 · 순두부 · 방울이 · 나옹이</p>
+<p><strong>글자수 제한 6자.</strong> 3D 이름표 캔버스 팻말은 폭 368px·폰트 34px 고정이라 14자를 다 채우면 팻말 밖으로 넘친다. 한글 6자(약 192px)가 안전 수납 한도라 입력창 <code>maxLength</code>를 6으로 제한한다. 새 좌석이 배정되는 순간 런타임키 해시로 이름 풀에서 결정론적으로 하나가 즉시 배정돼, '이름 없는 상태'가 생기지 않는다.</p>
+<h4>스타일 변경</h4>
+<p>15종(아비시니안/검은고양이/턱시도/블루/밥테일/브리티시숏헤어/크림/메인쿤/페르시안/레드/치즈흰얼룩/샴/심플/스핑크스/화이트) 전부 무료, 즉시 변경(2절 최종 결론). <strong>단, 현재 구조상 고양이 스타일·체형은 좌석별이 아니라 전역 단일 상태</strong>라 좌석 4개가 다 같은 모습으로 보인다 — 이 제약을 패널에 "지금은 모든 고양이에게 같은 모습이 적용됩니다" 문구로 명시 고지한다. 좌석별 개별화는 좌석별 FBX 로드 리팩터링(폴리시 단계, 3D/아트 목록 9절 참고)이 선행돼야 한다.</p>
+<h4>체형</h4>
+<p>4단계(원래대로/살짝/통통/뚱냥이) 라디오 선택, 이미 코드에 연결·적용된 fattenCat() 파이프라인을 그대로 노출만 하면 된다. 간식 누적 급여량이 임계치(5/15/30회)를 넘으면 다음 단계를 토스트로 '추천'만 하고 강제 변경은 하지 않는다.</p>
+<h4>간식</h4>
+<div class="tw"><table><thead><tr><th>간식</th><th>가격(조개)</th><th>제한</th><th>효과</th></tr></thead><tbody><tr><td>기본 캔참치</td><td>무료</td><td>1일 1회</td><td>먹기 애니메이션+골골송, 성장치 +1</td></tr><tr><td>츄르</td><td>8개</td><td>무제한, 좌석당 10초 쿨다운</td><td>먹기 애니메이션+골골송, 성장치 +1</td></tr><tr><td>고급 캔사료</td><td>15개</td><td>무제한, 좌석당 10초 쿨다운</td><td>먹기 애니메이션+골골송, 성장치 +2</td></tr></tbody></table></div>
+<p>간식은 수치 버프(작업 속도·성공률 등)를 전혀 주지 않는 순수 연출+체형 성장 기여다. 애정도(친밀도) 게이지는 별도로 도입하지 않는다 — 이미 스타일이 전부 무료라 게이팅 목적이 없고, 기존 상태별 울음소리·클릭 반응·유휴 애니메이션 7종만으로 정서적 유대는 충분히 표현된다. 유료 간식은 무제한 반복 구매가 가능해, 자리 꾸미기를 다 완주한 뒤에도 조개를 계속 쓸 수 있는 상시 소비처 역할을 한다.</p>
+</section>
+<section id="s4" class="sec">
+  <h2>5. F2 자리 꾸미기</h2>
+  <h4>구조 원칙</h4>
+<p>워크스테이션 GLB 4종(텐트형/원형 노트북/접이식 노트북+라디오/로우모니터+키캡)은 좌석마다 다른 형상으로 고정 배정된 <strong>종류</strong>이지 승급 가능한 <strong>티어</strong>가 아니다 — 절대 갈아 끼우지 않는다. "자리 꾸미기 단계"는 이 desk 위에 얹는 <strong>소품 슬롯의 개방 개수</strong>를 나타내는 별도의 순수 데이터 값(0~4)으로 구현하며, 소품은 desk Group의 자식 오브젝트(desk-local 좌표)로만 부착한다 — 이미 검증된 유일한 production 부착 패턴이라 씬 전체 절대좌표 재계산이 필요 없다. 로우모니터 좌석(seat-2)의 desk GLB는 단일 텍스처로 통짜 베이크돼 있어 내부 부품(쿠션 등) 분리·교체가 불가능하고, 나머지 3개 좌석도 마찬가지일 가능성이 높아(실측 필요) 이 원칙을 전 좌석에 동일하게 적용한다.</p>
+<h4>소유 vs 배치</h4>
+<p>아이템 <strong>구매(소유)는 계정 전역 1회</strong>, <strong>티어 진행과 배치(장착)는 좌석별 개별</strong>이다. desk 형상 자체가 좌석마다 달라 배치 좌표를 공유할 수 없고(기술적 강제), 반대로 좌석마다 새로 사야 한다면 같은 아이템을 4번 사는 그라인드가 생기기 때문이다.</p>
+<h4>좌석별 티어 업그레이드 비용(누적, 조개)</h4>
+<div class="tw"><table><thead><tr><th>티어</th><th>개방 슬롯</th><th>진입 비용</th><th>누적</th></tr></thead><tbody><tr><td>0</td><td>없음</td><td>0</td><td>0</td></tr><tr><td>1</td><td>deskTop×1</td><td>50</td><td>50</td></tr><tr><td>2</td><td>deskTop×1, inputDevice×1</td><td>120</td><td>170</td></tr><tr><td>3</td><td>deskTop×2, inputDevice×1, seatCushion×1</td><td>250</td><td>420</td></tr><tr><td>4</td><td>deskTop×2, inputDevice×1, seatCushion×2, floorAmbient×1</td><td>450</td><td>870</td></tr></tbody></table></div>
+<h4>아이템 카탈로그(12종, 계정 전역 1회 구매)</h4>
+<div class="tw"><table><thead><tr><th>#</th><th>아이템</th><th>슬롯</th><th>가격(조개)</th><th>해금 티어</th><th>사용자 요청 대응</th></tr></thead><tbody><tr><td>1</td><td>조개껍질 화분</td><td>deskTop</td><td>20</td><td>1</td><td>화분</td></tr><tr><td>2</td><td>캠핑 에나멜 머그컵</td><td>deskTop</td><td>15</td><td>1</td><td>커피잔</td></tr><tr><td>3</td><td>미니 야자수 화분</td><td>deskTop</td><td>35</td><td>2</td><td>화분</td></tr><tr><td>4</td><td>조개 액자</td><td>deskTop</td><td>40</td><td>3</td><td>(장식)</td></tr><tr><td>5</td><td>파스텔 키캡 세트</td><td>inputDevice</td><td>40</td><td>2</td><td>키캡 키보드</td></tr><tr><td>6</td><td>네온 키캡 세트(희귀)</td><td>inputDevice</td><td>60</td><td>3</td><td>키캡 키보드</td></tr><tr><td>7</td><td>우드 방석</td><td>seatCushion</td><td>30</td><td>2</td><td>쿠션</td></tr><tr><td>8</td><td>누빔 쿠션</td><td>seatCushion</td><td>45</td><td>3</td><td>쿠션</td></tr><tr><td>9</td><td>캠핑 접이 스툴</td><td>seatCushion</td><td>55</td><td>3</td><td>의자(캠핑 테마에 맞춰 서양식 사무의자 대신 채택)</td></tr><tr><td>10</td><td>라운드 러그</td><td>floorAmbient</td><td>35</td><td>3</td><td>(장식)</td></tr><tr><td>11</td><td>캠핑 랜턴 미니어처</td><td>floorAmbient</td><td>50</td><td>3</td><td>(장식)</td></tr><tr><td>12</td><td>조개 윈드차임(희귀)</td><td>floorAmbient</td><td>60</td><td>4</td><td>(장식)</td></tr></tbody></table></div>
+<p>아이템 12종 합계 505개 + 티어 4단계 870개 = <strong>좌석 1개 완전 꾸미기 총 1,375개</strong>(아이템은 첫 좌석에서만 구매하면 되므로 두 번째 좌석부터는 티어 비용 870개만 추가). 4좌석 전부 완주 시 총 <strong>3,985개</strong>.</p>
+<p>자리 꾸미기는 100% 코스메틱이다 — 수치형 버프(작업 속도·성공률 등)는 어떤 경우에도 주지 않는다. <code>AgentStatus</code>에는 애초에 그런 수치 필드가 없고, 실사용 도구에 '더 예쁜 책상이 일을 더 잘한다'는 그릇된 신호를 주지 않기 위한 의도적 설계다.</p>
+</section>
+<section id="s5" class="sec">
+  <h2>6. 재화 획득</h2>
+  <h4>획득 채널 (최종 확정값)</h4>
+<p>검증 과정에서 초안 수치로는 '완전 방치(접속만 하고 아무 것도 안 함)'가 '실제 작업 1건을 한 사용자'보다 더 많이 버는 역전 현상이 발견됐다. 최종안은 작업 완료 보상을 상향하고 아이들·오프라인 채널 상한을 낮춰, 실사용이 항상 방치보다 뚜렷하게 더 벌도록 재조정했다.</p>
+<div class="tw"><table><thead><tr><th>채널</th><th>트리거</th><th>지급량</th><th>일일 상한</th></tr></thead><tbody><tr><td>작업 완료</td><td>task.completed</td><td>10개/건</td><td>없음 — 최상위 채널</td></tr><tr><td>승인 처리</td><td>approval.decided</td><td>4개/건</td><td>20개/일(5건)</td></tr><tr><td>접속 보너스</td><td>하루 첫 접속</td><td>5개 flat</td><td>5개/일, 스트릭 아님(손실 없음)</td></tr><tr><td>택배 상자</td><td>하루 1회, 클릭 시에만 지급</td><td>3개</td><td>3개/일</td></tr><tr><td>아이들 이벤트(6종 공유)</td><td>대기 중 자동 발생, 6절 카탈로그 참고</td><td>회당 1~2개</td><td>시간당 4회, 일일 10개(전 이벤트 합산)</td></tr><tr><td>오프라인 트리클</td><td>탭 완전히 닫혀 있던 시간</td><td>6시간당 1개</td><td>12시간 상한 = 최대 2개</td></tr><tr><td>마일스톤(1회성)</td><td>최초 연결/누적완료 10·50·100건/누적접속 7·30·100일</td><td>30~450개(건별 상이)</td><td>1회성, 상한 개념 없음</td></tr></tbody></table></div>
+<p>재조정 결과: 완전 방치 유저(접속만) 하루 약 18개, 실작업 1건 포함 라이트 유저 하루 약 28개(55% 더 벎), 헤비 유저(작업 6건+승인 3건, 4좌석 가동) 하루 약 90개 — 실사용이 항상 방치를 확실히 앞서도록 재설계했다.</p>
+<h4>아이들(대기) 이벤트 카탈로그</h4>
+<p>'대기 모드'는 상태가 idle뿐 아니라 completed·failed일 때도 포함하는 자율 배회 애니메이션 루프 안에서만 발생하며, 이 루프는 작업 중(대기 외 상태)에는 물리적으로 실행되지 않는 별개 코드 경로라 별도 억제 로직 없이도 작업 방해가 구조적으로 차단된다. 루프는 짧은 '주변 살피기' 정지 구간(1~2초) 뒤에 4~10초짜리 유휴 애니메이션(구경/휴식/앉기/눕기/간식 등 7종 중 랜덤) 구간이 이어지는 2단 구조다.</p>
+<div class="tw"><table><thead><tr><th>이벤트</th><th>발화 조건</th><th>유저 인터랙션</th><th>보상(방치/클릭)</th><th>연출</th><th>난이도</th></tr></thead><tbody><tr><td>낮잠</td><td>정지 단계에서 '눕기' 애니메이션이 랜덤 선택될 때</td><td>완전 방치형</td><td>1 / -</td><td>기존 눕기 클립 재사용, 신규 에셋 불필요</td><td>S</td></tr><tr><td>갈매기 쫓기</td><td>정지 단계 진입 시 낮은 확률 롤</td><td>방치=자동완료, 클릭 시 보너스</td><td>1 / 2</td><td>사용자가 말한 '비둘기'를 해변 무대에 맞춰 대체(이미 갈매기 앰비언스 사운드가 세계관에 있음). 전용 비행 클립 없어 걷기+구경 조합으로 대체 연출</td><td>L</td></tr><tr><td>표류물 발견</td><td>배회 지점이 해안 조개껍질 클러스터 근접일 때</td><td>클릭 시 확정, 방치 시 낮은 확률</td><td>1 / 2</td><td>기존 조개껍질 GLB 재사용, 신규 GLB 불필요</td><td>M</td></tr><tr><td>나비 쫓기</td><td>정지 단계 랜덤</td><td>방치형</td><td>1 / -</td><td>신규 절차적 나비 오브젝트 필요</td><td>M</td></tr><tr><td>게 구경</td><td>정지 단계, 해안 인근</td><td>클릭 시 털정리 애니메이션 재생</td><td>1 / -</td><td>절차적 저폴리 게 메시(신규)</td><td>M</td></tr><tr><td>물고기 점프 포착</td><td>정지 단계, 해안 방향</td><td>짧은 시간창 클릭 시 보너스, 놓쳐도 기본 지급</td><td>1 / 2</td><td>해수면 스플래시 파티클(신규)</td><td>L</td></tr></tbody></table></div>
+<p>택배 상자는 다른 이벤트와 동일하게 3D 오브젝트 위 반짝임만 표시하고 hud-fade를 적용해 유휴 후 사라지게 한다 — 클릭 안 해도 상시로 남는 '미해결 배지'는 만들지 않는다(도구 신뢰 원칙, 11절).</p>
+</section>
+<section id="s6" class="sec">
+  <h2>7. 이코노미 시뮬레이션</h2>
+  <h4>라이트 유저 (하루 1회 접속, 작업 1건, 좌석 1개만 가동) — 하루 약 28개</h4>
+<div class="tw"><table><thead><tr><th>구분</th><th>Day1</th><th>Day7</th><th>Day14</th><th>Day30</th><th>Day60</th></tr></thead><tbody><tr><td>누적 조개</td><td>28</td><td>196</td><td>392</td><td>840</td><td>1,680</td></tr><tr><td>진행 상황</td><td>티어1 완료</td><td>티어2 근접</td><td>티어3 완료</td><td>좌석1 거의 완주(870+아이템 일부)</td><td>좌석1 완전 꾸미기 완료</td></tr></tbody></table></div>
+<h4>헤비 유저 (하루 여러 번 접속, 작업 6건+승인 3건, 좌석 4개 모두 가동) — 하루 약 90개</h4>
+<div class="tw"><table><thead><tr><th>구분</th><th>Day1</th><th>Day7</th><th>Day14</th><th>Day30</th><th>Day45</th></tr></thead><tbody><tr><td>누적 조개</td><td>90</td><td>630</td><td>1,260</td><td>2,700</td><td>4,050</td></tr><tr><td>진행 상황</td><td>티어2 근접</td><td>좌석1 티어4 완료(870)</td><td>좌석1 완전 꾸미기(1,375) 완료, 좌석2 진행</td><td>좌석 2~3 티어 진행</td><td>좌석 4개 전체 완주(3,985) + 잔여로 간식 소비 시작</td></tr></tbody></table></div>
+<p><strong>해석</strong>: 좌석 1개 완전 꾸미기(1,375개)는 라이트 유저 약 7주, 헤비 유저 약 2주가 걸려 이전 초안의 '5일 만에 소진' 문제를 해소했다. 4좌석 전체 완주(3,985개)는 헤비 유저 약 6.4주, 라이트 유저 약 4.9개월로, 완주 이후에도 무제한 반복 구매가 가능한 간식(8~15개/회)이 상시 소비처로 남아 있어 '완주 후 재화가 다시 표시 전용으로 돌아가는' 문제도 함께 해소했다.</p>
+</section>
+<section id="s7" class="sec">
+  <h2>8. 데이터 모델</h2>
+  <p>전체 localStorage 키 요약(실제 TypeScript 정의는 <code>dataModel</code> 필드 참고):</p>
+<div class="tw"><table><thead><tr><th>키</th><th>값 형태</th><th>용도</th></tr></thead><tbody><tr><td>agent-forest-acorns-v1 (레거시)</td><td>숫자 문자열</td><td>읽기 전용, 1회 이전 후 미사용</td></tr><tr><td>agent-forest-shell-v1</td><td>숫자 문자열</td><td>조개 잔액</td></tr><tr><td>agent-forest-workstation-decor-v2</td><td>JSON WorkstationDecorState</td><td>소유 아이템 목록 + 좌석별 티어/배치</td></tr><tr><td>agent-forest-cat-name-v1</td><td>JSON Record&lt;runtimeKey,string&gt;</td><td>고양이 이름</td></tr><tr><td>agent-forest-snack-log-v1</td><td>JSON SnackLog</td><td>급여 이력·쿨다운·성장 누적치</td></tr><tr><td>agent-forest-milestones-v1</td><td>JSON MilestoneId[]</td><td>마일스톤 중복 지급 방지</td></tr><tr><td>agent-forest-attendance-v1</td><td>JSON {totalDaysVisited, lastVisitDateISO}</td><td>누적 출석일수(손실 없는 총량제, 단일 키로 통합)</td></tr><tr><td>agent-forest-daily-login-v1</td><td>JSON {lastClaimedDateISO, boxOpenedToday}</td><td>데일리 보너스+택배상자 판정(단일 채널로 통합)</td></tr><tr><td>agent-forest-idle-events-v1</td><td>JSON 링버퍼(최대 40건)</td><td>아이들 이벤트 로그, 상한 게이트용</td></tr><tr><td>agent-forest-last-active-v1</td><td>epoch ms</td><td>오프라인 트리클 계산</td></tr><tr><td>agent-forest-decor-v1 (기존, 변경 없음)</td><td>문자열</td><td>UI 색 테마(coral/mint/sunset) — 자리 꾸미기와 무관, 이름 충돌 방지 위해 절대 재사용 안 함</td></tr></tbody></table></div>
+<p>스키마 버전 원칙: 기존 <code>-v1</code> 접미사 관례를 유지하되, 이전 초안의 <code>agent-forest-workstation-decor-v1</code>(서로 다른 스키마 4종이 충돌 제안됨)은 새 통합 스키마와 호환되지 않으므로 <code>-v2</code>로 승격했다.</p>
+</section>
+<section id="s8" class="sec">
+  <h2>9. 3D/아트 작업 목록</h2>
+  <div class="tw"><table><thead><tr><th>작업</th><th>재사용 vs 신규</th><th>우선순위</th></tr></thead><tbody><tr><td>낮잠/꾹꾹이 보상 훅</td><td>기존 애니메이션 클립(눕기/책상 꾹꾹이) 재생 완료 시점에 보상 콜백만 추가 — 신규 3D 에셋 불필요</td><td>MVP</td></tr><tr><td>좌석 소품 오버레이 부착 파이프라인</td><td>기존 '책상 위 애니메이션 키캡'을 붙이는 production 패턴을 그대로 확장(desk-local 좌표, 자식 오브젝트)</td><td>MVP</td></tr><tr><td>seat-2(로우모니터) 소품 앵커 실측</td><td>유일하게 desk-local 좌표 상수가 이미 존재하는 좌석이라 우선 진행. GLB 뷰어로 표면 높이 직접 실측 필요</td><td>MVP</td></tr><tr><td>화분/머그컵/러그/랜턴 등 절차적 소품</td><td>기존 절차적 메시 제작 헬퍼의 <strong>패턴만 참고</strong>해 desk-local 좌표로 새로 구현(기존 헬퍼는 지역 클로저라 직접 import 재사용은 불가)</td><td>MVP~확장</td></tr><tr><td>seat-1/3/4(텐트/원형노트북/접이식노트북) 소품 앵커 실측</td><td>코드에 선례 전무, 각 GLB를 직접 열어 처음부터 좌표 측정</td><td>확장</td></tr><tr><td>조개 아이콘(2D) 제작</td><td>신규 — 재화 HUD 칩용, 라이트/다크 테마 겸용 아웃라인</td><td>MVP</td></tr><tr><td>키캡 메뉴 2/3/4번 아이콘 3장 제작</td><td>공유 스프라이트 특성상 위치별로 다시 그려야 함(1번은 변경 없음)</td><td>MVP</td></tr><tr><td>갈매기/나비/게/물고기점프 전용 3D 에셋</td><td>신규 — 비행·점프 경로, 파티클 등 제작 난이도 높음</td><td>확장~폴리시</td></tr><tr><td>신규 효과음(갈매기 놀람, 스플래시, 상자 개봉)</td><td>현재 사운드 목록에 0건, 신규 조달 필요</td><td>폴리시</td></tr><tr><td>로우모니터 desk GLB 내장 키보드가 실제 키캡 모양인지 육안 확인</td><td>확인 필요 — '일반→키캡 업그레이드' 비주얼 차이의 전제</td><td>MVP 착수 전 확인</td></tr><tr><td>애니메이션 클립 전수조사(68개 중 59개 실명 미상)</td><td>조사 페이지를 확장해 clip.name 전체를 뽑아내야 갈매기/나비 쫓기용 전용 클립 존재 여부 확인 가능</td><td>MVP 착수 전 확인</td></tr></tbody></table></div>
+</section>
+<section id="s9" class="sec">
+  <h2>10. 구현 로드맵</h2>
+  <h4>1단계 — MVP (조개 개명 + 패널 노출 + 저비용 아이들 이벤트)</h4>
+<div class="tw"><table><thead><tr><th>작업</th><th>파일</th><th>규모</th></tr></thead><tbody><tr><td>radio-panel 게이트 부분 해제(모든 작업의 선행 조건)</td><td>app/page.tsx</td><td>S</td></tr><tr><td>ACORN→SHELL 1회 마이그레이션 + HUD 라벨 교체</td><td>app/page.tsx</td><td>S</td></tr><tr><td>RADIO_MENU 4키 재정의(CAT/DESK/WORK/STATUS+LOG) + 탭 콘텐츠 재배치</td><td>app/page.tsx</td><td>L</td></tr><tr><td>고양이 이름 데이터 모델·입력 UI</td><td>app/page.tsx</td><td>M</td></tr><tr><td>간식 급여 UI+로직</td><td>app/page.tsx, app/agent-world-3d.tsx</td><td>M</td></tr><tr><td>자리 꾸미기 데이터 모델·구매/장착 로직·패널 UI</td><td>app/page.tsx</td><td>M</td></tr><tr><td>seat-2 소품 앵커 실측 + 오버레이 부착 파이프라인 구현</td><td>app/agent-world-3d.tsx</td><td>M</td></tr><tr><td>낮잠/꾹꾹이 보상 훅(저비용 2종)</td><td>app/agent-world-3d.tsx</td><td>S</td></tr><tr><td>조개 아이콘 + 키캡 2/3/4번 아이콘 제작</td><td>public/art</td><td>M</td></tr><tr><td>애니메이션 클립 전수조사 페이지 확장</td><td>app/cat-inspect/page.tsx</td><td>S</td></tr></tbody></table></div>
+<h4>2단계 — 확장 (전체 좌석 + 나머지 아이들 이벤트)</h4>
+<div class="tw"><table><thead><tr><th>작업</th><th>파일</th><th>규모</th></tr></thead><tbody><tr><td>seat-1/3/4 소품 앵커 실측 + 오버레이 확장</td><td>app/agent-world-3d.tsx</td><td>L</td></tr><tr><td>표류물/게 구경 이벤트(기존 GLB·절차적 패턴 재사용)</td><td>app/agent-world-3d.tsx</td><td>M</td></tr><tr><td>갈매기/나비/물고기점프 이벤트(신규 3D 에셋)</td><td>app/agent-world-3d.tsx</td><td>L</td></tr><tr><td>오프라인 트리클/데일리 보너스/택배상자/마일스톤 로직</td><td>app/page.tsx</td><td>M</td></tr><tr><td>세션 서브패널 뒤로가기 UX 보강</td><td>app/page.tsx</td><td>S</td></tr></tbody></table></div>
+<h4>3단계 — 폴리시</h4>
+<div class="tw"><table><thead><tr><th>작업</th><th>파일</th><th>규모</th></tr></thead><tbody><tr><td>신규 SFX 조달·연결</td><td>app/world-audio.ts, public/audio</td><td>M</td></tr><tr><td>좌석별 스타일 개별화(전역 단일 상태 리팩터링)</td><td>app/agent-world-3d.tsx</td><td>L</td></tr><tr><td>접근성 보강(등급 배지 색+텍스트 병기, aria-label)</td><td>app/page.tsx, app/globals.css</td><td>S</td></tr><tr><td>온보딩(웰컴 조개 지급, 최초 상점 진입 툴팁)</td><td>app/page.tsx</td><td>S</td></tr><tr><td>tests/rendered-html.test.mjs 전체 갱신(신규 키/문구/이미지 파일명 단언)</td><td>tests/rendered-html.test.mjs</td><td>L</td></tr></tbody></table></div>
+</section>
+<section id="s10" class="sec">
+  <h2>11. 도구 신뢰를 지키는 규칙</h2>
+  <ul><li><strong>버프 없음</strong>: 자리 꾸미기·스타일·체형·간식 어느 것도 작업 속도·성공률·토큰 절약에 영향을 주지 않는다. AgentStatus에 그런 수치 필드 자체가 없고, 만들지도 않는다.</li><li><strong>작업 방해 금지</strong>: 아이들 이벤트는 대기 상태(idle/completed/failed) 전용 루프에만 얹혀 있어, 작업 중에는 물리적으로 실행되지 않는 구조로 보장한다. 별도 억제 로직을 새로 만들지 않는다.</li><li><strong>손실형 장치 금지</strong>: 스트릭(연속 접속) 방식은 쓰지 않는다. 접속 보너스·출석 마일스톤 모두 누적 총량제로, 하루 빠져도 이전 기록이 사라지지 않는다.</li><li><strong>놓쳐도 손해 없음</strong>: 방치 상태에서도 아이들 이벤트 기본 보상은 반드시 지급되고, 클릭은 보너스일 뿐 필수가 아니다. 유일하게 클릭이 필요한 택배상자도 열기 전까지 사라지지 않는다.</li><li><strong>경고·타이머·상시 배지 지양</strong>: 토스트 팝업, 빨간 카운트다운, '놓치면 사라짐' 문구는 쓰지 않는다.</li><li><strong>결제 경로 없음</strong>: 조개를 현금으로 사는 경로는 절대 만들지 않는다(향후 유료화가 논의되더라도 이 경계는 유지).</li><li><strong>치팅 대응 수준</strong>: localStorage 값을 devtools로 직접 조작하는 것은 막지 않는다 — 서버 계정이 없어 원천적으로 검증 불가능하고, 현금화 경로도 없어 조작해도 타인 피해가 없다. 다만 오프라인 트리클은 시계 조작 악용을 줄이기 위해 클라이언트 clamp(최대 12시간)를 적용한다.</li><li><strong>온보딩·접근성·모바일 대응은 이번 스펙 범위를 최소한으로만 다룬다</strong>: 최초 접속 시 조개 소량 웰컴 지급과 상점 최초 진입 시 1회성 툴팁 정도만 기본값으로 두고, 등급 배지는 색상만이 아니라 텍스트도 함께 표기한다. 모바일 반응형은 이 앱이 데스크톱 3D 뷰 중심이라 이번 스펙 범위 밖으로 둔다(12절 미결 질문 참고).</li></ul>
+</section>
+<section id="s11" class="sec">
+  <h2>12. 미결 질문</h2>
+  <ul><li>하단 키캡 4칸을 CAT/DESK/WORK/STATUS+LOG로 재정의하는 안(3절)이 최근 'SHOW_LEGACY_OVERLAYS로 키캡 4키만 남기는 미니멀 3D-퍼스트 방향'이라는 디자인 결정과 상충하지 않는지 최종 확인이 필요하다.</li><li>저모니터 좌석(seat-2)을 제외한 나머지 3개 워크스테이션 GLB의 실제 표면·로컬 좌표가 코드 어디에도 없어, 구현 착수 전 GLB 뷰어로 직접 열어 실측하는 작업이 필요하다 — 자리 꾸미기 구현의 최대 리스크 지점이다.</li><li>로우모니터 desk GLB에 내장된 키보드가 이미 키캡 모양인지 육안 확인이 안 돼 있다('일반→키캡 업그레이드' 연출의 전제).</li><li>고양이 애니메이션 클립 68개 중 59개 실명이 미상이라, 갈매기/나비 쫓기용 전용 클립(뛰기·덮치기 계열) 존재 여부 확인이 필요하다.</li><li>좌석별로 서로 다른 스타일/체형을 지원할지(현재는 전역 단일 상태, 좌석별 FBX 로드라는 큰 리팩터가 선행돼야 함) 확인이 필요하다.</li><li>4좌석 하드캡(5번째 세션부터 대기열) 안내 UX를 이번 메뉴 재설계에 포함할지 별도 과제로 둘지 결정이 필요하다.</li><li>티어 업그레이드 비용(50/120/250/450)과 아이템 가격은 이번에 재조정한 초안 수치다 — 실제 배포 후 세션당 평균 작업 완료 빈도 로그를 보고 재조정이 필요할 수 있다.</li><li>온보딩 웰컴 지급량, 접근성 세부 기준(WCAG 대비비 등), 모바일 지원 여부는 사용자가 원래 요청하지 않은 항목이라 이번 문서에서는 최소 기본값만 제안했다 — 채택 여부와 구체 수치를 확인해야 한다.</li></ul>
+</section>
+
+<section id="appendix-a" class="sec">
+  <h2>부록 A — 재화·이코노미 리서치 레퍼런스</h2>
+  <p>재화 이름과 수급 구조를 정할 때 실제로 조사한 게임·앱 사례다. "쿠키/코인/하트/별/다이아몬드 중 뭐가 적절한가"에 대한 근거가 여기서 나왔다.</p>
+  <div class="tw"><table>
+    <thead><tr><th>사례</th><th>재화 이름</th><th>획득 방식</th><th>왜 통했나 / 반면교사</th><th>출처</th></tr></thead>
+    <tbody><tr>
+      <td><b>Neko Atsume</b></td>
+      <td>Fish (은가루/금가루)</td>
+      <td>고양이가 마당 다녀가며 두고 가는 선물 — 플레이어가 앱을 나갔다 돌아와야 발생, 탭 없는 방치형</td>
+      <td>'guilt-free' 설계: 결제 없이도 전부 수집 가능, 결제는 가속만. 강제 접속 압박 없이도 재방문 유도</td>
+      <td><a href="https://notes.highlysuspect.agency/blog/nekos/" target="_blank" rel="noreferrer">링크</a></td>
+    </tr><tr>
+      <td><b>Cats &amp; Soup</b></td>
+      <td>Gold</td>
+      <td>탭으로 수프 팔거나 오프라인 방치로 자동 축적(idle gold), 시설 업그레이드로 전체 단가 상승</td>
+      <td>업그레이드 지출→생산량 증가→더 큰 업그레이드 가능한 지수적 재투자 루프. 방치+탭 이중 채널로 세션 강요 안 함</td>
+      <td><a href="https://catsandsoup.miraheze.org/wiki/Currencies" target="_blank" rel="noreferrer">링크</a></td>
+    </tr><tr>
+      <td><b>Forest (포레스트 앱)</b></td>
+      <td>Coins / 나무</td>
+      <td>집중 타이머 완주 시 나무 생성, 중도 이탈하면 나무 죽음(세션 내 손실회피). 코인으로 실제 나무 기부</td>
+      <td>손실회피를 '그 세션 안에서만' 적용 — 어제 못했다고 오늘 페널티 주는 날짜간 스트릭 손실은 없음. 도구 목적(집중)과 게임 보상이 정확히 일치</td>
+      <td><a href="https://trophy.so/blog/forest-gamification-case-study" target="_blank" rel="noreferrer">링크</a></td>
+    </tr><tr>
+      <td><b>Duolingo</b></td>
+      <td>Streak (연속일수) + Streak Freeze</td>
+      <td>매일 학습 완료, freeze 아이템으로 하루 결손 보호</td>
+      <td>반면교사 사례: 손실회피형 연속출석이 '학습 아닌 스트릭 지키기용 접속'을 유발해 이탈·불안 유발한다는 비판 다수 — 이 프로젝트가 피해야 할 패턴</td>
+      <td><a href="https://screenwiseapp.com/guides/duolingo-streaks-and-anxiety-in-kids" target="_blank" rel="noreferrer">링크</a></td>
+    </tr><tr>
+      <td><b>Habitica</b></td>
+      <td>Gold/EXP + HP(체력)</td>
+      <td>할일 완료 시 골드·경험치, 미완료(daily 놓침) 시 캐릭터 HP 손상</td>
+      <td>반면교사: 벌칙형(HP손상) 설계가 처벌적이라는 비판 큼 — 도구 신뢰 해치는 방향의 예시로 참고</td>
+      <td><a href="https://yukaichou.com/gamification-analysis/simon-duques-habitica-design-challenge/" target="_blank" rel="noreferrer">링크</a></td>
+    </tr><tr>
+      <td><b>AdVenture Capitalist / Idle Idol 등 (Idle 장르 수학 표준)</b></td>
+      <td>Cash 등 소프트 재화</td>
+      <td>업그레이드 구매 시 비용이 지수적으로 상승(1.07~1.1배수), 생산량은 선형/다항 증가</td>
+      <td>cost_next = base × r^owned 공식이 무한 진행형 idle 게임의 표준 밸런싱 근거 — 유한 티어 앱엔 더 큰 배수(1.6~1.8) 적용해 4~6단계 안에 체감 곡선 완성</td>
+      <td><a href="https://www.gamedeveloper.com/design/the-math-of-idle-games-part-iii" target="_blank" rel="noreferrer">링크</a></td>
+    </tr><tr>
+      <td><b>Melvor Idle / MergeCiv / Idle Online Universe</b></td>
+      <td>오프라인 축적 재화(게임별 상이)</td>
+      <td>앱 미접속 시간에 비례해 축적되나 상한 캡(12~24시간) 존재</td>
+      <td>무제한 오프라인 수급은 재접속 동기를 없애므로 캡을 둬 '방치 보상은 보조채널'로 한정 — 이 프로젝트의 12시간 캡 권장 근거</td>
+      <td><a href="https://steamcommunity.com/app/1267910/discussions/0/4665175132461478006/" target="_blank" rel="noreferrer">링크</a></td>
+    </tr><tr>
+      <td><b>모바일 F2P 업계 전반 (GDC/경제설계 핸드북)</b></td>
+      <td>소프트/하드 듀얼 재화</td>
+      <td>소프트는 플레이+대기로 무료 획득, 하드(다이아 등)는 결제 또는 극소량 무료 지급</td>
+      <td>듀얼 재화는 결제 유도가 목적이므로 무과금 도구 앱엔 하드 재화 도입 근거 자체가 없음 — 단일 소프트 재화(ACORN)만으로 충분하다는 결론의 근거</td>
+      <td><a href="https://www.gamedeveloper.com/production/i-designed-economies-for-150m-games-here-s-my-ultimate-handbook" target="_blank" rel="noreferrer">링크</a></td>
+    </tr><tr>
+      <td><b>Cats &amp; Soup</b></td>
+      <td>골드(Gold) / 젬(Gems) / 레시피 포인트(Recipe Points) / 가구 코인(Furniture Coins) — 4종 분리</td>
+      <td>골드: 요리(수프) 판매, 클로 머신, 항아리 요정 선물, 일일 미션, 고양이 선물. 젬: 이벤트·시즌 미션패스, 쿠폰코드, 무료 젬 미션. 레시피 포인트: 휴식시설 레벨업, 아쿠아리움에 물고기 추가, 개구리 왕자 선물, 고양이 선물. 가구 코인: 수프 판매로는 못 얻고 사실상 젬을 소모해 교환하는 게 가장 빠른 루트.</td>
+      <td>재화 4종을 용도별로 완전히 분리해 '코어 루프(요리)=골드', '성장=레시피 포인트', '꾸미기 전용=가구 코인', '프리미엄=젬'으로 매핑. 이름만 보고 무엇에 쓰는지 예측 가능하고, 가구 코인을 젬에 종속시켜 꾸미기가 살짝 아스피레이셔널(과금 유도)하게 설계됨.</td>
+      <td><a href="cats-soup.fandom.com/wiki/Currencies; ansoup.com 'Recipe Points' 및 gamesbustop.com 'Furniture Coins' 가이드" target="_blank" rel="noreferrer">링크</a></td>
+    </tr><tr>
+      <td><b>네코 아츠메 (Neko Atsume)</b></td>
+      <td>은빛 물고기(Silver Fish) / 금빛 물고기(Gold Fish) — 이중 물고기 재화</td>
+      <td>마당에 방문한 고양이가 놀거나 상호작용한 뒤 '고마움의 표시'로 물고기를 놓고 감(방문 고양이 수가 많을수록 물고기 증가). 일일 비밀번호 입력으로 랜덤 은/금 물고기 획득. 은빛 500개를 금빛 10개로 교환 가능(실물 환율), 금빛은 현금 구매도 가능.</td>
+      <td>재화가 완전히 디제틱하다 — '고양이가 물고기를 선물로 놓고 간다'는 세계관 내 설명이 그대로 재화 이름이자 획득 동선이 된다. 은/금 이원 구조로 단기(트리클 수집)·장기(교환/저축) 목표를 동시에 제공하면서도 결제 없이 완주 가능하게 설계해 '결제 없이도 완결되는 F2P'의 대표 사례로 꼽힌다.</td>
+      <td><a href="twinfinite.net 'Neko Atsume: How to Get More Silver and Gold Fish'; nekoatsume.fandom.com/wiki/Fish" target="_blank" rel="noreferrer">링크</a></td>
+    </tr><tr>
+      <td><b>동물의 숲 (Pocket Camp/본편 시리즈)</b></td>
+      <td>벨(Bells) / 리프 티켓(Leaf Tickets)</td>
+      <td>벨: 친구 도와주기(방문당 10~100벨), 마을 주민 선물, 퀘스트 완료, 우정 레벨업. 리프 티켓: 레벨업, 트레저 트렉(지도) 완료, HH 랭크 상승, 타임드/스트레치 골드 달성 시 부수 보상으로 가끔 지급.</td>
+      <td>'벨'이라는 이름 자체가 짤랑거리는 동전주머니 이미지를 연상시켜 목가적·아늑한 세계관과 정합. 리프 티켓(프리미엄)은 순수 타임스킵용으로만 존재해, 코어 진행 재화(벨)는 과금 압박 없이 완전히 자유롭게 흐르도록 설계됨.</td>
+      <td><a href="gamerant.com 'How to Get Leaf Tokens'; animalcrossingpocketcamp.fandom.com/wiki/Leaf_Tickets" target="_blank" rel="noreferrer">링크</a></td>
+    </tr><tr>
+      <td><b>툰 블라스트 (Toon Blast)</b></td>
+      <td>코인(Coins) / 별(Stars) / 라이프(Lives)</td>
+      <td>코인: 매치 진행·보상. 별: 이벤트 및 스타 상자(Star Chest) 보상.</td>
+      <td>매치3 장르 관습에 따라 코인=범용 소프트 재화(부스터·라이프 구매), 별=시즌/이벤트 등급 진행 마커로 기능이 명확히 분리됨. 여기서 주목할 점은 '별'이 스펜더블 화폐가 아니라 '등급/진행도 표식'으로 쓰인다는 관습 — 이 게임에서 '별'을 소프트 재화 이름으로 재사용하면 유저가 등급 표시로 오인할 위험이 있음을 보여주는 사례.</td>
+      <td><a href="toonblast.fandom.com/wiki/Coins" target="_blank" rel="noreferrer">링크</a></td>
+    </tr><tr>
+      <td><b>AdVenture Capitalist</b></td>
+      <td>머니(Money) / 엔젤 투자자(Angel Investors)</td>
+      <td>머니: 사업체 방치 수익(아이들 생산). 엔젤 투자자: 프레스티지 리셋 시 누적 수익량에 비례해 지급, 영구 배율 부여.</td>
+      <td>테마 자체가 '자본주의'라 재화명을 '머니'로 직설적으로 둔 것이 오히려 정합적 — 재미 요소는 이름이 아니라 프레스티지 재화(엔젤)를 통한 영구 성장 레이어에서 나옴. 소비 재화와 영구 성장 재화를 분리하는 패턴의 참고 사례이나, 이번 프로젝트엔 프레스티지 리셋 개념이 없어 직접 적용 필요성은 낮음.</td>
+      <td><a href="adventure-capitalist.fandom.com/wiki/Money" target="_blank" rel="noreferrer">링크</a></td>
+    </tr><tr>
+      <td><b>머지 맨션 (Merge Mansion)</b></td>
+      <td>코인(Coins) / 젬(Gems) / 에너지(Energy)</td>
+      <td>코인: 아이템 판매, 골드 코인 오브젝트 수거. 젬: 피기뱅크, 시즌 이벤트, 실결제 구매. 에너지: 시간 경과 자동 충전 또는 아이템.</td>
+      <td>코인=소프트(집 꾸미기 소비), 젬=하드(타이머 스킵·에너지 구매), 에너지=세션 페이싱 자원으로 3분할해 '무엇을 짓나/무엇으로 스킵하나/지금 얼마나 플레이 가능한가'를 이름만으로 구분 가능하게 함.</td>
+      <td><a href="merge-mansion.fandom.com/wiki/Currency, /wiki/Gems, /wiki/Coins" target="_blank" rel="noreferrer">링크</a></td>
+    </tr><tr>
+      <td><b>Design Home</b></td>
+      <td>캐시(Design Cash) / 다이아몬드(Diamonds) / 키(Keys)</td>
+      <td>캐시: 디자인 챌린지 참가·고득점 보상, 일일 보상. 다이아몬드: 일일 보상, 실결제 구매, 챌린지 고득점 보너스. 키: 마감된 챌린지 투표, 내 아이템이 다른 유저에게 대여될 때, 또는 다이아몬드로 구매.</td>
+      <td>각 재화명이 코어 루프의 '동사'와 1:1 대응됨(캐시=가구 구매, 키=챌린지 입장, 다이아몬드=만능 프리미엄 교환) — 이름만 보고 용도를 미리 예측할 수 있는 '정보 스캔형' 네이밍의 좋은 예.</td>
+      <td><a href="ea.com/games/design-home/faq/cash-diamonds-and-keys; glumobile.helpshift.com" target="_blank" rel="noreferrer">링크</a></td>
+    </tr><tr>
+      <td><b>Idle Acorns / Squirrel Idle Tycoon</b></td>
+      <td>도토리(Acorns) / 골든 도토리(Golden Acorns)</td>
+      <td>나무를 흔들거나 방치 생산으로 도토리 획득, 희귀 확률로 골든 도토리(영구 버프) 획득.</td>
+      <td>도토리가 성공하는 건 정확히 '다람쥐 마스코트 + 숲 배경'일 때뿐이다 — 이는 반대로 이번 프로젝트(고양이 마스코트 + 해변/무인도 배경)에 도토리를 쓰면 왜 어색한지의 반증 사례가 된다. 화면에 다람쥐도 숲도 없는데 '도토리'만 떠 있으면 세계관 정합성이 깨진다.</td>
+      <td><a href="apps.apple.com/us/app/idle-acorns; game-solver.com/idle-acorns; idleacorns.com" target="_blank" rel="noreferrer">링크</a></td>
+    </tr><tr>
+      <td><b>업계 공통 관습 (장르 불문 공통 참조)</b></td>
+      <td>하트=라이프/호감도, 별=등급·랭크·시즌티어, 다이아몬드/젬/크리스탈=유료 하드커런시, 코인/골드=범용 소프트커런시</td>
+      <td>해당 없음(개별 게임이 아닌 업계 전반의 명명 관습 조사)</td>
+      <td>Udonis 'Types of Mobile Game Currencies' 등 업계 자료에 따르면 보석류(젬/다이아/크리스탈)는 거의 예외 없이 '더디게 벌리거나 현금 구매'되는 하드커런시 신호로, 코인/골드류는 '쉽게 벌리는' 소프트커런시 신호로 굳어져 있다. 하트는 캔디크러시식 라이프(소모되면 대기해야 함) 또는 호감도 게이지로, 별은 이벤트/레벨 등급 마커로 관습화됨. 이 관습을 무시하고 소프트 재화 이름으로 하트·별·다이아몬드를 쓰면, 유저는 튜토리얼 텍스트를 읽기 전부터 이미 잘못된 기능 기대(라이프 고갈 걱정, 등급 오인, '이거 결제해야 하나' 오해)를 갖게 된다.</td>
+      <td><a href="medium.com/udonis '12 Types of Mobile Game Currencies You Need to Know About'; dev.to 'Game Economy Design for Free-to-Play Games'" target="_blank" rel="noreferrer">링크</a></td>
+    </tr></tbody>
+  </table></div>
+
+  <h3>도출된 설계 원칙</h3>
+  <ul><li>획득 채널 최상위는 '실제 도구 사용'(세션 완료=task.completed) 이어야 함. 게임화가 도구 본질 대체하면 안 됨 — 전체 수급의 40% 이상을 여기 배정.</li><li>손실형 연속출석(스트릭) 금지. Duolingo/Habitica 사례처럼 '끊기면 보너스 소멸' 방식은 불안·이탈 유발. 대신 누적형(총 접속일수 7/30/100일 마일스톤) 채택 — 손실 없고 되돌아와도 불이익 없음.</li><li>일일 첫 접속 보상은 '그날 처음 켰을 때 flat 지급' 수준으로 얕게. 강제 접속 유도 프레이밍(경고·타이머·빨간 배지) 금지, '선물함' 톤 유지.</li><li>오프라인/방치 트리클은 상한 캡(12시간 권장) 두고 전체 수급의 10% 이하 보조 채널로만. localStorage 타임스탬프라 시계조작 치팅 원천봉쇄 불가하나, 판돈 작게 설계하면 치팅 실익 없음 — 서버검증 없이 클라이언트 clamp(음수/과대 elapsed 배제)면 충분.</li><li>Idle 이벤트(비둘기 쫓기·낮잠 등)는 탭 없이 대기 애니메이션 중 랜덤 트리거되는 보상으로. Neko Atsume식 '안 봐도 알아서 쌓임' 원칙 — 강제 체류시간 요구 안 함.</li><li>재화는 단일 소프트 재화 유지. 무과금 도구 앱이라 하드/프리미엄 재화(다이아) 도입 불필요·역효과. 이미 있는 ACORN을 코인 역할로 확장 사용 — 별도 화폐 신설보다 리스크 적음.</li><li>다이아몬드·하트는 피할 것: 다이아는 '결제 유도/프리미엄' 뉘앙스라 무과금 도구 신뢰 훼손, 하트는 보통 '목숨/에너지 제한' 의미로 오인되어 좌절감 유발.</li><li>첫 구매 경험은 첫 세션(5~10분) 내 가능하게: 시작 시 소량 시드 지급 + 최저가 티어1 아이템은 즉시 구매 가능한 가격으로 설정. 초반 5~10분 이탈률 40~60%라는 온보딩 통계 근거.</li><li>업그레이드 티어는 무한 지수형(클리커식) 아닌 유한 4~6단계, 비용배율 1.5~1.8배 지수곡선. 매 티어마다 외형 변화 눈에 띄게(코지 게임 UX 원칙).</li><li>마일스톤/업적(첫 고양이 연결, 5마리 모으기 등)은 일회성 큰 지급으로 목표감 부여 — 반복 수급과 별개 채널.</li><li>재화 이름은 마스코트+배경(비오옴)과 직결돼야 한다 — 도토리(숲/다람쥐 상징)를 고양이 마스코트+해변/무인도 배경에 쓰면 즉각적 테마 불일치가 발생한다. Idle Acorns/Squirrel Idle Tycoon처럼 '도토리'가 성공한 사례는 전부 숲·다람쥐 세계관에서였다.</li><li>하트·별·다이아몬드는 업계 관습상 이미 고정된 의미를 갖는다 — 하트=라이프/호감도, 별=등급·프리미엄 티어, 다이아몬드=유료 하드커런시. 이 관습을 깨고 소프트 재화로 쓰면 유저가 재화 기능을 오인한다(예: 하트를 보면 '이거 다 쓰면 게임 오버?'라고 생각).</li><li>결제(IAP)가 없는 게임은 소프트/하드 이중재화를 나눌 이유가 없다 — 이중재화(Neko Atsume 은/금 물고기, Merge Mansion 코인/젬)의 존재 목적은 과금 유도·타임스킵 판매인데, 이 게임엔 그 축이 없다. 단일 재화 + 희귀 등급 변형(마일스톤 보상용) 정도면 충분하다.</li><li>Cats &amp; Soup처럼 재화를 용도별로 분리(골드=코어루프, 가구코인=꾸미기 전용, 레시피포인트=성장)하면 이름만 보고 용도가 예측되는 정보 스캔 효과가 생긴다. 다만 무과금 소규모 게임에선 재화 종류를 늘리기보다 기존 단일 재화의 소비처(간식/꾸미기)를 다양화하는 편이 관리 비용 대비 효율적이다.</li><li>디제틱(diegetic) 재화가 몰입을 깨지 않는다 — Neko Atsume은 '고양이가 고마움의 표시로 물고기를 놓고 감'이라는 세계관 내적 설명이 가능해서 자연스럽다. 이 게임은 고양이+해변이므로 '물고기'가 세계관 안에서 설명 가능한 유일한 후보다(도토리는 해변에 존재할 이유가 없음).</li><li>재화 이름은 곧 아이콘 디자인 방향을 결정한다 — 이름을 먼저 확정해야 아이콘 제작 후 재작업(리네임에 따른 리아이콘)을 피할 수 있다.</li><li>기존 재화 데이터가 이미 쌓여 동작 중이라면 '폐기'보다 '개명(라벨·아이콘 교체 + 값 이전)'이 저비용·저리스크다 — 로직(적립 트리거, HUD 표시)은 그대로 두고 표시명/아이콘/스토리지 키만 바꾸면 유저 데이터 손실 없이 테마 불일치를 해소할 수 있다.</li></ul>
+
+  <div class="callout sea">
+    <b>리서치 1차 권고 vs 최종 채택의 차이</b><br />
+    재화 네이밍 리서치는 <b>물고기(Fish)</b>를 1순위로 권고했다(고양이+해변 조합에 가장 디제틱하고 네코 아츠메 전례가 탄탄함).
+    최종안이 <b>조개(Shell)</b>를 택한 이유는 순수하게 제작비다 — 물고기는 씬에 실물 3D가 없어 신규 에셋 제작이 선행되지만,
+    조개는 <code>shoreline-rock-starfish-shell-cluster-meshy6-web-v1.glb</code>가 이미 해변 두 곳에 배치돼 렌더되고 있어
+    2D 아이콘 1장만 그리면 개명이 끝난다. 물고기를 고집한다면 3D 제작 1건이 MVP 일정에 추가된다.
+  </div>
+</section>
+
+<section id="appendix-b" class="sec">
+  <h2>부록 B — 구현 작업 전체 목록</h2>
+  <div class="tw"><table>
+    <thead><tr><th>규모</th><th>작업</th><th>파일</th></tr></thead>
+    <tbody><tr><td><span class="eff eff-S">S</span></td><td>radio-panel 렌더 게이트에서 SHOW_LEGACY_OVERLAYS 조건만 부분 해제(상수 선언은 유지) - 모든 UI 작업의 선행 조건</td><td class="mono">app/page.tsx</td></tr><tr><td><span class="eff eff-S">S</span></td><td>ACORN_KEY -&gt; SHELL_KEY 1회 마이그레이션 함수 추가, HUD 라벨(N ACORNS / 도토리 N개)을 조개 N개로 교체</td><td class="mono">app/page.tsx</td></tr><tr><td><span class="eff eff-L">L</span></td><td>RADIO_MENU 4키 재정의(CAT/DESK/WORK/STATUS+LOG) 및 탭 콘텐츠 재배치, 세션 연결 블록을 WORK 탭으로 이동</td><td class="mono">app/page.tsx</td></tr><tr><td><span class="eff eff-M">M</span></td><td>고양이 이름 데이터 모델(CAT_NAME_KEY, 20종 풀), 입력 UI(maxLength 6), agentName 우선순위 교체</td><td class="mono">app/page.tsx</td></tr><tr><td><span class="eff eff-M">M</span></td><td>간식 급여 UI+로직: SNACKS 3종, SNACK_LOG_KEY, 좌석별 10초 쿨다운, 조개 차감, eat-drink 클립 트리거</td><td class="mono">app/page.tsx, app/agent-world-3d.tsx</td></tr><tr><td><span class="eff eff-M">M</span></td><td>자리 꾸미기 데이터 모델(WORKSTATION_DECOR_KEY v2), 구매/장착 로직, 패널 UI(좌석 탭+티어 진행바+슬롯 그리드)</td><td class="mono">app/page.tsx</td></tr><tr><td><span class="eff eff-M">M</span></td><td>seat-2 소품 앵커 실측 후 workstation Group 자식으로 절차적 소품 오버레이 부착 파이프라인 구현</td><td class="mono">app/agent-world-3d.tsx</td></tr><tr><td><span class="eff eff-L">L</span></td><td>seat-1/3/4 소품 앵커 신규 실측 및 오버레이 확장(코드 선례 전무, 각 GLB 직접 측정)</td><td class="mono">app/agent-world-3d.tsx</td></tr><tr><td><span class="eff eff-S">S</span></td><td>낮잠/꾹꾹이 보상 훅(기존 클립 재생 완료 시점에 보상 콜백 추가, 저비용 2종)</td><td class="mono">app/agent-world-3d.tsx</td></tr><tr><td><span class="eff eff-L">L</span></td><td>표류물/게 구경 이벤트(기존 GLB, 절차적 패턴 재구현) + 갈매기/나비/물고기점프 이벤트(신규 3D 에셋)</td><td class="mono">app/agent-world-3d.tsx</td></tr><tr><td><span class="eff eff-M">M</span></td><td>오프라인 트리클/데일리 보너스/택배상자/마일스톤 지급 로직 및 상한 게이트 구현</td><td class="mono">app/page.tsx</td></tr><tr><td><span class="eff eff-M">M</span></td><td>조개 아이콘 1장 + 키캡 메뉴 2/3/4번 아이콘 신규 제작(공유 스프라이트 특성상 위치별 재드로잉 필요)</td><td class="mono">public/art</td></tr><tr><td><span class="eff eff-S">S</span></td><td>애니메이션 클립 68개 전수조사 페이지 확장(clip.name 전체 출력) - 신규 이벤트용 클립 존재 여부 확인</td><td class="mono">app/cat-inspect/page.tsx</td></tr><tr><td><span class="eff eff-L">L</span></td><td>신규 키/문구/이미지 파일명에 맞춰 소스 문자열 단언 전체 갱신</td><td class="mono">tests/rendered-html.test.mjs</td></tr></tbody>
+  </table></div>
+</section>
+
+<section id="appendix-c" class="sec">
+  <h2>부록 C — 데이터 모델 (그대로 붙여넣는 TypeScript)</h2>
+  <pre><code>// ============================================================
+// Agent Forest -- 조개(Shell) 경제 통합 데이터 모델 v2 (최종 정본)
+// 프로젝트 루트: D:/soccerstarWebSource/GameCreator/catAgentGame
+// 기존 브레인스토밍 4개 스펙(currency/workstation/cats/idle)의
+// 재화명 불일치 유료화 상충 탭구조 상충을 전부 해소한 단일 정본.
+// ============================================================
+
+// -- 0. 레거시 키 (읽기 전용, 1회 이전 후 재기록 금지) --------------
+const LEGACY_ACORN_KEY = "agent-forest-acorns-v1"; // 기존 app/page.tsx:133
+
+// -- 1. 재화: 조개(Shell) --------------------------------------------
+const SHELL_KEY = "agent-forest-shell-v1";
+type ShellBalance = number;
+
+function loadShellBalance(): number {
+  const migrated = window.localStorage.getItem(SHELL_KEY);
+  if (migrated !== null) return Number(migrated) || 0;
+  const legacy = Number(window.localStorage.getItem(LEGACY_ACORN_KEY) ?? 0) || 0;
+  window.localStorage.setItem(SHELL_KEY, String(legacy));
+  return legacy;
+}
+
+// -- 2. 획득 채널 상수 (최종 확정값, 실사용이 방치보다 항상 더 벌도록 재조정) --
+type MilestoneId =
+  | "first-connect" | "tasks-10" | "tasks-50" | "tasks-100"
+  | "attendance-7" | "attendance-30" | "attendance-100";
+
+const SHELL_EARN = {
+  taskCompleted: 10,          // 건당, 상한 없음 -- 최상위 채널
+  approvalDecided: 4,         // 건당, 일일 상한 20개(5건)
+  dailyLoginFlat: 5,          // 1일 1회, 스트릭 아님(손실 없음)
+  parcelBoxClick: 3,          // 1일 1회, 클릭해야 지급(상시 배지 없음)
+  idleEventDailyCap: 10,      // nap/gull-chase/flotsam/butterfly-chase/crab-watch/fish-jump 6종 공유 상한
+  idleEventHourlyCap: 4,
+  idleEventGlobalCooldownSec: 300,
+  offlineTricklePer6h: 1,
+  offlineTrickleCapHours: 12, // 상한 12시간 = 최대 2개
+  milestone: {
+    "first-connect": 30, "tasks-10": 60, "tasks-50": 150, "tasks-100": 350,
+    "attendance-7": 60, "attendance-30": 180, "attendance-100": 450,
+  } as Record&lt;MilestoneId, number&gt;,
+};
+
+// -- 3. 좌석 자리 꾸미기 -----------------------------------------------
+type SeatId = "seat-1" | "seat-2" | "seat-3" | "seat-4"; // 기존 타입 재사용
+type WorkstationTier = 0 | 1 | 2 | 3 | 4;
+
+const SEAT_TIER_UPGRADE_COST: Record&lt;WorkstationTier, number&gt; = {
+  0: 0, 1: 50, 2: 120, 3: 250, 4: 450,
+}; // 누적 870/좌석, 배율 1.4~1.86
+
+type DecorSlot = "deskTop" | "inputDevice" | "seatCushion" | "floorAmbient";
+
+const TIER_SLOT_CAPACITY: Record&lt;WorkstationTier, Partial&lt;Record&lt;DecorSlot, number&gt;&gt;&gt; = {
+  0: {},
+  1: { deskTop: 1 },
+  2: { deskTop: 1, inputDevice: 1 },
+  3: { deskTop: 2, inputDevice: 1, seatCushion: 1 },
+  4: { deskTop: 2, inputDevice: 1, seatCushion: 2, floorAmbient: 1 },
+};
+
+type DecorItemId =
+  | "shell-planter" | "camping-mug" | "mini-palm-planter" | "shell-frame"
+  | "pastel-keycap-set" | "neon-keycap-set"
+  | "woven-mat" | "quilted-cushion" | "camping-stool"
+  | "round-rug" | "mini-lantern" | "shell-windchime";
+
+type DecorItemDef = {
+  id: DecorItemId;
+  slot: DecorSlot;
+  labelKo: string;
+  price: number;
+  unlockTier: WorkstationTier;
+};
+
+const DECOR_CATALOG: DecorItemDef[] = [
+  { id: "shell-planter",     slot: "deskTop",      labelKo: "조개껍질 화분",      price: 20, unlockTier: 1 },
+  { id: "camping-mug",       slot: "deskTop",      labelKo: "캠핑 에나멜 머그컵", price: 15, unlockTier: 1 },
+  { id: "mini-palm-planter", slot: "deskTop",      labelKo: "미니 야자수 화분",    price: 35, unlockTier: 2 },
+  { id: "shell-frame",       slot: "deskTop",      labelKo: "조개 액자",          price: 40, unlockTier: 3 },
+  { id: "pastel-keycap-set", slot: "inputDevice",  labelKo: "파스텔 키캡 세트",   price: 40, unlockTier: 2 },
+  { id: "neon-keycap-set",   slot: "inputDevice",  labelKo: "네온 키캡 세트",     price: 60, unlockTier: 3 },
+  { id: "woven-mat",         slot: "seatCushion",  labelKo: "우드 방석",         price: 30, unlockTier: 2 },
+  { id: "quilted-cushion",   slot: "seatCushion",  labelKo: "누빔 쿠션",         price: 45, unlockTier: 3 },
+  { id: "camping-stool",     slot: "seatCushion",  labelKo: "캠핑 접이 스툴",     price: 55, unlockTier: 3 },
+  { id: "round-rug",         slot: "floorAmbient", labelKo: "라운드 러그",       price: 35, unlockTier: 3 },
+  { id: "mini-lantern",      slot: "floorAmbient", labelKo: "캠핑 랜턴 미니어처", price: 50, unlockTier: 3 },
+  { id: "shell-windchime",   slot: "floorAmbient", labelKo: "조개 윈드차임",     price: 60, unlockTier: 4 },
+];
+// 구매(소유) = 계정 전역 1회, 배치(장착) = 좌석별 개별.
+// desk 형상이 좌석마다 달라 배치 좌표는 공유 불가.
+
+const WORKSTATION_DECOR_KEY = "agent-forest-workstation-decor-v2"; // 기존 decor-v1(UI 테마)와 이름 충돌 방지
+
+type SeatDecorState = {
+  tier: WorkstationTier;
+  equipped: Partial&lt;Record&lt;DecorSlot, DecorItemId[]&gt;&gt;;
+};
+type WorkstationDecorState = {
+  ownedItemIds: DecorItemId[];
+  seats: Record&lt;SeatId, SeatDecorState&gt;;
+};
+
+// -- 4. 고양이 이름 -----------------------------------------------------
+const CAT_NAME_KEY = "agent-forest-cat-name-v1";
+type CatNameMap = Record&lt;string /* runtimeKey */, string&gt;;
+
+const CAT_NAME_POOL = [
+  "나비","두부","콩이","초코","모카","딸기","만두","몽실이","호두","감자",
+  "뭉치","요롱이","미미","까망이","노랑이","흰둥이","마루","순두부","방울이","나옹이",
+]; // 기존 부서 기본이름(모모/토토/보리/코코)과 중복 없음
+
+const CAT_NAME_MAX_LENGTH = 6; // 3D 이름표 팻말 폭(368px) 안전 수납 한도
+
+// -- 5. 간식 급여 --------------------------------------------------------
+type SnackId = "basic-tuna" | "churu" | "premium-can";
+type SnackDef = {
+  id: SnackId; label: string; price: number; growthPoints: number; dailyFreeLimit?: number;
+};
+const SNACKS: SnackDef[] = [
+  { id: "basic-tuna",  label: "기본 캔참치", price: 0,  growthPoints: 1, dailyFreeLimit: 1 },
+  { id: "churu",       label: "츄르",        price: 8,  growthPoints: 1 },
+  { id: "premium-can", label: "고급 캔사료", price: 15, growthPoints: 2 },
+]; // churu/premium-can은 무제한 반복구매 -- 자리꾸미기 완주 후에도 남는 상시 소비처
+
+const SNACK_FEED_COOLDOWN_MS = 10_000; // 좌석당 10초
+const SNACK_LOG_KEY = "agent-forest-snack-log-v1";
+type SnackLog = { totalFed: number; lastFedAt: Record&lt;string, number&gt;; acknowledgedTier: number; };
+const GROWTH_SUGGEST_THRESHOLDS = [5, 15, 30]; // 체형 승급 "추천"(강제 아님)
+
+// -- 6. 스타일 -- 전부 무료 (재화 게이팅 없음, cats.json 결론 최종 채택) ------
+// 근거: /cats 갤러리가 이미 15종 무조건 공개 중 + 코스메틱=버프없음 원칙.
+// (이전 초안의 STYLE_UNLOCK_PRICE 유료안은 폐기)
+
+// -- 7. 마일스톤 / 출석 (단일 키로 통합, 중복 트래킹 제거) --------------
+const MILESTONE_LOG_KEY = "agent-forest-milestones-v1";
+type MilestoneLogState = MilestoneId[];
+
+const ATTENDANCE_KEY = "agent-forest-attendance-v1"; // 손실 없는 누적 총방문일수
+type AttendanceState = { totalDaysVisited: number; lastVisitDateISO: string; };
+
+// -- 8. 데일리 로그인 + 택배상자 (단일 "접속" 채널로 통합) ---------------
+const DAILY_LOGIN_KEY = "agent-forest-daily-login-v1";
+type DailyLoginState = { lastClaimedDateISO: string; boxOpenedToday: boolean; };
+
+// -- 9. 아이들(대기) 이벤트 로그 -----------------------------------------
+const IDLE_EVENT_LOG_KEY = "agent-forest-idle-events-v1"; // 40건 링버퍼
+type IdleEventId = "nap" | "gull-chase" | "flotsam" | "butterfly-chase" | "crab-watch" | "fish-jump";
+type IdleEventLogEntry = {
+  id: IdleEventId; seatId: SeatId; clicked: boolean; rewardGranted: number; at: number;
+};
+
+// -- 10. 오프라인 트리클 --------------------------------------------------
+const LAST_ACTIVE_KEY = "agent-forest-last-active-v1"; // epoch ms
+
+// -- 11. AgentWorld3D 확장 프롭 (기존 completionSignal/onSeatClick 패턴 재사용) --
+type FeedSignal = { seatId: SeatId; snackId: SnackId; nonce: number } | null;
+type IdleEventPayload = { seatId: SeatId; eventId: IdleEventId; clicked: boolean };
+
+interface AgentWorld3DPropsExtension {
+  seatDecor?: Record&lt;SeatId, SeatDecorState&gt;;
+  feedSignal?: FeedSignal;
+  onIdleEvent?: (payload: IdleEventPayload) =&gt; void; // 3D -&gt; React, 신규(현재 미존재)
+}
+
+// -- 12. 기존 유지, 변경 없음 --------------------------------------------
+// const DECOR_KEY = "agent-forest-decor-v1"; // UI 색 테마(coral/mint/sunset), 자리 꾸미기와 무관
+</code></pre>
+</section>
+
+<section id="appendix-d" class="sec">
+  <h2>부록 D — 적대적 검증에서 잡아내 고친 것</h2>
+  <p>설계 초안 4종을 구현가능성·이코노미밸런스·완결성 3개 검증 에이전트가 따로 공격했다. 아래 blocker/major는 <b>본문에 이미 반영해 수정된</b> 항목이다 — 남은 문제 목록이 아니라, 이 기획안이 통과한 관문의 기록이다.</p>
+  <h3>Blocker (10건)</h3>
+  <ul class="qa"><li><b>currency.json 1절 vs workstation.json/cats.json/idle.json 전체</b><br />재화 이름과 localStorage 키가 스펙마다 다름 — currency.json은 "조개"(CURRENCY_KEY=agent-forest-shell-v1)로 확정했는데, workstation.json·cats.json·idle.json은 전부 "물고기"(FISH_KEY=agent-forest-fish-v1)를 채택함. 4개 스펙이 같은 프로젝트의 재화를 서로 다른 이름·키로 구현하게 됨.<br /><b style="color:var(--accent)">→ 반영:</b> currency.json이 최종안이라면 workstation/cats/idle 세 문서의 FISH_KEY·"물고기" 표기를 전부 CURRENCY_KEY·"조개"로 통일. 반대로 물고기가 최종이면 currency.json을 갱신. 4개 문서 중 하나를 single source of truth로 지정 후 나머지 3개를 종속 갱신할 것.</li><li><b>currency.json 4절(스타일 해금) vs cats.json 3절(스타일 변경)</b><br />currency.json은 스타일 15종을 커먼60/레어100/에픽160 조개로 유료 해금하도록 설계했는데, cats.json은 같은 15종을 "전부 무료, 즉시 변경"으로 결론짓고 재화 게이팅 자체를 배제하는 근거까지 제시함. 정반대 결론.<br /><b style="color:var(--accent)">→ 반영:</b> 스타일 해금이 유료 소모처인지 여부를 먼저 확정하고, 채택 안 된 쪽 스펙(currency.json의 STYLE_UNLOCK_PRICE 절 또는 cats.json 3절의 '전부 무료' 결론)을 삭제·수정.</li><li><b>currency.json 8절 vs workstation.json 0절/구현1 vs cats.json 6절/구현1</b><br />4개 키캡(탭) 최종 구조가 3개 스펙마다 다름. currency.json은 기존 4탭(cats/sessions/status/activity)이 그대로 유지된다고 가정. workstation.json은 2번만 workstation-decor로 바꾸고 sessions는 1번(cats) 탭 하위로 흡수. cats.json은 4탭을 CAT/DESK/WORK/STATUS+LOG로 전면 재정의하며 sessions를 3번(WORK) 탭에 합침. 세션 화면이 갈 곳이 스펙마다 다르고(1번 vs 3번), status/activity 병합 여부도 다름.<br /><b style="color:var(--accent)">→ 반영:</b> IA(정보구조) 오너가 최종 탭 레이아웃 1안을 확정하고 나머지 두 스펙을 그 안에 맞춰 재작성. 최소한 sessions·status·activity 세 화면의 최종 위치를 표로 통일해 3개 문서에 동일하게 반영.</li><li><b>currency.json dataModel(SEAT_DECOR_TIER_KEY) vs workstation.json dataModel(WORKSTATION_DECOR_KEY)</b><br />자리 꾸미기 이코노미가 두 스펙에서 완전히 다르게 설계됨. currency.json: 티어당 가격 40/70/120/200(누적), 아이템 4종 고정(화분/머그컵/데스크매트+미니키캡/담요), 저장키 SEAT_DECOR_TIER_KEY(값=0~4 정수). workstation.json: 티어 진입비 20/60/140/260, 16종 개별 구매 카탈로그, 저장키 WORKSTATION_DECOR_KEY(ownedItemIds+seats 객체). 가격도 아이템 수도 데이터 모델도 안 맞고, 사용자가 요청한 '쿠션'과 '의자'는 currency.json의 4종 목록에는 아예 없음(workstation.json에만 있음).<br /><b style="color:var(--accent)">→ 반영:</b> 자리 꾸미기 설계는 workstation.json(더 상세하고 사용자 5종 요청을 전부 매핑함)을 단일 정본으로 채택하고, currency.json의 SEAT_DECOR_TIER_KEY·SEAT_DECOR_TIER_COST 절은 폐기하거나 workstation.json을 참조하도록 재작성.</li><li><b>currency.json 4절(SNACK_PRICE) vs cats.json 4절(SNACKS)</b><br />간식 카탈로그가 스펙마다 다름 — currency.json: 기본캔참치(무료,1일1회)/훈제연어15/그레인프리25. cats.json: 츄르3/캔사료6/츄르세트12, 무료 항목 자체가 없음. 이름·가격·무료여부 전부 불일치.<br /><b style="color:var(--accent)">→ 반영:</b> 간식 목록 하나로 통합(무료 1일1회 슬롯 포함 여부부터 확정) 후 두 문서에 동일 표 반영.</li><li><b>currency.json 3절(offlineTricklePerHour) vs idle.json 6절(OFFLINE_TRICKLE_FISH_PER_6H)</b><br />오프라인 12시간 상한 시 지급량이 6배 차이남 — currency.json은 시간당1개×12시간=최대12개, idle.json은 6시간당1개=최대2개. 같은 '오프라인 트리클' 메커니즘인데 수치가 정합되지 않음.<br /><b style="color:var(--accent)">→ 반영:</b> 두 스펙 중 하나의 수치로 통일(권장: 남용 방지 취지를 살리려면 idle.json의 낮은 상한 쪽을 채택하고 currency.json 수치를 수정).</li><li><b>currency.json §3(CURRENCY_EARN) vs idle.json §3/§6(IDLE_EVENT_*, OFFLINE_TRICKLE_*) vs workstation.json dataModel(FISH_KEY/ACORN_KEY 혼재)</b><br />같은 '재화 이코노미'를 다루는 4개 문서가 서로 다른 숫자를 확정해뒀다. (1) 재화명·키 자체가 다름: currency.json은 CURRENCY_KEY='agent-forest-shell-v1'(조개)인데 workstation/cats/idle.json은 FISH_KEY='agent-forest-fish-v1'(물고기)를 쓰고, workstation.json 데이터모델 주석은 심지어 '기존 acorns 변수/ACORN_KEY 그대로 소비'라고 적어 마이그레이션조차 안 된 상태다. (2) 좌석 티어 누적비용이 다름: currency.json SEAT_DECOR_TIER_COST=[0,40,70,120,200](누적430) vs workstation.json TIER_UPGRADE_COST=[0,20,60,140,260](누적480) — 11.6% 차이. (3) 오프라인 트리클 일일 상한이 6배 다름: currency.json은 시간당1개×12시간=12개, idle.json은 6시간당1개×12시간상한=2개. (4) 유휴 이벤트 일일 총량이 5배 다름: currency.json은 낮잠16+한눈팔기15=31개/일 가능한데 idle.json은 IDLE_EVENT_DAILY_FISH_CAP=6개/일로 못박음. 이 상태로는 '이 스펙의 밸런스'라는 게 존재하지 않는다 — 어느 표를 기준으로 계산해도 다른 문서와 충돌한다.<br /><b style="color:var(--accent)">→ 반영:</b> 4개 스펙을 병합하기 전 재화명·저장키·좌석티어 누적비용·오프라인 상한·유휴 상한 5개 숫자표를 단일 '경제 상수 마스터 시트' 1개로 통합 확정하고, 나머지 3개 문서는 그 시트를 참조(import)만 하도록 재작성한다. 재화명은 currency.json의 '조개'(이미 씬에 실물 3D 자산 있음, §1 근거)로 통일 권장.</li><li><b>currency.json §3(획득 채널) — idleNap/idleChase/dailyLoginBonus/offlineTricklePerHour</b><br />'가만히 있는 유저'가 '실제로 작업 1건 한 유저'보다 더 번다. 계산: 완전 방치(탭만 열어두고 클릭 0회) = dailyLogin(10) + idleNap 상한(16) + idleChase 상한(15) + offlineTrickle 상한(12) = 53개/일. currency.json 자신의 '라이트 유저' 시나리오(작업 1건 포함) = task(5)+daily(10)+nap(2)+chase(3)+offline(12) = 32개/일. 즉 진짜 작업을 1건 한 유저(32)가 아무것도 안 한 유저(53)보다 65.6% 적게 번다. 손익분기점 계산: 실작업 수입(5×N)이 완전방치 수입(nap+chase 상한 31)을 넘으려면 N≥7건/일 필요(7×5=35&gt;31, 6건으로는 30&lt;31로 부족) — 그런데 스펙 자신의 라이트 페르소나는 1건/일이라 절대 못 넘는다. idle.json은 낮잠·한눈팔기를 '완전 방치형', '자동완료'로 명시했고 settling(4~10초)·kneading(7초) 주기가 짧아(완주기 약 12~20초) 탭을 15~30분만 열어둬도 이 상한에 도달한다 — 이 앱은 에이전트 작업 상태를 지켜보는 대시보드이므로 '탭을 켜두고 지켜만 보는 것'은 예외적 어뷰징이 아니라 기본 사용 패턴이다. currency.json이 스스로 명시한 설계원칙('실사용 도구 사용이 최상위 채널이어야 한다')과 정면으로 모순된다.<br /><b style="color:var(--accent)">→ 반영:</b> idleNap/idleChase의 일일 상한을 task 최소 기대치(라이트 유저 1건=5개) 이하로 낮추거나(예: 낮잠+한눈팔기 합산 상한을 20개 이하로), 반대로 task 보상을 상향(예: 8개/건)해 N=7 손익분기점을 N=1~2 수준으로 끌어내린다. 동시에 offlineTrickle·dailyLogin처럼 '클릭 없이 나오는' 채널의 합산 상한이 실작업 채널의 하루 기대 수입을 넘지 않도록 상한 재설계.</li><li><b>cats 스펙 §3 vs currency 스펙 §4(소모처) — 고양이 스타일 15종 유료화 여부</b><br />같은 브레인스토밍 배치에서 나온 두 스펙이 CAT_STYLES(app/cat-styles.ts, 실제 15종 확인)에 대해 정반대 결론을 낸다. cats 스펙은 '결론: 전부 무료, 즉시 변경 — 재화로 잠그는 항목을 두지 않는다'고 명시하며 근거로 app/cats/page.tsx가 이미 15종을 무조건 무료 공개 중이라는 사실을 든다(직접 확인함: cat-styles.ts에 잠금 필드 없음). 반면 currency 스펙 §4는 같은 15종에 STYLE_UNLOCK_PRICE={common:60, rare:100, epic:160}로 커먼/레어/에픽 3그룹 유료 해금 시스템을 상세 설계한다. 두 스펙 모두 사용자에게 '완성된 결론'으로 제시돼 있어 어느 쪽을 채택할지 스펙 자체에서 판단 불가.<br /><b style="color:var(--accent)">→ 반영:</b> 두 스펙 중 하나를 폐기하거나 상위 의사결정으로 명시적 조정 — 유료화한다면 cats 스펙의 '이미 무료 공개된 자산을 다시 잠그는 모순' 지적에 대한 반박(예: 갤러리는 프리뷰 전용, 월드 적용은 별도)이 스펙에 추가돼야 한다.</li><li><b>workstation 스펙 §7(3D 반영 파이프라인) / currency 스펙 SEAT_DECOR_TIER 구현</b><br />app/agent-world-3d.tsx의 3D 조립(워크스테이션/장식 로드, obstacle 등록)은 <code>useEffect(..., [])</code>로 마운트 1회만 실행되고, catStyle/catShape 변경조차 코드 주석대로 <code>&lt;AgentWorld3D key={</code>${catStyle}-${catShapeId}<code>}&gt;</code>(app/page.tsx:1366) 강제 리마운트로만 반영된다(전체 GLB 4종+팜트리+캠핑소품+랜턴+고양이 FBX+68클립 재로딩). 두 스펙은 '아이템 구매/자리 꾸미기 시 즉시 3D 반영(낙관적 적용)'을 요구하면서 seatDecor를 이 마운트-전용 조립 루프에 넣는 설계만 제시하고, 리마운트 없이 반영하는 방법(예: completionSignal과 같은 ref+rAF diff 확장)을 어느 구현 단계에도 명시/계상하지 않았다. 리마운트를 쓰면 구매할 때마다 작업 중 고양이 애니메이션이 끊겨 스펙 자신의 '게임 레이어가 도구 사용을 방해하면 안 된다' 원칙과 충돌한다.<br /><b style="color:var(--accent)">→ 반영:</b> 구현 단계에 '좌석 꾸미기 변경분을 리마운트 없이 반영하는 ref+rAF diff 이펙트 신설(completionSignal 패턴 확장)'을 별도 스텝(L)으로 추가하거나, 리마운트 방식을 명시적으로 채택하고 그 비용(전체 자산 재로딩, 애니메이션 끊김)을 트레이드오프로 문서화.</li></ul>
+  <h3>Major (13건)</h3>
+  <ul class="qa"><li><b>currency.json 3절(idleNap/idleChase) vs idle.json 2~3절(nap/gull-chase)</b><br />낮잠·비둘기(갈매기)쫓기 보상량 설계가 다름 — currency.json은 이벤트별 개별 상한(낮잠 2개/회·일일16개, 한눈팔기 3개/회·일일15개)을 두는데, idle.json은 전 이벤트 공유 상한(시간당4회, idle 채널 전체 일일6개)만 두고 이벤트별 값도 다르게(낮잠=1, 갈매기=방치1/클릭2) 제시함.<br /><b style="color:var(--accent)">→ 반영:</b> idle 이벤트 보상 체계를 이벤트별 개별상한(currency.json 방식) 또는 채널 전체 공유상한(idle.json 방식) 중 하나로 확정하고 수치도 통일.</li><li><b>currency.json 3절(dailyLoginBonus) vs idle.json 6~7절(DAILY_LOGIN_BONUS_FISH+PARCEL_BOX)</b><br />'자주 접속' 보상이 currency.json은 데일리 로그인 10개(1채널)로, idle.json은 로그인3개+택배상자4개(2채널, 합7개)로 서로 참조 없이 별도 설계됨. 총량도 다르고 채널 개수도 다름.<br /><b style="color:var(--accent)">→ 반영:</b> 데일리 접속 보상 채널 수(1개 vs 2개)와 총 지급량을 하나로 합의해 재작성. 택배상자를 유지한다면 currency.json 획득 채널 표에도 추가해야 함.</li><li><b>currency.json 3절(MILESTONE_LOG_KEY attendance-7/30/100) vs idle.json dataModel(ATTENDANCE_KEY)</b><br />누적 출석일수를 currency.json은 MILESTONE_LOG_KEY 안에서, idle.json은 별도의 ATTENDANCE_KEY로 각자 독립적으로 추적 설계함. 서로 참조가 없어 실제 구현 시 같은 개념의 카운터가 두 벌 생기거나 하나가 죽은 코드가 될 위험.<br /><b style="color:var(--accent)">→ 반영:</b> 출석일수 카운터를 단일 키로 통합하고, 마일스톤 보상(currency.json)과 idle.json의 attendance 추적이 같은 값을 읽도록 명시.</li><li><b>cats.json 1절 vs cats.json 6절</b><br />cats.json 문서 내부에서도 세션 연결 화면 위치가 서로 다름 — 1절은 '고양이 탭 안에서 세션 서브패널을 오버레이로 띄운다'고 하는데, 6절 표는 '3번 WORK 탭이 구 sessions 탭을 병합한다'고 함. 같은 문서 안에서 자기모순.<br /><b style="color:var(--accent)">→ 반영:</b> cats.json 안에서 세션 화면의 최종 위치(1번 CAT 탭 오버레이 vs 3번 WORK 탭)를 하나로 확정하고 다른 절을 수정.</li><li><b>currency.json 5절(시뮬레이션 일일 32~86개) vs idle.json 3절/9절(가정 일일목표 20마리)</b><br />두 스펙이 전제하는 '유저가 하루에 버는 재화 총량' 기준선 자체가 다름(currency.json 라이트32~헤비86 vs idle.json 가정 20). idle.json의 시간당4회·일일6개 같은 상한값은 이 20이라는 자체 가정에서 역산된 것이라 currency.json의 실제 채널 설계(승인처리, 데일리10 등 포함 시 이미 32~86)와 정합되지 않음.<br /><b style="color:var(--accent)">→ 반영:</b> 경제 시뮬레이션의 일일 총 획득량 기준을 하나로 통일한 뒤, idle 채널 상한(시간당4회/일일6개)을 그 통일된 기준으로 재계산.</li><li><b>누락</b><br />사용자가 명시한 재화 후보 5개(쿠키/코인/하트/별/다이아몬드) 중 '코인'은 currency.json의 비교 표·본문 어디에도 언급되지 않음. 하트/별/다이아몬드는 묶어서 제외 이유를 댔고 쿠키도 별도로 다뤘지만 코인은 완전히 누락됨.<br /><b style="color:var(--accent)">→ 반영:</b> currency.json 1절 비교 표에 '코인' 후보를 추가하고 채택/기각 근거를 명시(예: 결제 연상 관습 때문에 기각 등).</li><li><b>누락</b><br />온보딩(재화 잔액이 0인 신규 유저가 처음 켰을 때 화면)이 4개 스펙 어디에도 설계되지 않음 — 웰컴 보너스 유무, 잔액 0일 때 상점/티어 진행바가 어떻게 보이는지, '조개(또는 물고기)가 뭔지' 처음 안내하는 툴팁·문구가 전혀 없음. cats.json 1절에 '세션 연결 전에도 룩 커스터마이징 가능' 정도만 있고 재화 자체의 최초 노출 경험은 다루지 않음.<br /><b style="color:var(--accent)">→ 반영:</b> 신규 유저 최초 진입 시 재화 개념 소개(툴팁/1회성 안내), 0잔액 상태의 상점 UI(구매 버튼 비활성 표시, '조개를 모아보세요' 안내), 최초 지급(웰컴 보너스) 여부를 currency.json에 별도 절로 추가.</li><li><b>누락</b><br />접근성 설계가 4개 스펙 전체에서 전무함 — 커먼/레어/에픽 스타일 등급, 조개/물고기 잔액칩, 신규 버튼(구매/장착/급여) 어디에도 스크린리더 라벨·색상 대비·색맹 대응(등급을 색으로만 구분) 언급이 없음.<br /><b style="color:var(--accent)">→ 반영:</b> 신규 UI 요소별 aria-label 표기, 등급 배지에 색 외 텍스트/아이콘 병기, 대비비 기준(WCAG AA) 체크리스트를 각 스펙의 UI 섹션에 추가.</li><li><b>누락</b><br />모바일/반응형 설계가 전무함 — 그리드 레이아웃(아이템 카탈로그), 탭 전환, 터치 타깃 크기 등에 대해 4개 스펙 어디도 언급하지 않음. 3D 캔버스 기반 앱이라 모바일 대응 여부 자체가 불확실한데 이를 다루지 않음.<br /><b style="color:var(--accent)">→ 반영:</b> 타깃 디바이스(데스크톱 전용인지 모바일도 지원인지)를 먼저 확정하고, 지원한다면 각 패널 UI 섹션에 반응형 브레이크포인트·터치 타깃 최소 크기(44px 등) 기준을 추가.</li><li><b>currency.json §5(이코노미 시뮬레이션), §4(소모처 가격)</b><br />영구 소모처(좌석 4개×티어4 누적430=1,720 + 스타일 14종 60/100/160원가 합=1,340, 총 3,060개) 완주 시점을 계산하면: 헤비유저 86개/일 → 3,060/86=35.6일(약5주), 라이트유저 32개/일 → 3,060/32=95.6일(약3.2개월)이면 게임 내 모든 영구 아이템을 다 살 수 있다. currency.json §5 시뮬레이션은 이 완주 이후를 다루지 않는데, 완주 후 남는 소비처는 간식(15~25개, 반복구매 가능하나 스탯효과 0)뿐이라 그 시점부터 재화는 다시 '표시만 되고 쓸 곳 없는' 상태로 돌아간다 — 이번 스펙이 없애려 한 바로 그 문제(ACORNS 잔재)가 시점만 5주~3개월 뒤로 늦춰져 재발한다.<br /><b style="color:var(--accent)">→ 반영:</b> 완주 이후에도 의미 있는 무한 소모처를 최소 1개 추가한다(예: 소모형이지만 반복해서 사고 싶은 시즌 한정 스타일/시즌 소품 로테이션, 또는 간식에 미세한 연출 다양성을 계속 추가). 또는 총 소모처 규모를 지금의 2~3배(약 6,000~9,000개)로 늘려 완주 시점을 3~6개월 뒤로 늦춘다.</li><li><b>currency.json §4(자리 꾸미기 4티어), §5 시뮬레이션</b><br />이번 스펙이 신규로 만든 핵심 소모처(좌석별 티어0~4)가 헤비유저 기준 순수 일일수급만으로 5일 안에 소진된다. 계산: 86개/일 × 5일 = 430개 = 티어4 누적비용과 정확히 일치(마일스톤 보너스 없이도). currency.json §5 스스로도 'Day7에 좌석 1개 티어4를 완주하고도 292개가 남는다'고 밝혀 사실상 1주일 내 소진을 인정한다. '자리 꾸미기'라는 신규 기능이 목표로 삼은 콘텐츠가 1주일 미만 만에 첫 좌석에서 끝나버리면, 이후 3주 이상은 나머지 3좌석에 같은 사다리를 반복하는 것 외에 새로운 소비 목표가 없다.<br /><b style="color:var(--accent)">→ 반영:</b> 티어 단계를 4단계에서 6~8단계로 늘리거나(경제조사 권장 배율 1.6~1.8 유지한 채 단계 수만 확장), 티어업 비용을 지금보다 1.5~2배 상향해 완주 시점을 2~3주로 늦춘다.</li><li><b>currency.json §7(치팅 대응 수준)</b><br />전량 localStorage 정수값이라 devtools에서 <code>localStorage.setItem('agent-forest-shell-v1','999999')</code> 한 줄이면 좌석4×티어4(1,720)와 스타일15종(1,340) 전체가 즉시 무의미해진다. 스펙 자신도 '막지 않는다'고 결론 내렸고 그 판단(현금화 경로 없음)은 타당하나, 그 판단을 내리면서도 7개 획득채널·마일스톤 로그·오프라인 트리클 타임스탬프 계산·일일 상한 게이트 등 상당한 구현 공수가 들어간 방어 없는 시스템을 설계했다는 비례성 문제가 남는다 — 방어력 0인 자산에 이 정도 정교한 수급 밸런싱 공수를 들이는 게 맞는지 재검토가 필요하다.<br /><b style="color:var(--accent)">→ 반영:</b> 치팅을 막을 필요는 없다는 결론은 유지하되, 그렇다면 구현 범위를 단순화한다 — 정교한 7채널·상한·로그 시스템 대신 '작업완료+데일리보너스' 2채널 정도의 단순 지급으로 줄여 방어 불가능한 자산에 들어가는 엔지니어링 비용을 낮춘다.</li><li><b>currency/workstation/cats 세 스펙의 RADIO_MENU(2번 키캡) 목적지 상호 충돌</b><br />RADIO_MENU는 실제로 cats/sessions/status/activity 4키로 고정돼 있다(app/page.tsx:180-185, radioPage==='cats' 섹션 안에 부서선택+프롬프트+실행 블록이 1512~1642행에 실존, radioPage==='sessions' 블록 1646행 확인). 세 스펙이 이 4키의 미래를 서로 다르게 설계한다 — currency 스펙: 4키 그대로 유지. workstation 스펙: 2번=DESK로 교체, sessions는 1번(cats) 하위로 흡수. cats 스펙: 2번=DESK, sessions+부서선택+프롬프트+실행을 새 3번(WORK)으로 통합해 cats 탭에서 통째로 들어냄. 세 설계는 동시에 성립할 수 없고, 어느 하나를 적용하면 나머지 두 스펙이 인용한 라인 번호·구조가 즉시 무효화된다.<br /><b style="color:var(--accent)">→ 반영:</b> 구현 착수 전 RadioPage 유니온 타입과 4키 각각의 최종 콘텐츠를 하나로 확정하는 별도 IA 결정 문서를 만들고, 세 스펙을 그 결정에 맞춰 재작성/폐기.</li></ul>
+</section>
+
+<footer class="bot">
+  Agent Forest 메타게임 기획안 v1.0 · 2026-07-28<br />
+  조사 12에이전트 / 툴콜 323회 / 원본 코드 직접 인용 검증
+</footer>
+
+</div>
+</div>
+
+<script>
+(function () {
+  var links = Array.prototype.slice.call(document.querySelectorAll("#toc a"));
+  var byId = {};
+  links.forEach(function (a) { byId[a.getAttribute("data-target")] = a; });
+  var targets = links
+    .map(function (a) { return document.getElementById(a.getAttribute("data-target")); })
+    .filter(Boolean);
+  if (!targets.length) return;
+
+  var current = null;
+  function setActive(id) {
+    if (id === current) return;
+    current = id;
+    links.forEach(function (a) {
+      a.classList.toggle("active", a.getAttribute("data-target") === id);
+    });
+    var active = byId[id];
+    var nav = document.getElementById("toc");
+    if (active && nav && nav.scrollHeight > nav.clientHeight) {
+      var top = active.offsetTop, bottom = top + active.offsetHeight;
+      if (top < nav.scrollTop) nav.scrollTop = top - 8;
+      else if (bottom > nav.scrollTop + nav.clientHeight) nav.scrollTop = bottom - nav.clientHeight + 8;
+    }
+  }
+
+  function pick() {
+    var best = targets[0], line = 120;
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i].getBoundingClientRect().top <= line) best = targets[i];
+      else break;
+    }
+    setActive(best.id);
+  }
+
+  var ticking = false;
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    window.requestAnimationFrame(function () { pick(); ticking = false; });
+  }
+  window.addEventListener("scroll", onScroll, { passive: true });
+  window.addEventListener("resize", onScroll);
+  pick();
+})();
+</script>
+</body>
+</html>

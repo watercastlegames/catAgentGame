@@ -9,24 +9,24 @@
       "output": "tent-workstation-flat-source-v4.glb",
       "embeddedTexture": true,
       "unlitMaterial": true,
-      "primitiveCount": 3,
-      "removedKeyboardTriangles": 250
+      "primitiveCount": 1,
+      "removedKeyboardTriangles": 0
     },
     {
       "source": "round-laptop-workstation-meshy6-web-v3.glb",
       "output": "round-laptop-workstation-flat-source-v4.glb",
       "embeddedTexture": true,
       "unlitMaterial": true,
-      "primitiveCount": 3,
-      "removedKeyboardTriangles": 684
+      "primitiveCount": 1,
+      "removedKeyboardTriangles": 0
     },
     {
       "source": "folding-laptop-radio-workstation-meshy6-web-v3.glb",
       "output": "folding-laptop-radio-workstation-flat-source-v4.glb",
       "embeddedTexture": true,
       "unlitMaterial": true,
-      "primitiveCount": 3,
-      "removedKeyboardTriangles": 1739
+      "primitiveCount": 1,
+      "removedKeyboardTriangles": 0
     },
     {
       "source": "low-monitor-cat-keycap-workstation-meshy6-web-v3.glb",

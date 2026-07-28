@@ -1,0 +1,967 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Meshy 모니터 품질 변화 단계 비교 · 2026-07-28</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #3f342e;
+        --muted: #766a62;
+        --paper: #fffaf0;
+        --paper-2: #f8efdf;
+        --line: #d9c9b4;
+        --pass: #2f7a5f;
+        --warn: #b66d28;
+        --fail: #a8403b;
+        --accent: #6d5ea7;
+        --shadow: 0 18px 50px rgba(77, 58, 43, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 12% 5%, rgba(115, 190, 177, 0.22), transparent 24rem),
+          radial-gradient(circle at 92% 10%, rgba(239, 170, 133, 0.22), transparent 28rem),
+          #f3eadc;
+        font-family:
+          Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif;
+      }
+
+      main {
+        width: min(1500px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 36px 0 80px;
+      }
+
+      header,
+      section {
+        border: 1px solid rgba(111, 86, 65, 0.18);
+        border-radius: 28px;
+        background: rgba(255, 250, 240, 0.94);
+        box-shadow: var(--shadow);
+      }
+
+      header {
+        padding: clamp(24px, 5vw, 52px);
+        overflow: hidden;
+        background:
+          linear-gradient(135deg, rgba(255, 250, 240, 0.97), rgba(244, 235, 219, 0.94)),
+          var(--paper);
+      }
+
+      .eyebrow {
+        margin: 0 0 12px;
+        color: var(--accent);
+        font-size: 13px;
+        font-weight: 900;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 920px;
+        margin-bottom: 18px;
+        font-size: clamp(32px, 5vw, 66px);
+        line-height: 1.06;
+        letter-spacing: -0.045em;
+      }
+
+      h2 {
+        margin-bottom: 10px;
+        font-size: clamp(24px, 3vw, 38px);
+        letter-spacing: -0.035em;
+      }
+
+      h3 {
+        margin-bottom: 8px;
+        font-size: 19px;
+        letter-spacing: -0.02em;
+      }
+
+      .lead {
+        max-width: 920px;
+        margin-bottom: 24px;
+        color: var(--muted);
+        font-size: clamp(16px, 2vw, 20px);
+        line-height: 1.75;
+      }
+
+      .badges,
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 9px;
+      }
+
+      .badge,
+      .status {
+        display: inline-flex;
+        align-items: center;
+        min-height: 30px;
+        padding: 6px 11px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .badge {
+        color: #50443c;
+        background: #efe4d2;
+      }
+
+      .status.pass {
+        color: #145640;
+        background: #d8eee4;
+      }
+
+      .status.warn {
+        color: #7d430f;
+        background: #f8dfbd;
+      }
+
+      .status.fail {
+        color: #7d2926;
+        background: #f4cfcc;
+      }
+
+      section {
+        margin-top: 24px;
+        padding: clamp(22px, 4vw, 38px);
+      }
+
+      .section-head {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 20px;
+        margin-bottom: 24px;
+      }
+
+      .section-head p {
+        max-width: 650px;
+        margin-bottom: 0;
+        color: var(--muted);
+        line-height: 1.65;
+      }
+
+      .verdict {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 30px;
+      }
+
+      .verdict article {
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.62);
+      }
+
+      .verdict strong,
+      .verdict span {
+        display: block;
+      }
+
+      .verdict strong {
+        margin: 10px 0 5px;
+        font-size: 18px;
+      }
+
+      .verdict span {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .stage-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .stage-card {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 22px;
+        background: #fffdf8;
+      }
+
+      .stage-visual {
+        position: relative;
+        display: grid;
+        place-items: center;
+        aspect-ratio: 1;
+        overflow: hidden;
+        background:
+          linear-gradient(45deg, #f3ecdf 25%, transparent 25%),
+          linear-gradient(-45deg, #f3ecdf 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, #f3ecdf 75%),
+          linear-gradient(-45deg, transparent 75%, #f3ecdf 75%),
+          #faf5eb;
+        background-position:
+          0 0,
+          0 10px,
+          10px -10px,
+          -10px 0;
+        background-size: 20px 20px;
+      }
+
+      .stage-visual img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+
+      .stage-number {
+        position: absolute;
+        top: 12px;
+        left: 12px;
+        z-index: 2;
+        display: grid;
+        width: 34px;
+        height: 34px;
+        place-items: center;
+        border: 1px solid rgba(73, 57, 46, 0.18);
+        border-radius: 50%;
+        color: #fff;
+        background: rgba(62, 49, 42, 0.82);
+        font-size: 12px;
+        font-weight: 900;
+        backdrop-filter: blur(8px);
+      }
+
+      .stage-copy {
+        min-height: 190px;
+        padding: 17px;
+      }
+
+      .stage-copy p {
+        margin-bottom: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.62;
+      }
+
+      .stage-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+
+      .stage-title-row h3 {
+        margin-bottom: 0;
+      }
+
+      .compare-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.6fr);
+        gap: 22px;
+      }
+
+      .compare-box {
+        padding: 14px;
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        background: #f7f0e4;
+      }
+
+      .compare-canvas {
+        position: relative;
+        aspect-ratio: 1;
+        overflow: hidden;
+        border-radius: 17px;
+        background: #f4eee3;
+      }
+
+      .compare-canvas img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        user-select: none;
+      }
+
+      #compareAfter {
+        clip-path: inset(0 50% 0 0);
+      }
+
+      .divider {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 50%;
+        width: 2px;
+        background: #fff;
+        box-shadow: 0 0 0 1px rgba(65, 48, 39, 0.35);
+        pointer-events: none;
+      }
+
+      .divider::after {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        display: grid;
+        width: 38px;
+        height: 38px;
+        place-items: center;
+        border: 2px solid #fff;
+        border-radius: 50%;
+        content: "↔";
+        color: #fff;
+        background: rgba(70, 55, 47, 0.78);
+        font-weight: 900;
+        transform: translate(-50%, -50%);
+      }
+
+      .compare-label {
+        position: absolute;
+        top: 12px;
+        z-index: 3;
+        padding: 7px 10px;
+        border-radius: 999px;
+        color: #fff;
+        background: rgba(65, 51, 44, 0.78);
+        font-size: 11px;
+        font-weight: 900;
+        backdrop-filter: blur(8px);
+      }
+
+      .compare-label.before {
+        left: 12px;
+      }
+
+      .compare-label.after {
+        right: 12px;
+      }
+
+      .controls {
+        display: grid;
+        align-content: start;
+        gap: 16px;
+      }
+
+      .control-card {
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.66);
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      select,
+      input[type="range"] {
+        width: 100%;
+      }
+
+      select {
+        min-height: 44px;
+        padding: 0 12px;
+        border: 1px solid #c9b9a5;
+        border-radius: 12px;
+        color: var(--ink);
+        background: #fffaf1;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 750;
+      }
+
+      input[type="range"] {
+        accent-color: var(--accent);
+      }
+
+      .metric-value {
+        display: block;
+        margin-top: 10px;
+        font-size: 30px;
+        font-weight: 950;
+        letter-spacing: -0.04em;
+      }
+
+      .metric-caption,
+      #pairFinding {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        overflow: hidden;
+        border-radius: 16px;
+        font-size: 14px;
+      }
+
+      th,
+      td {
+        padding: 14px 15px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: #5d5048;
+        background: #eee2d0;
+        font-size: 12px;
+      }
+
+      tbody tr:last-child td {
+        border-bottom: 0;
+      }
+
+      tbody tr.critical {
+        background: #fff0df;
+      }
+
+      .finding {
+        display: grid;
+        grid-template-columns: 170px 1fr;
+        gap: 18px;
+        align-items: start;
+        padding: 22px;
+        border: 1px solid #e0b580;
+        border-radius: 22px;
+        background: #fff3df;
+      }
+
+      .finding strong {
+        color: #874b17;
+        font-size: 17px;
+      }
+
+      .finding p {
+        margin-bottom: 0;
+        line-height: 1.75;
+      }
+
+      .actions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 20px;
+      }
+
+      .actions article {
+        padding: 20px;
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.68);
+      }
+
+      .actions b {
+        display: inline-grid;
+        width: 28px;
+        height: 28px;
+        margin-bottom: 12px;
+        place-items: center;
+        border-radius: 50%;
+        color: #fff;
+        background: var(--accent);
+      }
+
+      .actions p {
+        margin-bottom: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      details {
+        margin-top: 20px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: #fbf5ea;
+      }
+
+      summary {
+        padding: 16px 18px;
+        cursor: pointer;
+        font-weight: 900;
+      }
+
+      pre {
+        margin: 0;
+        padding: 0 18px 18px;
+        overflow: auto;
+        color: #493f39;
+        font-size: 12px;
+        line-height: 1.6;
+      }
+
+      .footnote {
+        margin: 24px 2px 0;
+        color: #7a6c62;
+        font-size: 12px;
+        line-height: 1.7;
+        text-align: center;
+      }
+
+      @media (max-width: 1080px) {
+        .stage-grid,
+        .verdict {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .compare-layout {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 680px) {
+        main {
+          width: min(100% - 18px, 1500px);
+          padding-top: 10px;
+        }
+
+        header,
+        section {
+          border-radius: 20px;
+        }
+
+        .section-head {
+          display: block;
+        }
+
+        .stage-grid,
+        .verdict,
+        .actions {
+          grid-template-columns: 1fr;
+        }
+
+        .finding {
+          grid-template-columns: 1fr;
+        }
+
+        .stage-copy {
+          min-height: 0;
+        }
+
+        th,
+        td {
+          padding: 11px 9px;
+          font-size: 11px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">Controlled visual diagnosis · 2026-07-28</p>
+        <h1>Meshy 모니터는 어느 단계에서 지저분해졌나?</h1>
+        <p class="lead">
+          같은 GLB를 동일한 768×768 카메라·조명으로 단계별 렌더했습니다.
+          생성 결과, 웹 최적화, 월드 재질, 갈색 틴트, 아웃라인, 실사용 화면을
+          순서대로 비교해 최초 품질 저하 지점을 찾습니다.
+        </p>
+        <div class="badges">
+          <span class="badge">Meshy 6 · 4K 원본</span>
+          <span class="badge">웹 텍스처 · 2048px</span>
+          <span class="badge">동일 완전 정면 카메라·배경</span>
+          <span class="badge">RGB 차이 정량 측정</span>
+        </div>
+
+        <div class="verdict">
+          <article>
+            <span class="status pass">정상</span>
+            <strong>Meshy 생성</strong>
+            <span>형상과 텍스처가 깔끔하며 현재 문제의 시작점이 아닙니다.</span>
+          </article>
+          <article>
+            <span class="status pass">정상</span>
+            <strong>웹 최적화</strong>
+            <span>4K→2K 변환의 평균 RGB 차이는 0.320에 불과합니다.</span>
+          </article>
+          <article>
+            <span class="status fail">최초 큰 저하</span>
+            <strong>월드 틴트</strong>
+            <span>갈색 곱셈으로 화면과 베젤이 급격히 탁하고 어두워집니다.</span>
+          </article>
+          <article>
+            <span class="status warn">추가 악화</span>
+            <strong>아웃라인·코드 화면</strong>
+            <span>미세 선이 작은 화면에서 뭉치며 얼룩처럼 보입니다.</span>
+          </article>
+        </div>
+      </header>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Stage by stage</p>
+            <h2>8단계 육안 비교</h2>
+          </div>
+          <div class="legend">
+            <span class="status pass">유지</span>
+            <span class="status warn">주의</span>
+            <span class="status fail">품질 저하</span>
+          </div>
+        </div>
+
+        <div class="stage-grid">
+          <article class="stage-card">
+            <a class="stage-visual" href="assets/meshy-references/cats-soup-parts-v1/monitor-clean-ref-v2.png" target="_blank">
+              <span class="stage-number">01</span>
+              <img src="assets/meshy-references/cats-soup-parts-v1/monitor-clean-ref-v2.png" alt="Meshy 입력용 깨끗한 모니터 참고 이미지" />
+            </a>
+            <div class="stage-copy">
+              <div class="stage-title-row">
+                <h3>입력 참고 이미지</h3>
+                <span class="status pass">기준</span>
+              </div>
+              <p>닫힌 외곽선, 단순한 원톤, 깨끗한 화면과 스탠드가 기준입니다.</p>
+            </div>
+          </article>
+
+          <article class="stage-card">
+            <a class="stage-visual" href="tmp/validation/monitor-pipeline-compare-20260728/03-raw-meshy-glb-front.png" target="_blank">
+              <span class="stage-number">02</span>
+              <img src="tmp/validation/monitor-pipeline-compare-20260728/03-raw-meshy-glb-front.png" alt="Meshy 6 생성 직후 모니터 정면 렌더" />
+            </a>
+            <div class="stage-copy">
+              <div class="stage-title-row">
+                <h3>Meshy 6 결과 · 정면</h3>
+                <span class="status pass">통과</span>
+              </div>
+              <p>제공 GLB를 완전 정면으로 재렌더해 화면·베젤·스탠드 경계를 직접 확인합니다.</p>
+            </div>
+          </article>
+
+          <article class="stage-card">
+            <a class="stage-visual" href="tmp/validation/monitor-pipeline-compare-20260728/03-raw-meshy-glb-front.png" target="_blank">
+              <span class="stage-number">03</span>
+              <img src="tmp/validation/monitor-pipeline-compare-20260728/03-raw-meshy-glb-front.png" alt="4K 텍스처를 사용한 Meshy 원본 GLB 정면 렌더" />
+            </a>
+            <div class="stage-copy">
+              <div class="stage-title-row">
+                <h3>원본 GLB · 4K</h3>
+                <span class="status pass">통과</span>
+              </div>
+              <p>정면에서는 화면과 베젤에 약한 원본 노이즈가 보이지만 형상 경계는 안정적입니다.</p>
+            </div>
+          </article>
+
+          <article class="stage-card">
+            <a class="stage-visual" href="tmp/validation/monitor-pipeline-compare-20260728/04-web-optimized-glb-front.png" target="_blank">
+              <span class="stage-number">04</span>
+              <img src="tmp/validation/monitor-pipeline-compare-20260728/04-web-optimized-glb-front.png" alt="2K로 최적화한 웹 GLB 정면 렌더" />
+            </a>
+            <div class="stage-copy">
+              <div class="stage-title-row">
+                <h3>웹 최적화 · 2K</h3>
+                <span class="status pass">통과</span>
+              </div>
+              <p>원본과 육안 차이가 거의 없습니다. 웹 최적화가 지저분함의 원인은 아닙니다.</p>
+            </div>
+          </article>
+
+          <article class="stage-card">
+            <a class="stage-visual" href="tmp/validation/monitor-pipeline-compare-20260728/05-world-material-no-tint-front.png" target="_blank">
+              <span class="stage-number">05</span>
+              <img src="tmp/validation/monitor-pipeline-compare-20260728/05-world-material-no-tint-front.png" alt="월드 재질 변환만 적용한 모니터 정면 렌더" />
+            </a>
+            <div class="stage-copy">
+              <div class="stage-title-row">
+                <h3>월드 재질 변환</h3>
+                <span class="status warn">변화 시작</span>
+              </div>
+              <p>러프니스·톤매핑 변경으로 대비가 강해지고 화면과 받침이 더 검게 보이기 시작합니다.</p>
+            </div>
+          </article>
+
+          <article class="stage-card">
+            <a class="stage-visual" href="tmp/validation/monitor-pipeline-compare-20260728/06-world-tint-front.png" target="_blank">
+              <span class="stage-number">06</span>
+              <img src="tmp/validation/monitor-pipeline-compare-20260728/06-world-tint-front.png" alt="갈색 틴트를 곱한 모니터 정면 렌더" />
+            </a>
+            <div class="stage-copy">
+              <div class="stage-title-row">
+                <h3>갈색 틴트 곱셈</h3>
+                <span class="status fail">최대 저하</span>
+              </div>
+              <p><code>#c9beb8</code> 곱셈으로 밝은 베젤이 탁해지고 화면 내부의 미세 텍스처가 강조됩니다.</p>
+            </div>
+          </article>
+
+          <article class="stage-card">
+            <a class="stage-visual" href="tmp/validation/monitor-pipeline-compare-20260728/07-world-tint-outline-front.png" target="_blank">
+              <span class="stage-number">07</span>
+              <img src="tmp/validation/monitor-pipeline-compare-20260728/07-world-tint-outline-front.png" alt="갈색 틴트와 아웃라인을 적용한 모니터 정면 렌더" />
+            </a>
+            <div class="stage-copy">
+              <div class="stage-title-row">
+                <h3>아웃라인 추가</h3>
+                <span class="status warn">추가 저하</span>
+              </div>
+              <p>곡면 외곽에 가는 톱니와 점이 추가됩니다. 작은 배치 크기에서는 얼룩처럼 보입니다.</p>
+            </div>
+          </article>
+
+          <article class="stage-card">
+            <a class="stage-visual" href="tmp/validation/monitor-pipeline-compare-20260728/08-final-world-live-screen.png" target="_blank">
+              <span class="stage-number">08</span>
+              <img src="tmp/validation/monitor-pipeline-compare-20260728/08-final-world-live-screen.png" alt="책상과 실시간 코드 화면까지 합성한 최종 월드 모니터" />
+            </a>
+            <div class="stage-copy">
+              <div class="stage-title-row">
+                <h3>최종 월드 합성</h3>
+                <span class="status fail">실패</span>
+              </div>
+              <p>작은 크기, 검은 실시간 코드 화면, 키보드와 스탠드의 겹침이 합쳐져 지저분해집니다.</p>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Interactive overlay</p>
+            <h2>1:1 겹쳐보기</h2>
+          </div>
+          <p>슬라이더를 움직이면 같은 카메라의 전·후 이미지를 픽셀 위치 그대로 비교할 수 있습니다.</p>
+        </div>
+
+        <div class="compare-layout">
+          <div class="compare-box">
+            <div class="compare-canvas">
+              <img id="compareBefore" src="tmp/validation/monitor-pipeline-compare-20260728/03-raw-meshy-glb-front.png" alt="변경 전 정면 단계" />
+              <img id="compareAfter" src="tmp/validation/monitor-pipeline-compare-20260728/04-web-optimized-glb-front.png" alt="변경 후 정면 단계" />
+              <span class="compare-label before" id="beforeLabel">03 · Meshy 원본</span>
+              <span class="compare-label after" id="afterLabel">04 · 웹 최적화</span>
+              <span class="divider" id="divider"></span>
+            </div>
+          </div>
+
+          <div class="controls">
+            <div class="control-card">
+              <label for="pairSelect">비교 단계</label>
+              <select id="pairSelect">
+                <option value="raw-web">03 → 04 · 원본과 웹 최적화</option>
+                <option value="web-material">04 → 05 · 웹 최적화와 월드 재질</option>
+                <option value="material-tint">05 → 06 · 월드 재질과 틴트</option>
+                <option value="tint-outline">06 → 07 · 틴트와 아웃라인</option>
+              </select>
+            </div>
+
+            <div class="control-card">
+              <label for="splitRange">좌우 분할 위치</label>
+              <input id="splitRange" type="range" min="0" max="100" value="50" />
+              <span class="metric-value" id="splitValue">50%</span>
+              <span class="metric-caption">왼쪽은 변경 전, 오른쪽은 변경 후입니다.</span>
+            </div>
+
+            <div class="control-card">
+              <strong id="pairMetric">평균 RGB 차이 0.320</strong>
+              <p id="pairFinding">웹 최적화 전후의 육안 차이는 사실상 없습니다.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Measured difference</p>
+            <h2>단계별 변화량</h2>
+          </div>
+          <p>완전 정면으로 고정한 동일 모니터 영역 668×565px에서 RGB 채널별 절대 차이를 계산했습니다.</p>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>변환 단계</th>
+              <th>평균 RGB 차이</th>
+              <th>8 이상 변경 채널</th>
+              <th>판정</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>03 → 04 · 4K 원본 → 2K 웹 최적화</td>
+              <td>0.320</td>
+              <td>0.09%</td>
+              <td><span class="status pass">영향 없음</span></td>
+            </tr>
+            <tr>
+              <td>04 → 05 · 웹 최적화 → 월드 재질</td>
+              <td>10.509</td>
+              <td>53.87%</td>
+              <td><span class="status warn">명암 악화 시작</span></td>
+            </tr>
+            <tr class="critical">
+              <td>05 → 06 · 월드 재질 → 갈색 틴트</td>
+              <td><strong>31.310</strong></td>
+              <td><strong>76.66%</strong></td>
+              <td><span class="status fail">가장 큰 저하</span></td>
+            </tr>
+            <tr>
+              <td>06 → 07 · 갈색 틴트 → 아웃라인</td>
+              <td>1.823</td>
+              <td>2.03%</td>
+              <td><span class="status warn">가장자리 노이즈</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Conclusion</p>
+            <h2>확인된 원인과 수정 순서</h2>
+          </div>
+        </div>
+
+        <div class="finding">
+          <strong>최종 판정</strong>
+          <p>
+            완전 정면 비교에서도 Meshy 6 생성과 4K→2K 웹 최적화는 정상입니다.
+            원본 화면과 베젤에 약한 텍스처 노이즈가 있지만 최초의 큰 저하는
+            월드용 재질 강제 변환에서 시작되고, <b>갈색 틴트 곱셈에서 가장 크게
+            악화</b>됩니다. 여기에 작은 배치 크기, 아웃라인, 고밀도 실시간 코드
+            화면이 겹치면서 최종 월드에서는 원본 노이즈가 훨씬 강하게 보입니다.
+          </p>
+        </div>
+
+        <div class="actions">
+          <article>
+            <b>1</b>
+            <h3>틴트 제거</h3>
+            <p>모니터만 원본 재질색을 유지하고 <code>color.multiply(#c9beb8)</code> 적용 대상에서 제외합니다.</p>
+          </article>
+          <article>
+            <b>2</b>
+            <h3>화면 단순화</h3>
+            <p>작은 크기에서는 코드 줄 수를 줄이고 원톤 화면과 큰 상태 블록만 표시합니다.</p>
+          </article>
+          <article>
+            <b>3</b>
+            <h3>아웃라인 크기 대응</h3>
+            <p>모니터 크기에 맞춰 두께를 줄이거나 화면·스탠드에는 아웃라인을 부분적으로 끕니다.</p>
+          </article>
+        </div>
+
+        <details>
+          <summary>검증에 사용한 Meshy 생성 설정</summary>
+          <pre>{
+  "model_type": "standard",
+  "ai_model": "meshy-6",
+  "target_polycount": 40000,
+  "should_texture": true,
+  "texture_resolution": "4k",
+  "enable_pbr": false,
+  "should_remesh": true,
+  "image_enhancement": false,
+  "remove_lighting": true
+}</pre>
+        </details>
+      </section>
+
+      <p class="footnote">
+        Agent Forest · Meshy monitor controlled pipeline comparison ·
+        생성일 2026-07-28
+      </p>
+    </main>
+
+    <script>
+      const pairs = {
+        "raw-web": {
+          before: "tmp/validation/monitor-pipeline-compare-20260728/03-raw-meshy-glb-front.png",
+          after: "tmp/validation/monitor-pipeline-compare-20260728/04-web-optimized-glb-front.png",
+          beforeLabel: "03 · Meshy 원본",
+          afterLabel: "04 · 웹 최적화",
+          metric: "평균 RGB 차이 0.320",
+          finding: "웹 최적화 전후의 육안 차이는 사실상 없습니다.",
+        },
+        "web-material": {
+          before: "tmp/validation/monitor-pipeline-compare-20260728/04-web-optimized-glb-front.png",
+          after: "tmp/validation/monitor-pipeline-compare-20260728/05-world-material-no-tint-front.png",
+          beforeLabel: "04 · 웹 최적화",
+          afterLabel: "05 · 월드 재질",
+          metric: "평균 RGB 차이 10.509",
+          finding: "러프니스와 톤매핑 변경부터 검은 영역과 대비가 강해집니다.",
+        },
+        "material-tint": {
+          before: "tmp/validation/monitor-pipeline-compare-20260728/05-world-material-no-tint-front.png",
+          after: "tmp/validation/monitor-pipeline-compare-20260728/06-world-tint-front.png",
+          beforeLabel: "05 · 월드 재질",
+          afterLabel: "06 · 갈색 틴트",
+          metric: "평균 RGB 차이 31.310 · 최대",
+          finding: "전체 단계 중 가장 큰 변화입니다. 밝은 베젤까지 탁하게 변합니다.",
+        },
+        "tint-outline": {
+          before: "tmp/validation/monitor-pipeline-compare-20260728/06-world-tint-front.png",
+          after: "tmp/validation/monitor-pipeline-compare-20260728/07-world-tint-outline-front.png",
+          beforeLabel: "06 · 갈색 틴트",
+          afterLabel: "07 · 아웃라인",
+          metric: "평균 RGB 차이 1.823",
+          finding: "전체 면보다 곡면 가장자리에 점과 톱니 형태의 변화가 집중됩니다.",
+        },
+      };
+
+      const pairSelect = document.querySelector("#pairSelect");
+      const splitRange = document.querySelector("#splitRange");
+      const compareBefore = document.querySelector("#compareBefore");
+      const compareAfter = document.querySelector("#compareAfter");
+      const beforeLabel = document.querySelector("#beforeLabel");
+      const afterLabel = document.querySelector("#afterLabel");
+      const divider = document.querySelector("#divider");
+      const splitValue = document.querySelector("#splitValue");
+      const pairMetric = document.querySelector("#pairMetric");
+      const pairFinding = document.querySelector("#pairFinding");
+
+      function applySplit() {
+        const value = Number(splitRange.value);
+        compareAfter.style.clipPath = `inset(0 ${100 - value}% 0 0)`;
+        divider.style.left = `${value}%`;
+        splitValue.textContent = `${value}%`;
+      }
+
+      function applyPair() {
+        const pair = pairs[pairSelect.value];
+        compareBefore.src = pair.before;
+        compareAfter.src = pair.after;
+        beforeLabel.textContent = pair.beforeLabel;
+        afterLabel.textContent = pair.afterLabel;
+        pairMetric.textContent = pair.metric;
+        pairFinding.textContent = pair.finding;
+      }
+
+      pairSelect.addEventListener("change", applyPair);
+      splitRange.addEventListener("input", applySplit);
+      applyPair();
+      applySplit();
+    </script>
+  </body>
+</html>
