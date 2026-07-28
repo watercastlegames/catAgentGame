@@ -1,0 +1,1774 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent Forest 화면 정의서 v1 · 이미지 UI 적용본</title>
+  <style>
+    :root {
+      --ink: #5b473e;
+      --ink-2: #78655a;
+      --paper: #fff9e9;
+      --paper-2: #f3ead0;
+      --mint: #bfdcc5;
+      --mint-deep: #648d7c;
+      --coral: #ee9e87;
+      --rose: #e4877c;
+      --yellow: #f0c678;
+      --sea: #8cc9c0;
+      --line: rgba(91, 71, 62, .23);
+      --shadow: 0 18px 52px rgba(76, 60, 50, .15);
+      --radius: 26px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 0%, rgba(255,255,255,.94), transparent 31%),
+        linear-gradient(180deg, #d7ebe6 0, #f2eedb 27%, #f7f1df 100%);
+      font-family:
+        Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic",
+        system-ui, sans-serif;
+      line-height: 1.55;
+    }
+
+    h1, h2, h3, h4, p { margin-top: 0; }
+    code { font-family: "Cascadia Code", Consolas, monospace; }
+
+    .page {
+      width: min(1600px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 20px 0 90px;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      min-height: 500px;
+      padding: clamp(28px, 5vw, 70px);
+      border: 1px solid rgba(255,255,255,.72);
+      border-radius: 38px;
+      background:
+        linear-gradient(90deg, rgba(255,251,233,.97) 0 55%, rgba(255,251,233,.76) 100%),
+        url("../assets/concept-beach-animals-v1.png") 77% 46% / cover;
+      box-shadow: var(--shadow);
+    }
+
+    .hero::after {
+      position: absolute;
+      right: 4%;
+      bottom: -12%;
+      width: min(42%, 590px);
+      aspect-ratio: .67;
+      background: url("../assets/reporter-cat-master-candidate-v2.png") 50% 48% / 115% auto no-repeat;
+      content: "";
+      opacity: .16;
+      filter: saturate(.76);
+    }
+
+    .hero-content { position: relative; z-index: 1; max-width: 900px; }
+
+    .eyebrow {
+      margin-bottom: 12px;
+      color: var(--mint-deep);
+      font-size: 13px;
+      font-weight: 950;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      max-width: 820px;
+      margin-bottom: 20px;
+      font-size: clamp(38px, 6vw, 76px);
+      line-height: 1.03;
+      letter-spacing: -.06em;
+    }
+
+    .hero-copy {
+      max-width: 820px;
+      margin-bottom: 26px;
+      color: var(--ink-2);
+      font-size: clamp(16px, 1.65vw, 21px);
+    }
+
+    .hero-facts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .fact {
+      display: inline-flex;
+      align-items: center;
+      min-height: 40px;
+      padding: 8px 13px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(255,255,255,.84);
+      font-size: 13px;
+      font-weight: 850;
+    }
+
+    .sticky-nav {
+      position: sticky;
+      top: 8px;
+      z-index: 40;
+      display: flex;
+      gap: 7px;
+      overflow-x: auto;
+      margin: 16px 0 26px;
+      padding: 8px;
+      border: 1px solid rgba(255,255,255,.84);
+      border-radius: 18px;
+      background: rgba(255,251,236,.9);
+      box-shadow: 0 8px 28px rgba(73,56,47,.11);
+      backdrop-filter: blur(16px);
+    }
+
+    .sticky-nav a {
+      flex: 0 0 auto;
+      padding: 8px 12px;
+      border-radius: 11px;
+      color: var(--ink);
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    .sticky-nav a:hover { background: #e4edda; }
+
+    .doc-section {
+      margin-top: 25px;
+      padding: clamp(22px, 3.2vw, 42px);
+      border: 1px solid rgba(255,255,255,.82);
+      border-radius: var(--radius);
+      background: rgba(255,252,240,.92);
+      box-shadow: 0 12px 44px rgba(80,62,52,.1);
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(300px, 520px);
+      gap: 30px;
+      align-items: end;
+      margin-bottom: 25px;
+    }
+
+    .section-head h2 {
+      margin-bottom: 0;
+      font-size: clamp(30px, 4vw, 46px);
+      line-height: 1.12;
+      letter-spacing: -.04em;
+    }
+
+    .section-head p {
+      margin-bottom: 0;
+      color: var(--ink-2);
+    }
+
+    .kicker {
+      margin-bottom: 8px;
+      color: var(--mint-deep);
+      font-size: 12px;
+      font-weight: 950;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .inventory {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .inventory-card {
+      min-height: 178px;
+      padding: 17px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: #fffefa;
+    }
+
+    .inventory-id {
+      display: inline-grid;
+      min-width: 43px;
+      height: 29px;
+      margin-bottom: 11px;
+      padding: 0 8px;
+      place-items: center;
+      border-radius: 9px;
+      color: white;
+      background: var(--mint-deep);
+      font-size: 11px;
+      font-weight: 950;
+      letter-spacing: .06em;
+    }
+
+    .inventory-card h3 {
+      margin-bottom: 6px;
+      font-size: 18px;
+    }
+
+    .inventory-card p {
+      margin-bottom: 10px;
+      color: var(--ink-2);
+      font-size: 13px;
+    }
+
+    .inventory-card small {
+      color: #8d7768;
+      font-weight: 800;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 20px;
+      margin-top: 22px;
+    }
+
+    .flow-node {
+      position: relative;
+      min-height: 96px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #f3f1dc;
+      font-size: 12px;
+    }
+
+    .flow-node:not(:last-child)::after {
+      position: absolute;
+      top: 50%;
+      right: -17px;
+      color: #8a7467;
+      content: "→";
+      font-size: 19px;
+      font-weight: 950;
+      transform: translateY(-50%);
+    }
+
+    .flow-node b { display: block; margin-bottom: 4px; font-size: 13px; }
+
+    .system-grid {
+      display: grid;
+      grid-template-columns: 1.25fr .75fr;
+      gap: 18px;
+    }
+
+    .system-card {
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+    }
+
+    .system-card.image { background: #eaf1dc; }
+    .system-card.code { background: #f8e8df; }
+    .system-card ul { margin: 10px 0 0; padding-left: 19px; }
+    .system-card li + li { margin-top: 5px; }
+
+    .asset-strip {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    .asset-tile {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: white;
+    }
+
+    .asset-tile img {
+      display: block;
+      width: 100%;
+      height: 135px;
+      object-fit: contain;
+      background:
+        linear-gradient(45deg,#f1ecdd 25%,transparent 25%),
+        linear-gradient(-45deg,#f1ecdd 25%,transparent 25%),
+        linear-gradient(45deg,transparent 75%,#f1ecdd 75%),
+        linear-gradient(-45deg,transparent 75%,#f1ecdd 75%);
+      background-position: 0 0, 0 7px, 7px -7px, -7px 0;
+      background-size: 14px 14px;
+    }
+
+    .asset-tile div { padding: 10px; font-size: 11px; font-weight: 800; }
+
+    .definition {
+      scroll-margin-top: 92px;
+      margin-top: 25px;
+      padding: clamp(19px, 3vw, 34px);
+      border: 1px solid rgba(255,255,255,.82);
+      border-radius: var(--radius);
+      background: rgba(255,252,240,.94);
+      box-shadow: 0 12px 44px rgba(80,62,52,.1);
+    }
+
+    .definition-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 20px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .definition-title {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+    }
+
+    .definition-title .screen-id {
+      display: grid;
+      width: 54px;
+      height: 54px;
+      flex: 0 0 54px;
+      place-items: center;
+      border: 2px solid #6c554a;
+      border-radius: 16px;
+      color: #5f4b42;
+      background: var(--yellow);
+      box-shadow: 0 5px 0 #b88f5b;
+      font-size: 13px;
+      font-weight: 950;
+    }
+
+    .definition-head h2 { margin-bottom: 3px; font-size: clamp(23px,3vw,34px); }
+    .definition-head p { margin: 0; color: var(--ink-2); font-size: 13px; }
+
+    .priority {
+      flex: 0 0 auto;
+      padding: 7px 11px;
+      border-radius: 999px;
+      color: white;
+      background: #6d9b84;
+      font-size: 11px;
+      font-weight: 950;
+      letter-spacing: .05em;
+    }
+
+    .definition-body {
+      display: grid;
+      grid-template-columns: minmax(440px, .9fr) minmax(0, 1.1fr);
+      gap: clamp(20px, 3vw, 40px);
+      align-items: start;
+    }
+
+    .visual-column { min-width: 0; }
+
+    .mock-shell {
+      position: relative;
+      width: min(100%, 530px);
+      margin: 0 auto;
+      aspect-ratio: 9 / 14;
+      overflow: hidden;
+      border: 7px solid #5d8a80;
+      border-radius: 30px;
+      background:
+        linear-gradient(rgba(255,255,255,.04),rgba(255,255,255,.04)),
+        url("../assets/concept-beach-animals-v1.png") center / cover;
+      box-shadow:
+        inset 0 0 0 1px rgba(255,255,255,.45),
+        0 18px 35px rgba(66,60,49,.2);
+    }
+
+    .mock-shell.dark::after {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      pointer-events: none;
+      background: rgba(61,57,45,.28);
+      content: "";
+    }
+
+    .world-header {
+      position: absolute;
+      top: 2.2%;
+      left: 3%;
+      z-index: 4;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      padding: 5px 8px;
+      border: 2px solid #654f47;
+      border-radius: 9px;
+      background: #fff8e4;
+      font-size: 8px;
+      font-weight: 950;
+    }
+
+    .lamp {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #72aa89;
+      box-shadow: 0 0 0 2px #dfeccc;
+    }
+
+    .sound-button {
+      position: absolute;
+      top: 2%;
+      right: 3%;
+      z-index: 4;
+      display: grid;
+      width: 31px;
+      height: 31px;
+      place-items: center;
+      border: 2px solid #6d574b;
+      border-radius: 50%;
+      background: #fff6dc;
+      font-size: 13px;
+      font-weight: 950;
+    }
+
+    .world-cat {
+      position: absolute;
+      left: 22%;
+      top: 25%;
+      z-index: 3;
+      width: 40%;
+      height: 37%;
+      background: url("../assets/reporter-cat-master-candidate-v2.png") center 49% / 145% auto no-repeat;
+      filter: drop-shadow(0 8px 6px rgba(74,56,48,.18));
+    }
+
+    .agent-tag {
+      position: absolute;
+      left: 20%;
+      top: 20%;
+      z-index: 4;
+      width: 46%;
+      padding: 6px 8px 7px;
+      border: 2px solid #71584c;
+      border-radius: 9px;
+      background: #fff9e7;
+      box-shadow: 0 4px 8px rgba(72,55,46,.17);
+    }
+
+    .agent-name {
+      display: flex;
+      justify-content: space-between;
+      gap: 5px;
+      margin-bottom: 3px;
+      font-size: 8px;
+      font-weight: 950;
+    }
+
+    .happy-pill {
+      padding: 1px 4px;
+      border-radius: 99px;
+      background: #f8d78a;
+      font-size: 6px;
+    }
+
+    .need {
+      display: grid;
+      grid-template-columns: 30px 1fr 16px;
+      gap: 3px;
+      align-items: center;
+      margin-top: 2px;
+      font-size: 6px;
+      font-weight: 850;
+    }
+
+    .need-track {
+      position: relative;
+      height: 6px;
+      overflow: hidden;
+      border: 1px solid #9b8171;
+      border-radius: 99px;
+      background: #eee2c5;
+    }
+
+    .need-track i {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 62%;
+      border-radius: 99px;
+      background: #e89975;
+    }
+
+    .need.toilet .need-track i { width: 35%; background: #82b8a6; }
+
+    .keycaps {
+      position: absolute;
+      right: 7%;
+      bottom: 1.2%;
+      z-index: 8;
+      width: 67%;
+      pointer-events: none;
+      filter: drop-shadow(0 7px 7px rgba(71,53,44,.24));
+    }
+
+    .keycaps img { display: block; width: 100%; }
+
+    .desk-icon-swap {
+      position: absolute;
+      left: 34.2%;
+      top: 28%;
+      width: 15%;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background:
+        url("../assets/meshy-references/cats-soup-v1/low-monitor-raised-four-key-workstation-ref-v2.png")
+        center / 155% auto no-repeat;
+      box-shadow: 0 0 0 2px #fff1cc;
+    }
+
+    .panel {
+      position: absolute;
+      top: 10%;
+      left: 8%;
+      z-index: 10;
+      width: 84%;
+      height: 76%;
+      filter: drop-shadow(0 15px 20px rgba(63,49,41,.28));
+    }
+
+    .panel.compact {
+      top: 17%;
+      left: 12%;
+      width: 76%;
+      height: 60%;
+    }
+
+    .panel-frame {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: fill;
+    }
+
+    .title-ribbon {
+      position: absolute;
+      top: 5%;
+      left: 9%;
+      z-index: 2;
+      width: 64%;
+      height: 11%;
+      object-fit: fill;
+      filter: drop-shadow(0 3px 0 rgba(89,67,53,.14));
+    }
+
+    .title-text {
+      position: absolute;
+      top: 7.8%;
+      left: 15%;
+      z-index: 3;
+      font-size: 13px;
+      font-weight: 950;
+    }
+
+    .close-art {
+      position: absolute;
+      top: 4.7%;
+      right: 8%;
+      z-index: 4;
+      display: grid;
+      width: 14%;
+      aspect-ratio: 1;
+      place-items: center;
+      border: 3px solid #70534a;
+      border-radius: 50%;
+      background: #ef9a88;
+      box-shadow: 0 4px 0 #9c6258;
+    }
+
+    .close-art::after {
+      color: #fff8e8;
+      content: "×";
+      font-size: 22px;
+      font-weight: 950;
+      line-height: 1;
+    }
+
+    .panel-body {
+      position: absolute;
+      top: 19%;
+      left: 10%;
+      z-index: 3;
+      width: 80%;
+      height: 70%;
+      overflow: hidden;
+      color: #675248;
+      font-size: 8px;
+    }
+
+    .panel-body.scroll { overflow-y: auto; padding-right: 3px; }
+
+    .mini-kicker {
+      color: #6a8a78;
+      font-size: 6px;
+      font-weight: 950;
+      letter-spacing: .13em;
+    }
+
+    .panel-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+      margin: 3px 0 7px;
+    }
+
+    .panel-heading strong { font-size: 12px; }
+
+    .currency {
+      padding: 3px 6px;
+      border: 1px solid #aa8d6f;
+      border-radius: 99px;
+      background: #fff0bf;
+      font-size: 7px;
+      font-weight: 950;
+    }
+
+    .ui-card {
+      display: grid;
+      grid-template-columns: 40px minmax(0,1fr) auto;
+      gap: 7px;
+      align-items: center;
+      min-height: 54px;
+      margin-bottom: 5px;
+      padding: 7px 8px;
+      border: 0;
+      border-radius: 11px;
+      background:
+        url("../public/art/ui/cards-v1.png") center top / 100% 204% no-repeat,
+        #fff9e7;
+    }
+
+    .ui-card.selected {
+      background-position: center bottom;
+    }
+
+    .ui-card strong { display: block; margin-bottom: 1px; font-size: 9px; }
+    .ui-card small { display: block; color: #887469; font-size: 6px; }
+
+    .avatar {
+      width: 38px;
+      height: 38px;
+      overflow: hidden;
+      border: 2px solid #816456;
+      border-radius: 10px;
+      background: #fff8e5;
+    }
+
+    .avatar.cat {
+      background:
+        url("../assets/reporter-cat-master-candidate-v2.png") center 46% / 200% auto no-repeat,
+        #fff8e5;
+    }
+
+    .avatar.seat {
+      background:
+        url("../assets/meshy-references/cats-soup-v1/low-monitor-raised-four-key-workstation-ref-v2.png")
+        center / 145% auto no-repeat,
+        #fff8e5;
+    }
+
+    .avatar.session {
+      display: grid;
+      place-items: center;
+      color: white;
+      background: #7ca393;
+      font-size: 14px;
+      font-weight: 950;
+    }
+
+    .card-badge {
+      padding: 3px 5px;
+      border-radius: 99px;
+      background: #d9e8c9;
+      font-size: 6px;
+      font-weight: 950;
+      white-space: nowrap;
+    }
+
+    .card-badge.warn { background: #f2c7a7; }
+    .card-badge.off { background: #ddd6cc; }
+
+    .ui-tabs {
+      display: grid;
+      grid-template-columns: repeat(var(--count, 2), minmax(0,1fr));
+      gap: 4px;
+      margin-bottom: 7px;
+    }
+
+    .ui-tab {
+      display: grid;
+      min-height: 30px;
+      place-items: center;
+      border-radius: 8px 8px 4px 4px;
+      background: url("../public/art/ui/tabs-v1.png") right center / 200% 100% no-repeat;
+      font-size: 7px;
+      font-weight: 950;
+    }
+
+    .ui-tab.active {
+      background-position: left center;
+      color: #486957;
+    }
+
+    .ui-button-row {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .ui-btn {
+      display: grid;
+      min-width: 84px;
+      min-height: 33px;
+      padding: 0 12px;
+      place-items: center;
+      border-radius: 9px;
+      color: #5e4b42;
+      background: url("../public/art/ui/buttons-v1.png") center 0 / 100% 500% no-repeat;
+      font-size: 8px;
+      font-weight: 950;
+    }
+
+    .ui-btn.secondary { background-position: center 75%; }
+    .ui-btn.danger { background-position: center 100%; color: #6f423c; }
+    .ui-btn.disabled { background-position: center 50%; color: #9b8f7d; }
+    .ui-btn.large { min-width: 138px; min-height: 38px; }
+
+    .inline-field {
+      min-height: 34px;
+      margin-top: 5px;
+      padding: 9px 10px;
+      border: 2px solid #a98c78;
+      border-radius: 9px;
+      background: #fffaf0;
+      color: #867267;
+      font-size: 8px;
+    }
+
+    .textarea {
+      min-height: 86px;
+      margin-top: 6px;
+      padding: 9px 10px;
+      border: 2px solid #a98c78;
+      border-radius: 11px;
+      background: #fffaf0;
+      color: #867267;
+      font-size: 8px;
+    }
+
+    .form-label {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 7px;
+      color: #765f54;
+      font-size: 7px;
+      font-weight: 900;
+    }
+
+    .progress {
+      position: relative;
+      height: 10px;
+      overflow: hidden;
+      margin: 5px 0 7px;
+      border: 2px solid #9a806e;
+      border-radius: 99px;
+      background: #ebdfc3;
+    }
+
+    .progress i {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: var(--value, 55%);
+      border-radius: 99px;
+      background: #86b69f;
+    }
+
+    .item-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0,1fr));
+      gap: 5px;
+    }
+
+    .item-card {
+      min-height: 82px;
+      padding: 6px;
+      border: 2px solid #a98b74;
+      border-radius: 10px;
+      background: #fff8e7;
+      text-align: center;
+      font-size: 6px;
+      font-weight: 900;
+    }
+
+    .item-card.active { background: #dcebd0; }
+    .item-card.locked { filter: grayscale(.65); opacity: .62; }
+
+    .item-image {
+      height: 50px;
+      margin-bottom: 3px;
+      border-radius: 7px;
+      background:
+        url("../assets/meshy-references/cats-soup-v1/low-monitor-raised-four-key-workstation-ref-v2.png")
+        center / 145% auto no-repeat,
+        #f0e6cc;
+    }
+
+    .style-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0,1fr));
+      gap: 4px;
+      margin-top: 7px;
+    }
+
+    .style-chip {
+      display: grid;
+      min-height: 28px;
+      place-items: center;
+      border: 1px solid #ad927d;
+      border-radius: 8px;
+      background: #fff9eb;
+      font-size: 6px;
+      font-weight: 850;
+    }
+
+    .style-chip.active { background: #cfe4d2; box-shadow: inset 0 0 0 1px #6f9380; }
+
+    .need-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0,1fr));
+      gap: 5px;
+      margin-top: 6px;
+    }
+
+    .need-stat {
+      padding: 6px;
+      border: 1px solid #aa907a;
+      border-radius: 9px;
+      background: #fff8e7;
+      text-align: center;
+    }
+
+    .need-stat b { display: block; font-size: 11px; }
+
+    .pair-code {
+      display: grid;
+      min-height: 54px;
+      margin: 10px 0 8px;
+      place-items: center;
+      border: 3px dashed #96755e;
+      border-radius: 12px;
+      background: #fff5cf;
+      font-size: 22px;
+      font-weight: 950;
+      letter-spacing: .18em;
+    }
+
+    .step-row {
+      display: grid;
+      grid-template-columns: 24px 1fr;
+      gap: 7px;
+      align-items: center;
+      margin-top: 5px;
+      padding: 5px;
+      border-radius: 8px;
+      background: rgba(232,239,214,.76);
+    }
+
+    .step-row b {
+      display: grid;
+      width: 23px;
+      height: 23px;
+      place-items: center;
+      border-radius: 8px;
+      color: white;
+      background: #7b9b88;
+    }
+
+    .code-screen {
+      min-height: 62px;
+      margin-top: 7px;
+      padding: 8px;
+      border: 2px solid #7a675d;
+      border-radius: 9px;
+      color: #d7f0dc;
+      background: #35423e;
+      font-family: "Cascadia Code", Consolas, monospace;
+      font-size: 6px;
+      line-height: 1.6;
+    }
+
+    .log-row {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 7px;
+      align-items: center;
+      min-height: 48px;
+      margin-bottom: 5px;
+      padding: 7px;
+      border-radius: 10px;
+      background:
+        url("../public/art/ui/cards-v1.png") center top / 100% 204% no-repeat,
+        #fff9e8;
+    }
+
+    .log-icon {
+      display: grid;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      border: 2px solid #82665a;
+      border-radius: 9px;
+      background: #d8e7c9;
+      font-size: 12px;
+      font-weight: 950;
+    }
+
+    .log-row strong { display: block; font-size: 8px; }
+    .log-row small { font-size: 6px; }
+
+    .empty-image {
+      width: 72%;
+      margin: 4px auto 0;
+    }
+
+    .empty-image img { display: block; width: 100%; }
+
+    .approval-hero {
+      display: grid;
+      grid-template-columns: 62px 1fr;
+      gap: 10px;
+      align-items: center;
+      margin: 9px 0;
+      padding: 9px;
+      border: 2px solid #a78a70;
+      border-radius: 12px;
+      background: #fff5d5;
+    }
+
+    .approval-icon {
+      display: grid;
+      width: 58px;
+      height: 58px;
+      place-items: center;
+      border: 2px solid #75594d;
+      border-radius: 16px;
+      background: #f5c885;
+      font-size: 26px;
+    }
+
+    .state-grid {
+      display: grid;
+      grid-template-columns: repeat(3,minmax(0,1fr));
+      gap: 6px;
+    }
+
+    .state-tile {
+      min-height: 128px;
+      padding: 8px 6px;
+      border: 2px solid #a68a77;
+      border-radius: 11px;
+      background: #fff8e7;
+      text-align: center;
+    }
+
+    .state-tile .state-icon {
+      display: grid;
+      width: 42px;
+      height: 42px;
+      margin: 0 auto 6px;
+      place-items: center;
+      border-radius: 50%;
+      background: #e5edcf;
+      font-size: 19px;
+    }
+
+    .state-tile strong { display: block; margin-bottom: 3px; font-size: 8px; }
+    .state-tile p { margin: 0; font-size: 6px; }
+
+    .visual-caption {
+      width: min(100%, 530px);
+      margin: 12px auto 0;
+      color: var(--ink-2);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .spec-column {
+      display: grid;
+      gap: 11px;
+    }
+
+    .spec-box {
+      padding: 15px 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: white;
+    }
+
+    .spec-box h3 {
+      margin-bottom: 8px;
+      color: #587666;
+      font-size: 15px;
+    }
+
+    .spec-list {
+      display: grid;
+      grid-template-columns: 118px 1fr;
+      gap: 7px 12px;
+      margin: 0;
+      font-size: 13px;
+    }
+
+    .spec-list dt { color: #8a7365; font-weight: 900; }
+    .spec-list dd { margin: 0; }
+
+    .component-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .component-list li {
+      padding: 5px 8px;
+      border: 1px solid #af947f;
+      border-radius: 999px;
+      background: #fbf6e6;
+      font-size: 11px;
+      font-weight: 850;
+    }
+
+    .asset-list {
+      margin: 0;
+      padding-left: 18px;
+      font-size: 12px;
+    }
+
+    .asset-list li + li { margin-top: 5px; }
+    .asset-list code { color: #547564; font-size: 11px; overflow-wrap: anywhere; }
+
+    .accept {
+      display: grid;
+      grid-template-columns: 24px 1fr;
+      gap: 8px;
+      align-items: start;
+      margin-top: 6px;
+      font-size: 12px;
+    }
+
+    .accept::before {
+      display: grid;
+      width: 23px;
+      height: 23px;
+      place-items: center;
+      border: 2px solid #6c584e;
+      border-radius: 8px;
+      background: #e3efd7;
+      content: "✓";
+      font-weight: 950;
+    }
+
+    .matrix-wrap {
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: white;
+    }
+
+    table { width: 100%; min-width: 1100px; border-collapse: collapse; }
+    th, td {
+      padding: 13px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      font-size: 12px;
+    }
+
+    th { background: #ede8d4; font-size: 11px; letter-spacing: .04em; }
+    tr:last-child td { border-bottom: 0; }
+    td code { color: #557565; font-size: 10px; }
+
+    .footer-note {
+      padding: 32px 0 4px;
+      color: var(--ink-2);
+      text-align: center;
+      font-size: 12px;
+    }
+
+    @media (max-width: 1150px) {
+      .section-head,
+      .system-grid,
+      .definition-body { grid-template-columns: 1fr; }
+      .inventory { grid-template-columns: repeat(3,minmax(0,1fr)); }
+      .asset-strip { grid-template-columns: repeat(3,minmax(0,1fr)); }
+      .flow { grid-template-columns: repeat(3,minmax(0,1fr)); }
+      .flow-node:nth-child(3)::after { display: none; }
+    }
+
+    @media (max-width: 720px) {
+      .page { width: calc(100% - 16px); padding-top: 8px; }
+      .hero { min-height: 0; padding: 28px 19px 34px; border-radius: 24px; }
+      .hero::after { display: none; }
+      .doc-section, .definition { padding: 19px 14px; border-radius: 21px; }
+      .inventory { grid-template-columns: 1fr; }
+      .asset-strip { grid-template-columns: repeat(2,minmax(0,1fr)); }
+      .flow { grid-template-columns: 1fr; }
+      .flow-node::after { display: none; }
+      .definition-head { align-items: flex-start; }
+      .definition-body { grid-template-columns: minmax(0,1fr); }
+      .mock-shell { width: 100%; border-width: 4px; border-radius: 22px; }
+      .spec-list { grid-template-columns: 92px 1fr; font-size: 12px; }
+      .priority { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <div class="hero-content">
+        <p class="eyebrow">Agent Forest · screen definition v1 · image-first UI</p>
+        <h1>무료배포 버전 화면 정의서</h1>
+        <p class="hero-copy">
+          통합기획안의 네 키캡 메뉴를 실제 사용 흐름에 맞춰
+          <strong>12개 화면·상태</strong>로 완성한 개발 정본입니다.
+          각 정의에는 진입·종료·데이터·행동·예외·반응형·사용 PNG와
+          실제 이미지형 목업이 함께 들어 있습니다.
+        </p>
+        <div class="hero-facts">
+          <span class="fact">필수 화면 12개</span>
+          <span class="fact">팝업은 캔버스 내부</span>
+          <span class="fact">보이는 면은 PNG</span>
+          <span class="fact">PC·모바일 동일 기능</span>
+          <span class="fact">무료배포 P0 범위</span>
+        </div>
+      </div>
+    </header>
+
+    <nav class="sticky-nav" aria-label="화면 정의서 목차">
+      <a href="#inventory">화면 목록</a>
+      <a href="#system">공통 UI</a>
+      <a href="#s00">S00 첫 연결</a>
+      <a href="#s01">S01 월드</a>
+      <a href="#s02">S02 CAT 목록</a>
+      <a href="#s03">S03 CAT 상세</a>
+      <a href="#s04">S04 DESK</a>
+      <a href="#s05">S05 구매 확인</a>
+      <a href="#s06">S06 PC 연결</a>
+      <a href="#s07">S07 업무 지시</a>
+      <a href="#s08">S08 진행</a>
+      <a href="#s09">S09 기록</a>
+      <a href="#s10">S10 승인</a>
+      <a href="#s11">S11 예외</a>
+      <a href="#matrix">구현 매트릭스</a>
+    </nav>
+
+    <section class="doc-section" id="inventory">
+      <div class="section-head">
+        <div>
+          <p class="kicker">01 · Screen inventory</p>
+          <h2>필요한 화면 목록</h2>
+        </div>
+        <p>
+          네 개 키캡은 최상위 정보 구조이고, 실제 화면은 첫 실행·상세·확인·오류
+          상태까지 포함해야 완결됩니다. 아래 12개를 무료배포 버전의 필수 화면으로 정의합니다.
+        </p>
+      </div>
+
+      <div class="inventory">
+        <article class="inventory-card"><span class="inventory-id">S00</span><h3>첫 연결·온보딩</h3><p>처음 실행한 사용자가 PC Companion과 연결하는 진입 화면.</p><small>진입 · 미페어링 상태</small></article>
+        <article class="inventory-card"><span class="inventory-id">S01</span><h3>월드 기본 HUD</h3><p>고양이·욕구 이름표·재화·소리·키캡을 한 화면에 표시.</p><small>기본 · 항상 표시</small></article>
+        <article class="inventory-card"><span class="inventory-id">S02</span><h3>CAT 고양이 목록</h3><p>고정 4자리의 고양이·빈자리·욕구 경고를 목록으로 확인.</p><small>키캡 1 · 기본 탭</small></article>
+        <article class="inventory-card"><span class="inventory-id">S03</span><h3>CAT 상세·돌봄</h3><p>이름·스타일·욕구·밥·간식과 연결 세션 이동을 처리.</p><small>S02 고양이 선택</small></article>
+        <article class="inventory-card"><span class="inventory-id">S04</span><h3>DESK 자리 꾸미기</h3><p>자리 1~4, 티어 진행, 장착 소품과 가격을 확인.</p><small>키캡 2 · 기본 화면</small></article>
+        <article class="inventory-card"><span class="inventory-id">S05</span><h3>DESK 구매 확인</h3><p>아이템·비용·보유 조개·구매 후 결과를 확인.</p><small>S04 구매 버튼</small></article>
+        <article class="inventory-card"><span class="inventory-id">S06</span><h3>WORK PC 연결</h3><p>6자리 페어링과 세션 상태·새로고침·연결 해제를 관리.</p><small>키캡 3 · 연결 탭</small></article>
+        <article class="inventory-card"><span class="inventory-id">S07</span><h3>WORK 업무 지시</h3><p>세션·부서·프롬프트를 선택하고 실제 Codex 작업을 시작.</p><small>키캡 3 · 지시 탭</small></article>
+        <article class="inventory-card"><span class="inventory-id">S08</span><h3>STATUS 진행 현황</h3><p>현재 작업 제목·상태·토큰·결과 미리보기·중단을 제공.</p><small>키캡 4 · 진행 탭</small></article>
+        <article class="inventory-card"><span class="inventory-id">S09</span><h3>LOG 활동 기록</h3><p>최근 이벤트 40건, 상태 필터, 시간, 기록 지우기를 제공.</p><small>키캡 4 · 기록 탭</small></article>
+        <article class="inventory-card"><span class="inventory-id">S10</span><h3>승인·중요 확인</h3><p>Codex 승인·구매·삭제 등 중요한 결정을 캔버스에서 확인.</p><small>전역 모달</small></article>
+        <article class="inventory-card"><span class="inventory-id">S11</span><h3>빈 화면·오류·오프라인</h3><p>데이터 없음, 브리지 끊김, 재시도 가능한 오류를 분리.</p><small>전 화면 공통 상태</small></article>
+      </div>
+
+      <div class="flow" aria-label="주요 사용자 흐름">
+        <div class="flow-node"><b>S00 첫 연결</b>페어링 성공</div>
+        <div class="flow-node"><b>S01 월드</b>고양이·키캡 확인</div>
+        <div class="flow-node"><b>S02/S03 CAT</b>상태 확인·돌봄</div>
+        <div class="flow-node"><b>S04/S05 DESK</b>자리 선택·구매</div>
+        <div class="flow-node"><b>S06/S07 WORK</b>연결·업무 시작</div>
+        <div class="flow-node"><b>S08/S09 STATUS</b>진행·기록 확인</div>
+      </div>
+    </section>
+
+    <section class="doc-section" id="system">
+      <div class="section-head">
+        <div>
+          <p class="kicker">02 · Shared image UI system</p>
+          <h2>공통 이미지 UI 규칙</h2>
+        </div>
+        <p>
+          CSS로 패널을 다시 그리지 않습니다. 프레임·탭·카드·버튼·배지의 표면은
+          PNG이고 코드는 위치, 데이터, 상태 전환과 접근성만 담당합니다.
+        </p>
+      </div>
+
+      <div class="system-grid">
+        <article class="system-card image">
+          <h3>PNG가 담당</h3>
+          <ul>
+            <li>팝업 프레임·제목 리본·큰 닫기 버튼</li>
+            <li>탭 기본/선택/눌림/잠김 상태</li>
+            <li>목록 카드·아이템 카드·버튼·상태 배지</li>
+            <li>욕구 게이지·빈 상태 일러스트·키캡 메뉴</li>
+          </ul>
+        </article>
+        <article class="system-card code">
+          <h3>React/CSS가 담당</h3>
+          <ul>
+            <li>캔버스 내부 위치와 반응형 크기</li>
+            <li>텍스트·수치·선택·잠김 데이터</li>
+            <li>포커스·키보드·터치·aria-label</li>
+            <li>열기·닫기·눌림·스크롤 동작</li>
+          </ul>
+        </article>
+      </div>
+
+      <div class="asset-strip">
+        <div class="asset-tile"><img src="../public/art/ui/popup-frame-v1.png" alt="팝업 프레임 이미지" /><div>popup-frame-v1</div></div>
+        <div class="asset-tile"><img src="../public/art/ui/tabs-v1.png" alt="탭 이미지" /><div>tabs-v1</div></div>
+        <div class="asset-tile"><img src="../public/art/ui/cards-v1.png" alt="카드 이미지" /><div>cards-v1</div></div>
+        <div class="asset-tile"><img src="../public/art/ui/buttons-v1.png" alt="버튼 이미지" /><div>buttons-v1</div></div>
+        <div class="asset-tile"><img src="../public/art/ui/badges-v1.png" alt="배지 이미지" /><div>badges-v1</div></div>
+      </div>
+    </section>
+
+    <!-- S00 -->
+    <section class="definition" id="s00" data-screen="S00">
+      <header class="definition-head">
+        <div class="definition-title">
+          <span class="screen-id">S00</span>
+          <div><h2>첫 연결·온보딩</h2><p>PC Companion 페어링이 없을 때 월드 위에 처음 한 번 표시</p></div>
+        </div>
+        <span class="priority">P0 · 무료배포</span>
+      </header>
+      <div class="definition-body">
+        <div class="visual-column">
+          <div class="mock-shell dark">
+            <div class="world-header"><span class="lamp"></span>AGENT FOREST</div>
+            <div class="sound-button">♪</div>
+            <div class="panel compact">
+              <img class="panel-frame" src="../public/art/ui/popup-frame-v1.png" alt="" />
+              <img class="title-ribbon" src="../public/art/ui/popup-title-ribbon-v1.png" alt="" />
+              <span class="title-text">Agent Forest 시작</span>
+              <div class="panel-body">
+                <div class="mini-kicker">CONNECT MY PC</div>
+                <div class="panel-heading"><strong>내 PC 세션 연결</strong><span class="card-badge warn">연결 필요</span></div>
+                <div class="step-row"><b>1</b><span>PC Companion을 실행합니다.</span></div>
+                <div class="step-row"><b>2</b><span>아래 6자리 코드를 입력합니다.</span></div>
+                <div class="pair-code">482913</div>
+                <div class="step-row"><b>3</b><span>연결되면 고양이가 월드에 나타납니다.</span></div>
+                <div class="ui-button-row"><span class="ui-btn large">연결 상태 확인</span></div>
+              </div>
+            </div>
+          </div>
+          <p class="visual-caption">배경 월드를 가리고도 캔버스 경계 안에 유지되는 첫 실행 이미지 팝업</p>
+        </div>
+        <div class="spec-column">
+          <div class="spec-box"><h3>화면 목적·진입</h3><dl class="spec-list"><dt>목적</dt><dd>사용자가 환경변수나 터미널 없이 첫 세션을 연결</dd><dt>진입</dt><dd><code>bridgeState !== "connected"</code>이고 저장된 페어링 토큰 없음</dd><dt>종료</dt><dd>페어링 성공 → S01 월드</dd><dt>재진입</dt><dd>S06 WORK 연결 탭에서 가능</dd></dl></div>
+          <div class="spec-box"><h3>필수 구성요소</h3><ul class="component-list"><li>제목 리본</li><li>3단계 안내</li><li>6자리 코드</li><li>연결 상태</li><li>큰 확인 버튼</li></ul></div>
+          <div class="spec-box"><h3>상태·행동</h3><dl class="spec-list"><dt>대기</dt><dd>코드와 “연결 필요” 표시</dd><dt>확인 중</dt><dd>버튼 눌림 이미지 + 로딩 배지</dd><dt>성공</dt><dd>성공 효과음 후 400ms 이내 S01</dd><dt>실패</dt><dd>S11 오류 카드와 재시도</dd></dl></div>
+          <div class="spec-box"><h3>사용 이미지</h3><ul class="asset-list"><li><code>popup-frame-v1.png</code></li><li><code>popup-title-ribbon-v1.png</code></li><li><code>buttons-v1.png · primary/pressed/disabled</code></li><li><code>badges-v1.png · status-lamp/count-pill</code></li></ul></div>
+          <div class="spec-box"><h3>완료 기준</h3><div class="accept">390×844에서도 코드와 버튼이 접히지 않고 터치 타깃 48px 이상.</div><div class="accept">연결 성공 전 실제 업무 버튼이 노출되지 않음.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- S01 -->
+    <section class="definition" id="s01" data-screen="S01">
+      <header class="definition-head">
+        <div class="definition-title">
+          <span class="screen-id">S01</span>
+          <div><h2>월드 기본 HUD</h2><p>고양이 상태와 하단 4개 메뉴를 항상 확인하는 기본 화면</p></div>
+        </div>
+        <span class="priority">P0 · 무료배포</span>
+      </header>
+      <div class="definition-body">
+        <div class="visual-column">
+          <div class="mock-shell">
+            <div class="world-header"><span class="lamp"></span>GENERAL · 업무 접수</div>
+            <div class="sound-button">♪</div>
+            <div class="agent-tag">
+              <div class="agent-name"><span>디자이너 보리</span><span class="happy-pill">행복 82</span></div>
+              <div class="need"><span>배고픔</span><span class="need-track"><i></i></span><b>62</b></div>
+              <div class="need toilet"><span>배설</span><span class="need-track"><i></i></span><b>35</b></div>
+            </div>
+            <div class="world-cat"></div>
+            <div class="keycaps">
+              <img src="../public/art/menu-keycaps-base-v5.png" alt="하단 4키 이미지 메뉴" />
+              <span class="desk-icon-swap" aria-label="두 번째 키 자리 꾸미기 아이콘 제안"></span>
+            </div>
+          </div>
+          <p class="visual-caption">이름표에 이름·배고픔·배설·행복도가 고양이 이동 중 함께 따라다님</p>
+        </div>
+        <div class="spec-column">
+          <div class="spec-box"><h3>화면 목적·진입</h3><dl class="spec-list"><dt>목적</dt><dd>세션 상태를 게임 월드에서 즉시 파악</dd><dt>진입</dt><dd>S00 연결 성공 또는 재방문</dd><dt>종료</dt><dd>없음. 모든 팝업의 배경 화면</dd><dt>기본 초점</dt><dd>캔버스, 메뉴 버튼 순으로 탐색</dd></dl></div>
+          <div class="spec-box"><h3>필수 구성요소</h3><ul class="component-list"><li>월드 캔버스</li><li>업무 상태</li><li>소리 버튼</li><li>욕구 이름표</li><li>4키 이미지 메뉴</li></ul></div>
+          <div class="spec-box"><h3>데이터</h3><dl class="spec-list"><dt>고양이</dt><dd>1~4마리, 5번째 세션은 대기열</dd><dt>이름표</dt><dd><code>name/hunger/toilet/happiness</code></dd><dt>상태</dt><dd>idle/working/done/approval/queued/offline</dd><dt>게이지</dt><dd>0~100, 값은 CAT 상세와 동일</dd></dl></div>
+          <div class="spec-box"><h3>상호작용</h3><dl class="spec-list"><dt>드래그</dt><dd>월드 회전 ±20%</dd><dt>휠/핀치</dt><dd>줌 ±20%</dd><dt>키캡</dt><dd>각 메뉴 열기, 적축 키보드 사운드</dd><dt>고양이</dt><dd>선택 시 S03 상세</dd></dl></div>
+          <div class="spec-box"><h3>사용 이미지</h3><ul class="asset-list"><li><code>concept-beach-animals-v1.png</code></li><li><code>menu-keycaps-meta-base-v1.png · 신규</code></li><li><code>need-gauge-track/fill-*.png · 신규</code></li><li><code>happiness-badge-v1.png · 신규</code></li></ul></div>
+          <div class="spec-box"><h3>완료 기준</h3><div class="accept">고양이가 이동·대기·작업 중이어도 게이지가 사라지지 않음.</div><div class="accept">PC·모바일 모두 스크롤 없이 전체 캔버스와 키캡 표시.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- S02 -->
+    <section class="definition" id="s02" data-screen="S02">
+      <header class="definition-head">
+        <div class="definition-title">
+          <span class="screen-id">S02</span>
+          <div><h2>CAT 고양이 목록</h2><p>4개 고정 자리의 고양이와 욕구 경고를 이미지 카드로 확인</p></div>
+        </div>
+        <span class="priority">P0 · 키캡 1</span>
+      </header>
+      <div class="definition-body">
+        <div class="visual-column">
+          <div class="mock-shell dark">
+            <div class="world-header"><span class="lamp"></span>GENERAL</div>
+            <div class="panel">
+              <img class="panel-frame" src="../public/art/ui/popup-frame-v1.png" alt="" />
+              <img class="title-ribbon" src="../public/art/ui/popup-title-ribbon-v1.png" alt="" />
+              <span class="title-text">고양이 관리</span><span class="close-art"></span>
+              <div class="panel-body scroll">
+                <div class="mini-kicker">MY CATS</div>
+                <div class="panel-heading"><strong>지금 일하는 고양이</strong><span class="currency">31 조개</span></div>
+                <div class="ui-card selected"><span class="avatar cat"></span><span><strong>디자이너 보리 · 자리 1</strong><small>코딩 화면 디자인 중</small></span><span class="card-badge">작업 중</span></div>
+                <div class="ui-card"><span class="avatar cat"></span><span><strong>코치 모모 · 자리 2</strong><small>배고픔 78 · 행복 42</small></span><span class="card-badge warn">돌봄</span></div>
+                <div class="ui-card"><span class="avatar session">+</span><span><strong>자리 3 · 비어 있음</strong><small>PC 세션을 연결하면 배정됩니다</small></span><span class="card-badge off">빈자리</span></div>
+                <div class="ui-card"><span class="avatar session">+</span><span><strong>자리 4 · 비어 있음</strong><small>최대 네 세션까지 표시</small></span><span class="card-badge off">빈자리</span></div>
+                <div class="ui-button-row"><span class="ui-btn secondary large">고양이 추가하기</span></div>
+              </div>
+            </div>
+            <div class="keycaps"><img src="../public/art/menu-keycaps-base-v5.png" alt="" /></div>
+          </div>
+          <p class="visual-caption">목록 카드 전체가 이미지이며 선택·경고·빈자리 상태가 색과 텍스트로 함께 구분됨</p>
+        </div>
+        <div class="spec-column">
+          <div class="spec-box"><h3>화면 목적·진입</h3><dl class="spec-list"><dt>목적</dt><dd>고양이와 빈자리 전체 상태를 한 번에 확인</dd><dt>진입</dt><dd>키캡 1 클릭/키보드 단축키</dd><dt>종료</dt><dd>큰 닫기, 동일 키 재입력, ESC</dd><dt>다음 화면</dt><dd>고양이 카드 → S03, 추가 → S06</dd></dl></div>
+          <div class="spec-box"><h3>카드 상태</h3><dl class="spec-list"><dt>작업 중</dt><dd>민트 선택 카드 + 상태 배지</dd><dt>돌봄 필요</dt><dd>경고 아이콘 + 원인 수치</dd><dt>완료</dt><dd>초록 상태 배지</dd><dt>빈자리</dt><dd>회색 카드 + 추가 진입</dd></dl></div>
+          <div class="spec-box"><h3>사용 이미지</h3><ul class="asset-list"><li><code>popup-frame-v1.png</code></li><li><code>cards-v1.png · list-card/selected</code></li><li><code>badges-v1.png · count/status-lamp</code></li><li><code>buttons-v1.png · secondary</code></li><li><code>icons-v1.png · warning/plus</code></li></ul></div>
+          <div class="spec-box"><h3>접근성·반응형</h3><dl class="spec-list"><dt>라벨</dt><dd>“코치 모모, 배고픔 78, 돌봄 필요”처럼 상태 포함</dd><dt>색맹</dt><dd>색 외에 상태 텍스트와 아이콘 병기</dd><dt>모바일</dt><dd>카드 한 열, 팝업 폭 캔버스의 92%</dd></dl></div>
+          <div class="spec-box"><h3>완료 기준</h3><div class="accept">최대 4자리와 대기열 수를 혼동하지 않음.</div><div class="accept">목록 게이지/수치가 S01 이름표와 동일한 저장값을 사용.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- S03 -->
+    <section class="definition" id="s03" data-screen="S03">
+      <header class="definition-head">
+        <div class="definition-title">
+          <span class="screen-id">S03</span>
+          <div><h2>CAT 상세·돌봄</h2><p>선택한 고양이의 이름·스타일·욕구와 돌봄 행동을 관리</p></div>
+        </div>
+        <span class="priority">P0 · CAT 상세</span>
+      </header>
+      <div class="definition-body">
+        <div class="visual-column">
+          <div class="mock-shell dark">
+            <div class="panel">
+              <img class="panel-frame" src="../public/art/ui/popup-frame-v1.png" alt="" />
+              <img class="title-ribbon" src="../public/art/ui/popup-title-ribbon-v1.png" alt="" />
+              <span class="title-text">보리 돌보기</span><span class="close-art"></span>
+              <div class="panel-body scroll">
+                <div class="ui-card selected"><span class="avatar cat"></span><span><strong>디자이너 보리</strong><small>자리 1 · 작업 중</small></span><span class="card-badge">행복 82</span></div>
+                <div class="form-label"><span>이름 · 최대 6자</span><span>4/6</span></div>
+                <div class="inline-field">보리</div>
+                <div class="need-summary">
+                  <div class="need-stat">배고픔<b>62</b></div>
+                  <div class="need-stat">배설<b>35</b></div>
+                  <div class="need-stat">행복<b>82</b></div>
+                </div>
+                <div class="form-label"><span>털 색 · 무늬</span><span>전체 무료</span></div>
+                <div class="style-grid">
+                  <span class="style-chip active">Bobtail</span><span class="style-chip">White</span><span class="style-chip">Black</span><span class="style-chip">Blue</span><span class="style-chip">Cream</span>
+                  <span class="style-chip">Siamese</span><span class="style-chip">Persian</span><span class="style-chip">Maine</span><span class="style-chip">Red</span><span class="style-chip">Simple</span>
+                </div>
+                <div class="ui-button-row"><span class="ui-btn secondary">밥 주기</span><span class="ui-btn">간식 주기</span></div>
+              </div>
+            </div>
+          </div>
+          <p class="visual-caption">체형 선택은 삭제하고 이름·스타일·욕구·돌봄만 유지</p>
+        </div>
+        <div class="spec-column">
+          <div class="spec-box"><h3>화면 목적·진입</h3><dl class="spec-list"><dt>목적</dt><dd>선택 고양이의 외형과 기본 욕구 관리</dd><dt>진입</dt><dd>S01 고양이 클릭 또는 S02 카드 클릭</dd><dt>뒤로</dt><dd>S02 목록으로 복귀</dd><dt>저장</dt><dd>이름·스타일 변경 즉시 로컬 저장</dd></dl></div>
+          <div class="spec-box"><h3>행동 정의</h3><dl class="spec-list"><dt>밥 주기</dt><dd>그릇 리필 → 고양이가 이동해 먹을 때 배고픔 0</dd><dt>간식 주기</dt><dd>조개 소비 또는 무료 보상 정책 확정 후 적용</dd><dt>스타일</dt><dd>15종 무료, 현재 구현은 전 고양이 공통 적용 경고 표시</dd><dt>이름</dt><dd>1~6자, 공백만 입력 금지</dd></dl></div>
+          <div class="spec-box"><h3>사용 이미지</h3><ul class="asset-list"><li><code>cards-v1.png · selected + thumbnail</code></li><li><code>panels-v1.png · progress-track/fill</code></li><li><code>extras-v1.png · button-chip</code></li><li><code>buttons-v1.png · primary/secondary</code></li><li><code>icons-v1.png · paw/check/warning</code></li></ul></div>
+          <div class="spec-box"><h3>금지 규칙</h3><dl class="spec-list"><dt>작업 API</dt><dd>행복도·배고픔 때문에 실제 Codex 시작/중단/승인을 지연하지 않음</dd><dt>체형</dt><dd>체형 선택·growthPoints 추천 토스트를 노출하지 않음</dd></dl></div>
+          <div class="spec-box"><h3>완료 기준</h3><div class="accept">이름표, 목록, 상세의 욕구 값이 같은 프레임에서 일치.</div><div class="accept">돌봄 애니메이션이 작업 중 타건 애니메이션을 중단하지 않음.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- S04 -->
+    <section class="definition" id="s04" data-screen="S04">
+      <header class="definition-head">
+        <div class="definition-title">
+          <span class="screen-id">S04</span>
+          <div><h2>DESK 자리 꾸미기</h2><p>4개 고정 자리의 티어와 장착 아이템을 이미지 카탈로그로 관리</p></div>
+        </div>
+        <span class="priority">P0 · 키캡 2</span>
+      </header>
+      <div class="definition-body">
+        <div class="visual-column">
+          <div class="mock-shell dark">
+            <div class="panel">
+              <img class="panel-frame" src="../public/art/ui/popup-frame-v1.png" alt="" />
+              <img class="title-ribbon" src="../public/art/ui/popup-title-ribbon-v1.png" alt="" />
+              <span class="title-text">자리 꾸미기</span><span class="close-art"></span>
+              <div class="panel-body scroll">
+                <div class="panel-heading"><strong>나의 업무 자리</strong><span class="currency">128 조개</span></div>
+                <div class="ui-tabs" style="--count:4"><span class="ui-tab active">자리 1</span><span class="ui-tab">자리 2</span><span class="ui-tab">자리 3</span><span class="ui-tab">자리 4</span></div>
+                <div class="form-label"><span>티어 진행 · 170 / 870</span><span>Tier 2</span></div>
+                <div class="progress" style="--value:32%"><i></i></div>
+                <div class="item-grid">
+                  <div class="item-card active"><div class="item-image"></div>기본 업무 자리<br />장착 중</div>
+                  <div class="item-card"><div class="item-image"></div>민트 머그컵<br />15 조개</div>
+                  <div class="item-card"><div class="item-image"></div>4키 키캡<br />40 조개</div>
+                  <div class="item-card"><div class="item-image"></div>민트 쿠션<br />30 조개</div>
+                  <div class="item-card locked"><div class="item-image"></div>캠핑 스툴<br />Tier 3</div>
+                  <div class="item-card locked"><div class="item-image"></div>조개 조명<br />Tier 4</div>
+                </div>
+              </div>
+            </div>
+            <div class="keycaps"><img src="../public/art/menu-keycaps-base-v5.png" alt="" /><span class="desk-icon-swap"></span></div>
+          </div>
+          <p class="visual-caption">두 번째 키캡은 체인 아이콘 대신 자리/책상 이미지 아이콘으로 교체</p>
+        </div>
+        <div class="spec-column">
+          <div class="spec-box"><h3>화면 목적·진입</h3><dl class="spec-list"><dt>목적</dt><dd>자리별 꾸미기 진행과 소품 장착 관리</dd><dt>진입</dt><dd>키캡 2</dd><dt>자리</dt><dd><code>seat-1~seat-4</code> 고정, 5번째 탭 없음</dd><dt>구매</dt><dd>미보유 아이템 선택 → S05</dd></dl></div>
+          <div class="spec-box"><h3>카탈로그 상태</h3><dl class="spec-list"><dt>장착 중</dt><dd>민트 선택 카드 + 체크</dd><dt>보유</dt><dd>기본 카드 + “장착” 행동</dd><dt>구매 가능</dt><dd>가격 표시</dd><dt>잠김</dt><dd>티어와 잠금 아이콘 표시</dd></dl></div>
+          <div class="spec-box"><h3>사용 이미지</h3><ul class="asset-list"><li><code>tabs-v1.png · active/inactive</code></li><li><code>cards-v1.png · thumbnail/list-card</code></li><li><code>panels-v1.png · progress</code></li><li><code>icons-v1.png · lock/check</code></li><li><code>badges-v1.png · currency-pill</code></li></ul></div>
+          <div class="spec-box"><h3>반응형</h3><dl class="spec-list"><dt>PC</dt><dd>아이템 3열, 탭 4개 한 줄</dd><dt>모바일</dt><dd>아이템 2열, 탭은 한 줄 유지, 내부만 세로 스크롤</dd><dt>터치</dt><dd>카드 전체 클릭, 최소 76px 높이</dd></dl></div>
+          <div class="spec-box"><h3>완료 기준</h3><div class="accept">구매·장착 즉시 월드 객체에 반영되며 고양이 애니메이션 리마운트 없음.</div><div class="accept">책상 종류 자체는 교체하지 않고 소품만 바뀜.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- S05 -->
+    <section class="definition" id="s05" data-screen="S05">
+      <header class="definition-head">
+        <div class="definition-title">
+          <span class="screen-id">S05</span>
+          <div><h2>DESK 구매 확인</h2><p>조개 소비 전 아이템과 잔액을 한 번 더 확인하는 전역형 이미지 모달</p></div>
+        </div>
+        <span class="priority">P0 · 중요 행동</span>
+      </header>
+      <div class="definition-body">
+        <div class="visual-column">
+          <div class="mock-shell dark">
+            <div class="panel compact">
+              <img class="panel-frame" src="../public/art/ui/popup-frame-v1.png" alt="" />
+              <img class="title-ribbon" src="../public/art/ui/popup-title-ribbon-v1.png" alt="" />
+              <span class="title-text">구매 확인</span><span class="close-art"></span>
+              <div class="panel-body">
+                <div class="ui-card selected"><span class="avatar seat"></span><span><strong>4키 키캡 키보드</strong><small>자리 1 · inputDevice</small></span><span class="card-badge">40 조개</span></div>
+                <div class="need-summary">
+                  <div class="need-stat">보유<b>128</b></div>
+                  <div class="need-stat">가격<b>-40</b></div>
+                  <div class="need-stat">구매 후<b>88</b></div>
+                </div>
+                <p style="margin:9px 0 0;text-align:center;font-size:8px;font-weight:850">이 아이템을 구매하고 자리 1에 장착할까요?</p>
+                <div class="ui-button-row"><span class="ui-btn secondary">취소</span><span class="ui-btn">구매하기</span></div>
+              </div>
+            </div>
+          </div>
+          <p class="visual-caption">구매 확인도 페이지 바깥 모달이 아니라 캔버스 안에 표시</p>
+        </div>
+        <div class="spec-column">
+          <div class="spec-box"><h3>화면 목적·진입</h3><dl class="spec-list"><dt>목적</dt><dd>재화 오소비와 중복 구매 방지</dd><dt>진입</dt><dd>S04의 미보유 구매 가능 카드</dd><dt>확인</dt><dd>가격·보유·구매 후 잔액이 모두 보임</dd><dt>종료</dt><dd>취소/닫기 → S04, 성공 → S04 토스트</dd></dl></div>
+          <div class="spec-box"><h3>상태</h3><dl class="spec-list"><dt>구매 가능</dt><dd>기본 primary 버튼</dd><dt>잔액 부족</dt><dd>disabled 버튼 + 부족 수치</dd><dt>처리 중</dt><dd>pressed 이미지, 중복 클릭 차단</dd><dt>성공</dt><dd>조개 차감·소유권 저장·즉시 장착</dd></dl></div>
+          <div class="spec-box"><h3>사용 이미지</h3><ul class="asset-list"><li><code>popup-frame-v1.png</code></li><li><code>popup-title-ribbon-v1.png</code></li><li><code>cards-v1.png · selected/thumbnail</code></li><li><code>buttons-v1.png · primary/secondary/disabled</code></li><li><code>badges-v1.png · currency-pill</code></li></ul></div>
+          <div class="spec-box"><h3>완료 기준</h3><div class="accept">구매 요청은 idempotency 키로 중복 차감되지 않음.</div><div class="accept">ESC와 배경 클릭은 취소로만 동작하고 구매를 실행하지 않음.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- S06 -->
+    <section class="definition" id="s06" data-screen="S06">
+      <header class="definition-head">
+        <div class="definition-title">
+          <span class="screen-id">S06</span>
+          <div><h2>WORK PC 연결</h2><p>페어링 코드와 최대 네 세션의 연결 상태를 관리</p></div>
+        </div>
+        <span class="priority">P0 · 키캡 3</span>
+      </header>
+      <div class="definition-body">
+        <div class="visual-column">
+          <div class="mock-shell dark">
+            <div class="panel">
+              <img class="panel-frame" src="../public/art/ui/popup-frame-v1.png" alt="" />
+              <img class="title-ribbon" src="../public/art/ui/popup-title-ribbon-v1.png" alt="" />
+              <span class="title-text">PC 연결·업무</span><span class="close-art"></span>
+              <div class="panel-body scroll">
+                <div class="ui-tabs"><span class="ui-tab active">연결</span><span class="ui-tab">업무 지시</span></div>
+                <div class="panel-heading"><strong>내 PC 세션</strong><span class="card-badge">연결됨</span></div>
+                <div class="ui-card selected"><span class="avatar session">1</span><span><strong>AgentForestWorkspace</strong><small>Codex · idle</small></span><span class="card-badge">온라인</span></div>
+                <div class="ui-card"><span class="avatar session">2</span><span><strong>게임 UI 수정</strong><small>Codex · working</small></span><span class="card-badge warn">작업 중</span></div>
+                <div class="ui-card"><span class="avatar session">3</span><span><strong>새 세션 연결</strong><small>6자리 코드를 입력하세요</small></span><span class="card-badge off">대기</span></div>
+                <div class="inline-field">482913</div>
+                <div class="ui-button-row"><span class="ui-btn secondary">새로고침</span><span class="ui-btn danger">연결 해제</span></div>
+              </div>
+            </div>
+          </div>
+          <p class="visual-caption">연결과 업무 지시는 같은 키캡 안에서 두 이미지 탭으로 분리</p>
+        </div>
+        <div class="spec-column">
+          <div class="spec-box"><h3>화면 목적·진입</h3><dl class="spec-list"><dt>목적</dt><dd>PC Companion과 Codex 세션 상태 관리</dd><dt>진입</dt><dd>키캡 3, 기본은 연결 탭</dd><dt>선택</dt><dd>세션 카드를 누르면 업무 지시 탭의 대상 갱신</dd><dt>대기열</dt><dd>5번째 세션부터 좌석 없음으로 별도 표시</dd></dl></div>
+          <div class="spec-box"><h3>상태</h3><dl class="spec-list"><dt>connecting</dt><dd>노랑 램프·연결 확인 중</dd><dt>connected</dt><dd>초록 램프·세션 목록</dd><dt>disconnected</dt><dd>회색 램프·S11 오프라인</dd><dt>working</dt><dd>작업 중 배지, 연결 해제 위험 확인</dd></dl></div>
+          <div class="spec-box"><h3>사용 이미지</h3><ul class="asset-list"><li><code>tabs-v1.png</code></li><li><code>cards-v1.png · list/selected</code></li><li><code>badges-v1.png · status-lamp</code></li><li><code>extras-v1.png · icon-square</code></li><li><code>buttons-v1.png · danger</code></li></ul></div>
+          <div class="spec-box"><h3>보안·접근성</h3><dl class="spec-list"><dt>토큰</dt><dd>브라우저에 원문 Companion 토큰 노출 금지</dd><dt>경로</dt><dd>안전한 표시명만 노출, 실제 전체 경로 숨김</dd><dt>라벨</dt><dd>세션명·상태·선택 여부를 함께 읽음</dd></dl></div>
+          <div class="spec-box"><h3>완료 기준</h3><div class="accept">연결 새로고침이 월드 고양이를 중복 생성하지 않음.</div><div class="accept">연결 해제 전 S10 중요 확인을 반드시 거침.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- S07 -->
+    <section class="definition" id="s07" data-screen="S07">
+      <header class="definition-head">
+        <div class="definition-title">
+          <span class="screen-id">S07</span>
+          <div><h2>WORK 업무 지시</h2><p>선택 세션·부서·프롬프트를 조합해 실제 Codex 작업 시작</p></div>
+        </div>
+        <span class="priority">P0 · 핵심 기능</span>
+      </header>
+      <div class="definition-body">
+        <div class="visual-column">
+          <div class="mock-shell dark">
+            <div class="panel">
+              <img class="panel-frame" src="../public/art/ui/popup-frame-v1.png" alt="" />
+              <img class="title-ribbon" src="../public/art/ui/popup-title-ribbon-v1.png" alt="" />
+              <span class="title-text">업무 지시</span><span class="close-art"></span>
+              <div class="panel-body">
+                <div class="ui-tabs"><span class="ui-tab">연결</span><span class="ui-tab active">업무 지시</span></div>
+                <div class="ui-card selected"><span class="avatar session">2</span><span><strong>선택 세션 · 게임 UI 수정</strong><small>AgentForestWorkspace</small></span><span class="card-badge">준비</span></div>
+                <div class="form-label"><span>업무 부서</span><span>1개 선택</span></div>
+                <div class="ui-tabs" style="--count:4"><span class="ui-tab active">코딩</span><span class="ui-tab">디자인</span><span class="ui-tab">음악</span><span class="ui-tab">일반</span></div>
+                <div class="form-label"><span>작업 내용</span><span>84 / 2,000</span></div>
+                <div class="textarea">고양이 이름표 아래 배고픔과 배설 게이지를 이미지 UI로 적용하고 모바일에서도 확인해줘.</div>
+                <div class="ui-button-row"><span class="ui-btn large">선택한 세션에서 실행</span></div>
+              </div>
+            </div>
+          </div>
+          <p class="visual-caption">업무 시작 버튼은 이미지 기본·눌림·비활성 상태를 분리</p>
+        </div>
+        <div class="spec-column">
+          <div class="spec-box"><h3>화면 목적·진입</h3><dl class="spec-list"><dt>목적</dt><dd>선택한 Codex 세션에 실제 작업 전달</dd><dt>진입</dt><dd>S06 업무 지시 탭 또는 고양이 추가 후 이동</dd><dt>필수값</dt><dd>세션 1개 + 부서 1개 + 작업 내용</dd><dt>성공</dt><dd>S08 진행 현황으로 이동</dd></dl></div>
+          <div class="spec-box"><h3>검증</h3><dl class="spec-list"><dt>세션 없음</dt><dd>실행 비활성 + 연결 탭 안내</dd><dt>빈 프롬프트</dt><dd>실행 비활성</dd><dt>2,000자 초과</dt><dd>입력 차단·남은 글자 경고</dd><dt>작업 중 세션</dt><dd>중복 시작 금지 또는 명시적 확인</dd></dl></div>
+          <div class="spec-box"><h3>사용 이미지</h3><ul class="asset-list"><li><code>tabs-v1.png · 연결/지시/부서</code></li><li><code>cards-v1.png · selected session</code></li><li><code>buttons-v1.png · primary/pressed/disabled</code></li><li><code>badges-v1.png · status-lamp</code></li></ul></div>
+          <div class="spec-box"><h3>작업 안전 경계</h3><dl class="spec-list"><dt>욕구</dt><dd>배고픔·행복도와 무관하게 작업 요청 즉시 전송</dd><dt>승인</dt><dd>도구 승인은 S10에서 별도 처리</dd><dt>오류</dt><dd>원문 내부 오류 대신 사용자용 요약과 재시도 제공</dd></dl></div>
+          <div class="spec-box"><h3>완료 기준</h3><div class="accept">실행 한 번에 하나의 작업만 생성되고 이중 클릭이 중복 전송되지 않음.</div><div class="accept">작업 시작 즉시 월드 고양이가 실제 위치에서 타건 상태로 전환.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- S08 -->
+    <section class="definition" id="s08" data-screen="S08">
+      <header class="definition-head">
+        <div class="definition-title">
+          <span class="screen-id">S08</span>
+          <div><h2>STATUS 진행 현황</h2><p>현재 실행 중인 Codex 작업과 토큰·결과 미리보기를 표시</p></div>
+        </div>
+        <span class="priority">P0 · 키캡 4</span>
+      </header>
+      <div class="definition-body">
+        <div class="visual-column">
+          <div class="mock-shell dark">
+            <div class="panel">
+              <img class="panel-frame" src="../public/art/ui/popup-frame-v1.png" alt="" />
+              <img class="title-ribbon" src="../public/art/ui/popup-title-ribbon-v1.png" alt="" />
+              <span class="title-text">진행 상태·기록</span><span class="close-art"></span>
+              <div class="panel-body">
+                <div class="ui-tabs"><span class="ui-tab active">진행 상태</span><span class="ui-tab">활동 기록 · 3</span></div>
+                <div class="ui-card selected"><span class="avatar cat"></span><span><strong>디자이너 보리 · 실제 Codex</strong><small>이름표 욕구 게이지 이미지 적용</small></span><span class="card-badge warn">작업 중</span></div>
+                <div class="form-label"><span>현재 단계</span><span>렌더 검증</span></div>
+                <div class="progress" style="--value:68%"><i></i></div>
+                <div class="code-screen">✓ 욕구 데이터 연결<br />✓ 이름표 이미지 플레인 생성<br />→ 모바일 캔버스 위치 검증 중</div>
+                <div class="need-summary">
+                  <div class="need-stat">입력<b>1.2k</b></div>
+                  <div class="need-stat">캐시<b>400</b></div>
+                  <div class="need-stat">출력<b>800</b></div>
+                </div>
+                <div class="ui-button-row"><span class="ui-btn danger large">현재 작업 중단</span></div>
+              </div>
+            </div>
+          </div>
+          <p class="visual-caption">진행률은 실제 퍼센트가 있을 때만 사용하고, 없으면 단계 목록으로 표시</p>
+        </div>
+        <div class="spec-column">
+          <div class="spec-box"><h3>화면 목적·진입</h3><dl class="spec-list"><dt>목적</dt><dd>세션이 무엇을 하는지 한눈에 확인</dd><dt>진입</dt><dd>키캡 4, 기본 진행 상태 탭</dd><dt>대상</dt><dd>현재 선택 세션 또는 작업 중 첫 세션</dd><dt>중단</dt><dd>S10 확인 후 실제 interrupt API</dd></dl></div>
+          <div class="spec-box"><h3>표시 데이터</h3><dl class="spec-list"><dt>상태</dt><dd>queued/working/approval/done/error</dd><dt>작업</dt><dd>안전한 제목·요약·현재 단계</dd><dt>토큰</dt><dd>입력·캐시·출력</dd><dt>결과</dt><dd>사용자에게 공개 가능한 결과 미리보기만</dd></dl></div>
+          <div class="spec-box"><h3>사용 이미지</h3><ul class="asset-list"><li><code>tabs-v1.png</code></li><li><code>cards-v1.png · selected</code></li><li><code>panels-v1.png · progress</code></li><li><code>buttons-v1.png · danger</code></li><li><code>badges-v1.png · status</code></li></ul></div>
+          <div class="spec-box"><h3>보안</h3><dl class="spec-list"><dt>숨김</dt><dd>raw reasoning, 내부 JSON-RPC, 전체 작업 경로</dd><dt>공개</dt><dd>사용자 요청·상태·안전한 결과 요약</dd></dl></div>
+          <div class="spec-box"><h3>완료 기준</h3><div class="accept">진행 중단이 행복도·고양이 애니메이션 로직을 경유하지 않고 즉시 처리.</div><div class="accept">완료 시 보상 +10 조개와 로그 이벤트가 한 번만 기록.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- S09 -->
+    <section class="definition" id="s09" data-screen="S09">
+      <header class="definition-head">
+        <div class="definition-title">
+          <span class="screen-id">S09</span>
+          <div><h2>LOG 활동 기록</h2><p>최근 이벤트 40건과 상태를 시간 순으로 확인</p></div>
+        </div>
+        <span class="priority">P0 · 기록 탭</span>
+      </header>
+      <div class="definition-body">
+        <div class="visual-column">
+          <div class="mock-shell dark">
+            <div class="panel">
+              <img class="panel-frame" src="../public/art/ui/popup-frame-v1.png" alt="" />
+              <img class="title-ribbon" src="../public/art/ui/popup-title-ribbon-v1.png" alt="" />
+              <span class="title-text">활동 기록</span><span class="close-art"></span>
+              <div class="panel-body scroll">
+                <div class="ui-tabs"><span class="ui-tab">진행 상태</span><span class="ui-tab active">활동 기록 · 3</span></div>
+                <div class="log-row"><span class="log-icon">✓</span><span><strong>작업 완료 · 디자이너 보리</strong><small>서버 업데이트 검증 완료</small></span><span>3분 전</span></div>
+                <div class="log-row"><span class="log-icon">→</span><span><strong>작업 시작 · 코치 모모</strong><small>고양이 욕구 UI 적용</small></span><span>12분 전</span></div>
+                <div class="log-row"><span class="log-icon">!</span><span><strong>승인 요청</strong><small>파일 변경 실행 대기</small></span><span>14분 전</span></div>
+                <div class="log-row"><span class="log-icon">＋</span><span><strong>PC 세션 연결</strong><small>AgentForestWorkspace</small></span><span>1시간 전</span></div>
+                <div class="ui-button-row"><span class="ui-btn danger large">기록 지우기</span></div>
+              </div>
+            </div>
+          </div>
+          <p class="visual-caption">빈 기록일 때는 CSS 문구 대신 empty-state-v1 이미지를 표시</p>
+        </div>
+        <div class="spec-column">
+          <div class="spec-box"><h3>화면 목적·진입</h3><dl class="spec-list"><dt>목적</dt><dd>세션과 작업의 최근 변화 추적</dd><dt>진입</dt><dd>키캡 4 → 활동 기록 탭</dd><dt>정렬</dt><dd>최신순, 최대 40건</dd><dt>삭제</dt><dd>S10 확인 후 로컬 표시 기록만 삭제</dd></dl></div>
+          <div class="spec-box"><h3>이벤트 종류</h3><ul class="component-list"><li>연결</li><li>작업 시작</li><li>승인 요청</li><li>완료</li><li>실패</li><li>중단</li><li>보상</li></ul></div>
+          <div class="spec-box"><h3>사용 이미지</h3><ul class="asset-list"><li><code>tabs-v1.png</code></li><li><code>cards-v1.png · list-card/divider</code></li><li><code>icons-v1.png · bell/check/warning</code></li><li><code>empty-state-v1.png</code></li><li><code>buttons-v1.png · danger</code></li></ul></div>
+          <div class="spec-box"><h3>접근성</h3><dl class="spec-list"><dt>시간</dt><dd>“3분 전”과 절대시각을 title로 병기</dd><dt>아이콘</dt><dd>아이콘만으로 성공/오류 구분 금지</dd><dt>스크롤</dt><dd>팝업 내부만 스크롤, 키캡은 고정</dd></dl></div>
+          <div class="spec-box"><h3>완료 기준</h3><div class="accept">이벤트가 없으면 빈 상태 이미지와 “아직 기록이 없습니다”를 함께 표시.</div><div class="accept">기록 삭제가 실제 Codex 세션이나 작업 결과 파일을 삭제하지 않음.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- S10 -->
+    <section class="definition" id="s10" data-screen="S10">
+      <header class="definition-head">
+        <div class="definition-title">
+          <span class="screen-id">S10</span>
+          <div><h2>승인·중요 확인</h2><p>도구 승인과 중요 행동을 캔버스 안 이미지 모달로 처리</p></div>
+        </div>
+        <span class="priority">P0 · 전역 모달</span>
+      </header>
+      <div class="definition-body">
+        <div class="visual-column">
+          <div class="mock-shell dark">
+            <div class="panel compact">
+              <img class="panel-frame" src="../public/art/ui/popup-frame-v1.png" alt="" />
+              <img class="title-ribbon" src="../public/art/ui/popup-title-ribbon-v1.png" alt="" />
+              <span class="title-text">확인이 필요해요</span><span class="close-art"></span>
+              <div class="panel-body">
+                <div class="approval-hero"><span class="approval-icon">!</span><span><strong style="font-size:11px">서버 업데이트를 진행할까요?</strong><br />파일 3개가 변경되고 테스트가 실행됩니다.</span></div>
+                <div class="ui-card"><span class="avatar session">3</span><span><strong>디자이너 보리의 요청</strong><small>중요 작업 · 파일 변경</small></span><span class="card-badge warn">승인 대기</span></div>
+                <div class="ui-button-row"><span class="ui-btn secondary">재검토</span><span class="ui-btn danger">반려</span><span class="ui-btn">확인</span></div>
+              </div>
+            </div>
+          </div>
+          <p class="visual-caption">닫기 버튼은 최소 48px 이미지 버튼이며 닫기는 승인으로 간주하지 않음</p>
+        </div>
+        <div class="spec-column">
+          <div class="spec-box"><h3>화면 목적·진입</h3><dl class="spec-list"><dt>목적</dt><dd>승인·삭제·연결해제·중단·구매의 오작동 방지</dd><dt>진입</dt><dd>Companion approval 또는 중요 버튼</dd><dt>우선순위</dt><dd>다른 팝업 위, 하지만 캔버스 경계 안</dd><dt>닫기</dt><dd>미결 상태 유지 또는 안전한 취소</dd></dl></div>
+          <div class="spec-box"><h3>버튼 의미</h3><dl class="spec-list"><dt>확인</dt><dd>요청 실행</dd><dt>재검토</dt><dd>추가 정보/변경 내용 확인</dd><dt>반려</dt><dd>요청 거절</dd><dt>닫기</dt><dd>확인과 동일하게 처리하지 않음</dd></dl></div>
+          <div class="spec-box"><h3>사용 이미지</h3><ul class="asset-list"><li><code>popup-frame-v1.png</code></li><li><code>popup-title-ribbon-v1.png</code></li><li><code>buttons-v1.png · primary/secondary/danger</code></li><li><code>icons-v1.png · warning/close</code></li><li><code>cards-v1.png</code></li></ul></div>
+          <div class="spec-box"><h3>안전 규칙</h3><dl class="spec-list"><dt>FIFO</dt><dd>승인 요청은 도착 순서대로 한 건씩 표시</dd><dt>자동 승인</dt><dd>정확한 읽기 전용 명령만 허용</dd><dt>포커스</dt><dd>모달 안에 가두고 ESC는 취소</dd></dl></div>
+          <div class="spec-box"><h3>완료 기준</h3><div class="accept">버튼 3종과 닫기 버튼 모두 기본·눌림 이미지 상태가 있음.</div><div class="accept">승인 처리 중 중복 클릭과 다음 승인 선처리가 발생하지 않음.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- S11 -->
+    <section class="definition" id="s11" data-screen="S11">
+      <header class="definition-head">
+        <div class="definition-title">
+          <span class="screen-id">S11</span>
+          <div><h2>공통 빈 화면·오류·오프라인</h2><p>데이터 없음과 복구 가능한 오류를 서로 다른 이미지 상태로 제공</p></div>
+        </div>
+        <span class="priority">P0 · 공통 상태</span>
+      </header>
+      <div class="definition-body">
+        <div class="visual-column">
+          <div class="mock-shell dark">
+            <div class="panel">
+              <img class="panel-frame" src="../public/art/ui/popup-frame-v1.png" alt="" />
+              <img class="title-ribbon" src="../public/art/ui/popup-title-ribbon-v1.png" alt="" />
+              <span class="title-text">상태 안내</span><span class="close-art"></span>
+              <div class="panel-body">
+                <div class="state-grid">
+                  <div class="state-tile"><span class="state-icon">∅</span><strong>아직 기록 없음</strong><p>작업이 시작되면 여기에 표시됩니다.</p></div>
+                  <div class="state-tile"><span class="state-icon">×</span><strong>PC 연결 끊김</strong><p>Companion 상태를 확인하세요.</p></div>
+                  <div class="state-tile"><span class="state-icon">!</span><strong>불러오기 실패</strong><p>잠시 후 다시 시도해주세요.</p></div>
+                </div>
+                <div class="empty-image"><img src="../public/art/ui/empty-state-v1.png" alt="할 일이 없어 쉬고 있는 고양이 일러스트" /></div>
+                <div class="ui-button-row"><span class="ui-btn secondary">닫기</span><span class="ui-btn">다시 시도</span></div>
+              </div>
+            </div>
+          </div>
+          <p class="visual-caption">빈 상태는 실패처럼 보이지 않게, 오류는 원인과 복구 행동을 함께 표시</p>
+        </div>
+        <div class="spec-column">
+          <div class="spec-box"><h3>상태 분류</h3><dl class="spec-list"><dt>empty</dt><dd>정상이나 데이터가 없음, 재시도 불필요</dd><dt>offline</dt><dd>브리지 연결 끊김, S06 이동 제공</dd><dt>error</dt><dd>요청 실패, 다시 시도 제공</dd><dt>loading</dt><dd>짧은 로딩 배지, 10초 이후 오류 전환</dd></dl></div>
+          <div class="spec-box"><h3>문구 규칙</h3><dl class="spec-list"><dt>제목</dt><dd>무슨 상태인지 한 줄</dd><dt>설명</dt><dd>왜 그런지 또는 정상임을 짧게 설명</dd><dt>행동</dt><dd>사용자가 할 수 있는 다음 행동 하나</dd><dt>금지</dt><dd>내부 오류 스택·원문 토큰·경로 노출 금지</dd></dl></div>
+          <div class="spec-box"><h3>사용 이미지</h3><ul class="asset-list"><li><code>empty-state-v1.png</code></li><li><code>icons-v1.png · warning/refresh</code></li><li><code>buttons-v1.png · primary/secondary</code></li><li><code>badges-v1.png · status-lamp</code></li></ul></div>
+          <div class="spec-box"><h3>완료 기준</h3><div class="accept">empty/offline/error가 색만이 아니라 제목·아이콘·행동으로 구분.</div><div class="accept">오프라인 상태에서 실제 작업 중단으로 오인할 애니메이션을 비활성화.</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="doc-section" id="matrix">
+      <div class="section-head">
+        <div>
+          <p class="kicker">03 · Implementation matrix</p>
+          <h2>화면별 구현 매트릭스</h2>
+        </div>
+        <p>
+          화면 ID를 코드·상태·이미지 파일과 연결한 작업 기준입니다.
+          개발·테스트·캡처 파일명도 동일한 ID를 사용합니다.
+        </p>
+      </div>
+      <div class="matrix-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>화면</th><th>주요 상태</th><th>핵심 데이터</th><th>주요 이미지</th><th>코드 위치</th><th>QA 캡처</th></tr></thead>
+          <tbody>
+            <tr><td>S00</td><td>첫 연결</td><td>대기/확인/성공/실패</td><td>pairingCode, bridgeState</td><td>frame, ribbon, primary</td><td><code>app/page.tsx</code></td><td><code>s00-onboarding.png</code></td></tr>
+            <tr><td>S01</td><td>월드 HUD</td><td>idle/working/queued/offline</td><td>agents, needs, audio</td><td>keycaps, needs gauge</td><td><code>app/agent-world-3d.tsx</code></td><td><code>s01-world.png</code></td></tr>
+            <tr><td>S02</td><td>CAT 목록</td><td>작업/돌봄/완료/빈자리</td><td>seats, agents, needs</td><td>cards, badges</td><td><code>app/page.tsx</code></td><td><code>s02-cat-list.png</code></td></tr>
+            <tr><td>S03</td><td>CAT 상세</td><td>편집/저장/돌봄/경고</td><td>name, style, needs</td><td>chips, progress, buttons</td><td><code>app/page.tsx</code></td><td><code>s03-cat-detail.png</code></td></tr>
+            <tr><td>S04</td><td>DESK</td><td>장착/보유/구매/잠김</td><td>seatTier, inventory</td><td>tabs, item cards</td><td><code>app/page.tsx</code></td><td><code>s04-desk.png</code></td></tr>
+            <tr><td>S05</td><td>구매 확인</td><td>가능/부족/처리/성공</td><td>shells, price, item</td><td>modal, primary/disabled</td><td><code>app/page.tsx</code></td><td><code>s05-purchase.png</code></td></tr>
+            <tr><td>S06</td><td>PC 연결</td><td>connecting/connected/offline</td><td>sessions, bridgeState</td><td>tabs, cards, lamp</td><td><code>app/page.tsx</code></td><td><code>s06-connect.png</code></td></tr>
+            <tr><td>S07</td><td>업무 지시</td><td>입력/검증/전송/오류</td><td>session, department, prompt</td><td>tabs, primary button</td><td><code>app/page.tsx</code></td><td><code>s07-work.png</code></td></tr>
+            <tr><td>S08</td><td>진행 현황</td><td>queued/working/approval/done</td><td>task, tokens, result</td><td>status card, danger</td><td><code>app/page.tsx</code></td><td><code>s08-status.png</code></td></tr>
+            <tr><td>S09</td><td>활동 기록</td><td>기록/빈 상태/삭제</td><td>events[0..39]</td><td>list card, empty art</td><td><code>app/page.tsx</code></td><td><code>s09-log.png</code></td></tr>
+            <tr><td>S10</td><td>승인·확인</td><td>대기/확인/반려/처리</td><td>approvalQueue</td><td>modal, 3 buttons</td><td><code>app/page.tsx</code></td><td><code>s10-approval.png</code></td></tr>
+            <tr><td>S11</td><td>공통 예외</td><td>empty/offline/error/loading</td><td>errorCode, retry</td><td>empty art, warning</td><td><code>app/page.tsx</code></td><td><code>s11-states.png</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <p class="footer-note">Agent Forest · 무료배포 버전 화면 정의서 v1 · 2026-07-28</p>
+  </main>
+</body>
+</html>
