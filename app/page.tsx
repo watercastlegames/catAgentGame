@@ -140,8 +140,33 @@ type BridgeHealth = {
 };
 type CompanionTransport = "local" | "cloud";
 type RadioPage = "cats" | "desk" | "work" | "status-log";
+type CatPage = "list" | "detail";
 type WorkTab = "connect" | "task";
 type StatusLogTab = "status" | "log";
+type ConfirmDialog =
+  | { kind: "disconnect" }
+  | {
+      kind: "desk-purchase";
+      itemId: DeskItemId;
+    }
+  | null;
+type DeskItemId =
+  | "basic"
+  | "mint-mug"
+  | "shell-radio"
+  | "picnic-cushion"
+  | "coral-planter"
+  | "night-lantern";
+type DeskItem = {
+  id: DeskItemId;
+  label: string;
+  note: string;
+  price: number;
+  tier: number;
+  preview: string;
+  previewPosition: string;
+  decor: "coral" | "mint" | "sunset";
+};
 
 const BRIDGE_URL =
   process.env.NEXT_PUBLIC_AGENT_BRIDGE_URL ?? "http://127.0.0.1:4317";
@@ -154,6 +179,8 @@ const SHELL_KEY = "agent-forest-shell-v1";
 const DECOR_KEY = "agent-forest-decor-v1";
 const DEMO_SEEN_KEY = "agent-forest-demo-seen-v1";
 const EVENT_HISTORY_KEY = "agent-forest-event-history-v1";
+const DESK_OWNERSHIP_KEY = "agent-forest-desk-ownership-v1";
+const ONBOARDING_KEY = "agent-forest-onboarding-v1";
 const INSTALL_HANDOFF =
   "이 저장소의 AGENTS.md를 읽고 Agent Forest를 설치·실행한 뒤 연결 주소를 열어줘.";
 
@@ -218,6 +245,68 @@ const AUDIO_ENABLED_KEY = "agent-forest-audio-v1";
 const CAT_LOOK_KEY = "agent-forest-cat-look-v1";
 const DEMO_CAT_ID = "agent-forest-demo-cat";
 const WORKSTATION_TIER_COSTS = [0, 50, 120, 250, 450] as const;
+const DESK_ITEMS: DeskItem[] = [
+  {
+    id: "basic",
+    label: "기본 업무 자리",
+    note: "모니터 · 네 키 키캡",
+    price: 0,
+    tier: 0,
+    preview: "/art/ui/desk-items/desk-basic-v1.png",
+    previewPosition: "center",
+    decor: "coral",
+  },
+  {
+    id: "mint-mug",
+    label: "민트 머그",
+    note: "시원한 바닷빛 소품",
+    price: 15,
+    tier: 1,
+    preview: "/art/ui/desk-items/desk-tent-v1.png",
+    previewPosition: "center",
+    decor: "mint",
+  },
+  {
+    id: "shell-radio",
+    label: "조개 라디오",
+    note: "업무 소식을 듣는 라디오",
+    price: 40,
+    tier: 2,
+    preview: "/art/ui/desk-items/desk-radio-v1.png",
+    previewPosition: "center",
+    decor: "sunset",
+  },
+  {
+    id: "picnic-cushion",
+    label: "피크닉 쿠션",
+    note: "잠깐 쉬는 폭신한 자리",
+    price: 30,
+    tier: 2,
+    preview: "/art/ui/desk-items/desk-cushion-v1.png",
+    previewPosition: "center",
+    decor: "coral",
+  },
+  {
+    id: "coral-planter",
+    label: "산호 화분",
+    note: "Tier 3에서 열려요",
+    price: 65,
+    tier: 3,
+    preview: "/art/ui/desk-items/desk-planter-v1.png",
+    previewPosition: "center",
+    decor: "mint",
+  },
+  {
+    id: "night-lantern",
+    label: "밤바다 랜턴",
+    note: "Tier 4에서 열려요",
+    price: 90,
+    tier: 4,
+    preview: "/art/ui/desk-items/desk-lantern-v1.png",
+    previewPosition: "center",
+    decor: "sunset",
+  },
+];
 // 체형은 프리셋으로만 고른다. 숫자 세 개를 그대로 노출하면 사장님이 만질 물건이 아니게 된다.
 const CAT_SHAPE_PRESETS: Array<{
   id: string;
@@ -343,6 +432,7 @@ export default function Home() {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [radioOpen, setRadioOpen] = useState(false);
   const [radioPage, setRadioPage] = useState<RadioPage>("cats");
+  const [catPage, setCatPage] = useState<CatPage>("list");
   const [workTab, setWorkTab] = useState<WorkTab>("connect");
   const [statusLogTab, setStatusLogTab] = useState<StatusLogTab>("status");
   const [hudDormant, setHudDormant] = useState(false);
@@ -350,6 +440,15 @@ export default function Home() {
   const [shells, setShells] = useState(0);
   const [decorChoice, setDecorChoice] = useState("coral");
   const [selectedSeat, setSelectedSeat] = useState<SeatId | null>(null);
+  const [ownedDeskItems, setOwnedDeskItems] = useState<Set<DeskItemId>>(
+    () => new Set(["basic"]),
+  );
+  const [equippedDeskItems, setEquippedDeskItems] = useState<
+    Partial<Record<SeatId, DeskItemId>>
+  >({ "seat-1": "basic" });
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog>(null);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [uiPreview, setUiPreview] = useState<string | null>(null);
   const [pressedRadioKey, setPressedRadioKey] = useState<RadioPage | null>(
     null,
   );
@@ -383,8 +482,24 @@ export default function Home() {
   const keycapPressTimerRef = useRef<number | null>(null);
   const keycapFeedbackPrimedRef = useRef(false);
   const catNeedsRef = useRef<CatNeedsStore>({});
+  const purchaseLockedRef = useRef(false);
 
   const approvalEvent = approvalQueue[0] ?? null;
+  const visibleApprovalEvent =
+    approvalEvent ??
+    (uiPreview === "s10"
+      ? ({
+          id: "ui-preview-approval",
+          type: "approval.required",
+          occurredAt: new Date(0).toISOString(),
+          requestId: "ui-preview",
+          title: "서버 업데이트를 적용할까요?",
+          detail:
+            "중요한 변경이에요. 적용하기 전에 요청 내용을 한 번 더 확인해 주세요.",
+          command: "npm run build",
+          files: ["app/page.tsx"],
+        } satisfies BridgeEvent)
+      : null);
   const latestEvents = useMemo(() => events.slice(0, 10), [events]);
   const selectedSession = useMemo(
     () => sessions.find((session) => session.id === selectedThreadId) ?? null,
@@ -418,6 +533,12 @@ export default function Home() {
   const focusedCatId = focusedRuntime?.threadId ?? DEMO_CAT_ID;
   const focusedCatNeeds =
     catNeeds[focusedCatId] ?? createDefaultCatNeedState();
+  const activeDeskSeat = selectedSeat ?? "seat-1";
+  const equippedDeskItemId = equippedDeskItems[activeDeskSeat] ?? "basic";
+  const pendingDeskItem =
+    confirmDialog?.kind === "desk-purchase"
+      ? (DESK_ITEMS.find((item) => item.id === confirmDialog.itemId) ?? null)
+      : null;
   const pressedRadioIndex = pressedRadioKey
     ? RADIO_MENU.findIndex((item) => item.key === pressedRadioKey) + 1
     : 0;
@@ -430,6 +551,15 @@ export default function Home() {
   }, [catNeeds]);
   const seatViews = useMemo<SeatView[]>(() => {
     const active = runtimeList.slice(0, 5).map((runtime) => ({
+      ...(() => {
+        const needs =
+          catNeeds[runtime.threadId] ?? createDefaultCatNeedState();
+        return {
+          hunger: Math.round(needs.hunger),
+          toilet: Math.round(needs.toilet),
+          happiness: Math.round(needs.happiness),
+        };
+      })(),
       seatId: runtime.seatId,
       agentName: runtime.agentName,
       location: runtime.location,
@@ -447,9 +577,18 @@ export default function Home() {
             status: "idle",
             statusLabel: STATUS_COPY.idle,
             blocked: false,
+            hunger: Math.round(
+              (catNeeds[DEMO_CAT_ID] ?? createDefaultCatNeedState()).hunger,
+            ),
+            toilet: Math.round(
+              (catNeeds[DEMO_CAT_ID] ?? createDefaultCatNeedState()).toilet,
+            ),
+            happiness: Math.round(
+              (catNeeds[DEMO_CAT_ID] ?? createDefaultCatNeedState()).happiness,
+            ),
           },
         ];
-  }, [runtimeList]);
+  }, [catNeeds, runtimeList]);
 
   const apiFetch = useCallback(
     (pathname: string, init: RequestInit = {}) => {
@@ -795,6 +934,25 @@ export default function Home() {
       if (savedToken) setCompanionToken(savedToken);
       if (savedTransport === "cloud") setCompanionTransport("cloud");
       if (savedSession) setSelectedThreadId(savedSession);
+      try {
+        const owned = JSON.parse(
+          window.localStorage.getItem(DESK_OWNERSHIP_KEY) ?? '["basic"]',
+        ) as DeskItemId[];
+        setOwnedDeskItems(new Set(["basic", ...owned]));
+      } catch {
+        window.localStorage.removeItem(DESK_OWNERSHIP_KEY);
+      }
+      const preview = new URLSearchParams(window.location.search).get(
+        "ui-preview",
+      );
+      if (window.location.hostname === "localhost" && preview) {
+        setUiPreview(preview);
+      } else if (
+        !savedToken &&
+        window.localStorage.getItem(ONBOARDING_KEY) !== "done"
+      ) {
+        setOnboardingOpen(true);
+      }
     });
     return () => {
       disposed = true;
@@ -1047,6 +1205,58 @@ export default function Home() {
     const timer = window.setTimeout(() => runFreeDemo(), 1_600);
     return () => window.clearTimeout(timer);
   }, [companionToken, runFreeDemo]);
+
+  useEffect(() => {
+    if (!uiPreview) return;
+    let disposed = false;
+    queueMicrotask(() => {
+      if (disposed) return;
+      if (uiPreview === "s00") {
+        setOnboardingOpen(true);
+        setRadioOpen(false);
+        return;
+      }
+      setOnboardingOpen(false);
+      if (uiPreview === "s01") {
+        setRadioOpen(false);
+        return;
+      }
+      setRadioOpen(true);
+      if (uiPreview === "s02" || uiPreview === "s03") {
+        setRadioPage("cats");
+        setCatPage(uiPreview === "s02" ? "list" : "detail");
+      } else if (uiPreview === "s04" || uiPreview === "s05") {
+        setRadioPage("desk");
+        if (uiPreview === "s05") {
+          setConfirmDialog({ kind: "desk-purchase", itemId: "mint-mug" });
+        }
+      } else if (uiPreview === "s06" || uiPreview === "s07") {
+        setRadioPage("work");
+        setWorkTab(uiPreview === "s06" ? "connect" : "task");
+      } else if (uiPreview === "s08" || uiPreview === "s09") {
+        setRadioPage("status-log");
+        setStatusLogTab(uiPreview === "s08" ? "status" : "log");
+      } else if (uiPreview === "s11") {
+        setRadioPage("status-log");
+        setStatusLogTab("status");
+      }
+    });
+    return () => {
+      disposed = true;
+    };
+  }, [uiPreview]);
+
+  useEffect(() => {
+    if (!pendingCatStyle && !confirmDialog && !onboardingOpen) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setPendingCatStyle(null);
+      setConfirmDialog(null);
+      if (!uiPreview) setOnboardingOpen(false);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [confirmDialog, onboardingOpen, pendingCatStyle, uiPreview]);
 
   useEffect(() => {
     keycapAudioPoolRef.current = KEYCAP_CLICK_SOUNDS.map((source) => {
@@ -1334,6 +1544,68 @@ export default function Home() {
     setBridgeState("disconnected");
   }
 
+  function requestDisconnectCompanion() {
+    setConfirmDialog({ kind: "disconnect" });
+  }
+
+  function requestDeskItem(item: DeskItem) {
+    if (item.tier > 2) {
+      setToast(`${item.label}은 Tier ${item.tier}에서 열려요.`);
+      return;
+    }
+    if (ownedDeskItems.has(item.id)) {
+      setEquippedDeskItems((current) => ({
+        ...current,
+        [activeDeskSeat]: item.id,
+      }));
+      chooseDecor(item.decor);
+      setToast(`${item.label}을 자리 ${activeDeskSeat.slice(-1)}에 놓았어요.`);
+      return;
+    }
+    setConfirmDialog({ kind: "desk-purchase", itemId: item.id });
+  }
+
+  function confirmDeskPurchase(item: DeskItem) {
+    if (purchaseLockedRef.current) return;
+    purchaseLockedRef.current = true;
+    try {
+      if (ownedDeskItems.has(item.id)) {
+        setEquippedDeskItems((current) => ({
+          ...current,
+          [activeDeskSeat]: item.id,
+        }));
+        chooseDecor(item.decor);
+        setConfirmDialog(null);
+        return;
+      }
+      if (shells < item.price) {
+        setToast(`조개 ${item.price - shells}개가 더 필요해요.`);
+        return;
+      }
+      const nextShells = shells - item.price;
+      const nextOwned = new Set(ownedDeskItems);
+      nextOwned.add(item.id);
+      setShells(nextShells);
+      setOwnedDeskItems(nextOwned);
+      setEquippedDeskItems((current) => ({
+        ...current,
+        [activeDeskSeat]: item.id,
+      }));
+      window.localStorage.setItem(SHELL_KEY, String(nextShells));
+      window.localStorage.setItem(
+        DESK_OWNERSHIP_KEY,
+        JSON.stringify([...nextOwned]),
+      );
+      chooseDecor(item.decor);
+      setConfirmDialog(null);
+      setToast(`${item.label}을 구매하고 바로 배치했어요.`);
+    } finally {
+      window.setTimeout(() => {
+        purchaseLockedRef.current = false;
+      }, 240);
+    }
+  }
+
   async function selectSession(threadId: string) {
     setSelectedThreadId(threadId);
     window.localStorage.setItem(SELECTED_SESSION_KEY, threadId);
@@ -1482,6 +1754,7 @@ export default function Home() {
     }
     keycapFeedbackPrimedRef.current = false;
     setRadioPage(page);
+    if (page === "cats") setCatPage("list");
     setRadioOpen(true);
     resetHudTimer();
   }
@@ -1699,25 +1972,115 @@ export default function Home() {
                 : ""
             }`}
           >
-            {radioPage === "cats" && (
-              <section className="panel-section task-composer">
+            {radioPage === "cats" && catPage === "list" && (
+              <section className="panel-section cat-list-panel">
                 <div className="section-heading">
                   <div>
                     <span className="section-kicker">MY CATS</span>
-                    <h2>고양이 관리</h2>
+                    <h2>지금 일하는 고양이</h2>
+                    <small>최대 네 마리까지 자리를 맡길 수 있어요</small>
                   </div>
                 </div>
+                <div className="cat-list-grid" role="list" aria-label="고양이 목록">
+                  {Array.from({ length: 4 }, (_, index) => {
+                    const seatId = `seat-${index + 1}` as SeatId;
+                    const seat =
+                      seatViews.find((candidate) => candidate.seatId === seatId) ??
+                      (index === 0 ? seatViews[0] : null);
+                    if (!seat) {
+                      return (
+                        <button
+                          type="button"
+                          className="cat-list-card empty"
+                          key={seatId}
+                          onClick={() => {
+                            setWorkTab("connect");
+                            setRadioPage("work");
+                          }}
+                        >
+                          <span className="cat-card-avatar plus" aria-hidden="true" />
+                          <span>
+                            <strong>빈 자리 {index + 1}</strong>
+                            <small>Codex 세션 연결</small>
+                          </span>
+                        </button>
+                      );
+                    }
+                    const attention =
+                      (seat.hunger ?? 0) >= 70 || (seat.toilet ?? 0) >= 70;
+                    return (
+                      <button
+                        type="button"
+                        className={[
+                          "cat-list-card",
+                          index === 0 ? "selected" : "",
+                          attention ? "attention" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        key={seatId}
+                        onClick={() => {
+                          setSelectedSeat(seatId);
+                          setCatPage("detail");
+                        }}
+                      >
+                        <span className="cat-card-avatar" aria-hidden="true" />
+                        <span className="cat-card-copy">
+                          <strong>{seat.agentName}</strong>
+                          <small>{seat.statusLabel}</small>
+                          <span className="cat-card-gauges" aria-hidden="true">
+                            <i>
+                              <b style={{ width: `${seat.hunger ?? 0}%` }} />
+                            </i>
+                            <i>
+                              <b style={{ width: `${seat.toilet ?? 0}%` }} />
+                            </i>
+                            <i>
+                              <b style={{ width: `${seat.happiness ?? 0}%` }} />
+                            </i>
+                          </span>
+                        </span>
+                        <em>{attention ? "돌봄" : "상세"}</em>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  className="cat-add-button"
+                  onClick={() => {
+                    setWorkTab("connect");
+                    setRadioPage("work");
+                  }}
+                >
+                  고양이 추가하기
+                  <small>내 PC의 Codex 세션을 새 자리에 연결해요</small>
+                </button>
+              </section>
+            )}
 
+            {radioPage === "cats" && catPage === "detail" && (
+              <section className="panel-section cat-detail-panel">
+                <button
+                  type="button"
+                  className="game-back-button"
+                  onClick={() => setCatPage("list")}
+                >
+                  고양이 목록
+                </button>
                 <div className="cat-roster">
-                  <div className="cat-roster-head">
-                    <b>
-                      지금 일하는 고양이{" "}
-                      {Math.max(1, Math.min(4, runtimeList.length))}마리
-                    </b>
-                    <small>
-                      {focusedRuntime?.agentName ?? "코치 모모"} ·{" "}
-                      {focusedRuntime ? STATUS_COPY[focusedRuntime.status] : "대기 중"}
-                    </small>
+                  <div className="cat-roster-head cat-profile-head">
+                    <span className="cat-card-avatar" aria-hidden="true" />
+                    <span>
+                      <b>{focusedRuntime?.agentName ?? "코치 모모"}</b>
+                      <small>
+                        자리 {(selectedSeat ?? "seat-1").slice(-1)} ·{" "}
+                        {focusedRuntime
+                          ? STATUS_COPY[focusedRuntime.status]
+                          : "대기 중"}
+                      </small>
+                    </span>
+                    <em>행복 {Math.round(focusedCatNeeds.happiness)}</em>
                   </div>
                   <div
                     className="cat-needs-summary"
@@ -1750,29 +2113,29 @@ export default function Home() {
                       const owned = ownedCatStyles.has(style.id);
                       const selected = catStyle === style.id;
                       return (
-                      <button
-                        type="button"
-                        key={style.id}
-                        role="radio"
-                        aria-checked={selected}
-                        className={[
-                          selected ? "selected" : "",
-                          owned ? "owned" : "for-sale",
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
-                        onClick={() => requestCatLook(style.id)}
-                        title={style.ko}
-                      >
-                        <span>{style.id}</span>
-                        <small>
-                          {selected
-                            ? "사용 중"
-                            : owned
-                              ? "보유"
-                              : `${CAT_STYLE_PRICES[style.id]} 조개`}
-                        </small>
-                      </button>
+                        <button
+                          type="button"
+                          key={style.id}
+                          role="radio"
+                          aria-checked={selected}
+                          className={[
+                            selected ? "selected" : "",
+                            owned ? "owned" : "for-sale",
+                          ]
+                            .filter(Boolean)
+                            .join(" ")}
+                          onClick={() => requestCatLook(style.id)}
+                          title={style.ko}
+                        >
+                          <span>{style.id}</span>
+                          <small>
+                            {selected
+                              ? "사용 중"
+                              : owned
+                                ? "보유"
+                                : `${CAT_STYLE_PRICES[style.id]} 조개`}
+                          </small>
+                        </button>
                       );
                     })}
                   </div>
@@ -1793,18 +2156,6 @@ export default function Home() {
                       간식 주기
                     </button>
                   </div>
-
-                  <button
-                    type="button"
-                    className="cat-add-button"
-                    onClick={() => {
-                      setWorkTab("connect");
-                      setRadioPage("work");
-                    }}
-                  >
-                    고양이 추가하기
-                    <small>내 PC의 Codex 세션을 하나 더 연결하면 그 세션이 새 고양이가 됩니다</small>
-                  </button>
                 </div>
               </section>
             )}
@@ -1834,27 +2185,59 @@ export default function Home() {
                     ),
                   )}
                 </div>
-                <div className="desk-tier-list">
-                  {WORKSTATION_TIER_COSTS.map((cost, tier) => (
-                    <article className={tier === 0 ? "unlocked" : ""} key={tier}>
-                      <span>TIER {tier}</span>
-                      <div>
-                        <strong>
-                          {tier === 0 ? "기본 업무 자리" : `자리 꾸미기 ${tier}단계`}
-                        </strong>
-                        <small>
-                          {tier === 0
-                            ? "현재 3D 월드에 배치된 기본 구성"
-                            : `해금 비용 ${cost} 조개 · 3D 실물 반영은 다음 개발 묶음`}
-                        </small>
-                      </div>
-                      <em>{tier === 0 ? "사용 중" : "준비 중"}</em>
-                    </article>
-                  ))}
+                <div className="desk-tier-summary">
+                  <span>
+                    <strong>나의 업무 자리</strong>
+                    <small>Tier 2 · 다음 해금 {WORKSTATION_TIER_COSTS[3]} 조개</small>
+                  </span>
+                  <em>{shells} 조개</em>
+                  <i aria-label="Tier 진행 68%">
+                    <b style={{ width: "68%" }} />
+                  </i>
+                </div>
+                <div className="desk-item-grid" role="group" aria-label="자리 소품">
+                  {DESK_ITEMS.map((item) => {
+                    const owned = ownedDeskItems.has(item.id);
+                    const equipped = equippedDeskItemId === item.id;
+                    const locked = item.tier > 2;
+                    return (
+                      <button
+                        type="button"
+                        className={[
+                          "desk-item-card",
+                          equipped ? "equipped" : "",
+                          locked ? "locked" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        key={item.id}
+                        onClick={() => requestDeskItem(item)}
+                      >
+                        <span
+                          className="desk-item-preview"
+                          style={{
+                            backgroundImage: `url("${item.preview}")`,
+                            backgroundPosition: item.previewPosition,
+                          }}
+                          aria-hidden="true"
+                        />
+                        <strong>{item.label}</strong>
+                        <small>{item.note}</small>
+                        <em>
+                          {equipped
+                            ? "장착 중"
+                            : locked
+                              ? `Tier ${item.tier}`
+                              : owned
+                                ? "장착"
+                                : `${item.price} 조개`}
+                        </em>
+                      </button>
+                    );
+                  })}
                 </div>
                 <p className="desk-safety-note">
-                  꾸미기는 실제 Codex 작업과 분리되며 작업 중 애니메이션을
-                  중단하지 않습니다.
+                  소품만 바뀌며 고양이와 책상은 다시 불러오지 않아요.
                 </p>
               </section>
             )}
@@ -2020,7 +2403,7 @@ export default function Home() {
                       <button
                         type="button"
                         className="session-disconnect"
-                        onClick={disconnectCompanion}
+                        onClick={requestDisconnectCompanion}
                       >
                         연결 해제
                       </button>
@@ -2047,10 +2430,21 @@ export default function Home() {
                           </button>
                         ))
                       ) : (
-                        <div className="session-empty">
-                          {sessionsLoading
-                            ? "PC의 Codex 세션을 확인하고 있어요…"
-                            : "표시할 Codex 세션이 없습니다."}
+                        <div className="ui-empty-state session-empty">
+                          <span
+                            className={`ui-empty-icon ${
+                              sessionsLoading ? "loading" : "offline"
+                            }`}
+                            aria-hidden="true"
+                          />
+                          <strong>
+                            {sessionsLoading ? "세션 확인 중" : "연결된 세션이 없어요"}
+                          </strong>
+                          <p>
+                            {sessionsLoading
+                              ? "내 PC의 Codex 세션을 불러오고 있어요."
+                              : "연결 코드를 확인한 뒤 다시 시도해 주세요."}
+                          </p>
                         </div>
                       )}
                     </div>
@@ -2102,7 +2496,26 @@ export default function Home() {
                     {STATUS_COPY[focusedRuntime?.status ?? "idle"]}
                   </span>
                 </div>
-                {focusedRuntime?.activeTask ? (
+                {uiPreview === "s11" ? (
+                  <div className="ui-empty-state state-error">
+                    <span className="ui-empty-icon error" aria-hidden="true" />
+                    <strong>PC 연결을 확인해 주세요</strong>
+                    <p>
+                      오프라인 상태라 작업 상태를 불러오지 못했어요. 연결 화면에서
+                      다시 확인할 수 있어요.
+                    </p>
+                    <button
+                      type="button"
+                      className="game-button primary"
+                      onClick={() => {
+                        setRadioPage("work");
+                        setWorkTab("connect");
+                      }}
+                    >
+                      연결 화면 열기
+                    </button>
+                  </div>
+                ) : focusedRuntime?.activeTask ? (
                   <>
                     <div className="task-agent">
                       <span
@@ -2160,9 +2573,10 @@ export default function Home() {
                       )}
                   </>
                 ) : (
-                  <div className="empty-task">
+                  <div className="ui-empty-state empty-task">
+                    <span className="ui-empty-icon idle" aria-hidden="true" />
                     <strong>모두 쉬고 있어요</strong>
-                    <p>업무를 입력하거나 화면 시연을 시작해 보세요.</p>
+                    <p>업무 지시에서 새 일을 맡겨 보세요.</p>
                   </div>
                 )}
                 <div className="free-decor">
@@ -2211,7 +2625,11 @@ export default function Home() {
                       </li>
                     ))
                   ) : (
-                    <li className="empty-log">아직 들어온 이벤트가 없습니다.</li>
+                    <li className="ui-empty-state empty-log">
+                      <span className="ui-empty-icon log" aria-hidden="true" />
+                      <strong>아직 활동 기록이 없어요</strong>
+                      <p>고양이가 일을 시작하면 최근 기록이 여기에 쌓여요.</p>
+                    </li>
                   )}
                 </ol>
                 {events.length > 0 && (
@@ -2239,7 +2657,13 @@ export default function Home() {
       )}
 
       {pendingCatStyle && (
-        <div className="style-purchase-backdrop" role="presentation">
+        <div
+          className="style-purchase-backdrop"
+          role="presentation"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) setPendingCatStyle(null);
+          }}
+        >
           <section
             className="style-purchase-modal"
             role="dialog"
@@ -2291,8 +2715,196 @@ export default function Home() {
         </div>
       )}
 
-      {approvalEvent && (
-        <div className="approval-backdrop" role="presentation">
+      {onboardingOpen && (
+        <div
+          className="style-purchase-backdrop onboarding-backdrop"
+          role="presentation"
+          onPointerDown={(event) => {
+            if (event.target !== event.currentTarget || uiPreview === "s00") return;
+            setOnboardingOpen(false);
+          }}
+        >
+          <section
+            className="style-purchase-modal onboarding-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="onboarding-title"
+          >
+            <span className="style-purchase-title" id="onboarding-title">
+              내 PC와 첫 연결
+            </span>
+            <button
+              type="button"
+              className="game-popup-close"
+              aria-label="첫 연결 안내 닫기"
+              onClick={() => {
+                window.localStorage.setItem(ONBOARDING_KEY, "done");
+                setOnboardingOpen(false);
+              }}
+            >
+              닫기
+            </button>
+            <div className="onboarding-copy">
+              <span className="onboarding-cat" aria-hidden="true" />
+              <strong>고양이에게 첫 업무 자리를 만들어 주세요</strong>
+              <p>
+                PC Companion에 표시된 여섯 자리 연결 코드를 입력하면 Codex 세션이
+                고양이로 나타나요.
+              </p>
+              <ol aria-label="연결 순서">
+                <li><b>1</b> PC Companion 실행</li>
+                <li><b>2</b> 여섯 자리 코드 확인</li>
+                <li><b>3</b> 연결 화면에서 한 번 입력</li>
+              </ol>
+              <button
+                type="button"
+                className="game-button primary onboarding-start"
+                onClick={() => {
+                  window.localStorage.setItem(ONBOARDING_KEY, "done");
+                  setOnboardingOpen(false);
+                  setRadioPage("work");
+                  setWorkTab("connect");
+                  setRadioOpen(true);
+                }}
+              >
+                연결 시작하기
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {pendingDeskItem && (
+        <div
+          className="style-purchase-backdrop"
+          role="presentation"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) setConfirmDialog(null);
+          }}
+        >
+          <section
+            className="style-purchase-modal desk-purchase-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="desk-purchase-title"
+          >
+            <span className="style-purchase-title" id="desk-purchase-title">
+              자리 소품 구매
+            </span>
+            <button
+              type="button"
+              className="game-popup-close"
+              aria-label="자리 소품 구매 닫기"
+              onClick={() => setConfirmDialog(null)}
+            >
+              닫기
+            </button>
+            <div className="style-purchase-copy">
+              <span
+                className="desk-purchase-preview"
+                style={{
+                  backgroundImage: `url("${pendingDeskItem.preview}")`,
+                  backgroundPosition: pendingDeskItem.previewPosition,
+                }}
+                aria-hidden="true"
+              />
+              <strong>{pendingDeskItem.label}</strong>
+              <p>
+                자리 {activeDeskSeat.slice(-1)}에 바로 배치할까요? 한 번 구매한
+                소품은 추가 비용 없이 다시 쓸 수 있어요.
+              </p>
+              <div className="style-purchase-balance">
+                <span>가격 {pendingDeskItem.price} 조개</span>
+                <span>보유 {shells} 조개</span>
+              </div>
+              <div className="style-purchase-actions">
+                <button
+                  type="button"
+                  className="game-button secondary"
+                  onClick={() => setConfirmDialog(null)}
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  className="game-button primary"
+                  disabled={shells < pendingDeskItem.price}
+                  onClick={() => confirmDeskPurchase(pendingDeskItem)}
+                >
+                  {shells < pendingDeskItem.price ? "조개 부족" : "구매하고 배치"}
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {confirmDialog?.kind === "disconnect" && (
+        <div
+          className="style-purchase-backdrop"
+          role="presentation"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) setConfirmDialog(null);
+          }}
+        >
+          <section
+            className="style-purchase-modal important-confirm-modal"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="disconnect-confirm-title"
+          >
+            <span className="style-purchase-title" id="disconnect-confirm-title">
+              PC 연결 해제
+            </span>
+            <button
+              type="button"
+              className="game-popup-close"
+              aria-label="연결 해제 확인 닫기"
+              onClick={() => setConfirmDialog(null)}
+            >
+              닫기
+            </button>
+            <div className="style-purchase-copy">
+              <span className="important-warning-icon" aria-hidden="true" />
+              <strong>정말 연결을 해제할까요?</strong>
+              <p>
+                진행 중인 작업 표시는 멈추고 PC 세션 목록이 사라집니다. Codex의
+                실제 작업 파일은 삭제되지 않아요.
+              </p>
+              <div className="style-purchase-actions">
+                <button
+                  type="button"
+                  className="game-button secondary"
+                  onClick={() => setConfirmDialog(null)}
+                >
+                  계속 연결
+                </button>
+                <button
+                  type="button"
+                  className="game-button danger"
+                  onClick={() => {
+                    disconnectCompanion();
+                    setConfirmDialog(null);
+                  }}
+                >
+                  연결 해제
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {visibleApprovalEvent && (
+        <div
+          className="approval-backdrop"
+          role="presentation"
+          onPointerDown={(event) => {
+            if (event.target !== event.currentTarget) return;
+            if (approvalEvent) void decide("cancel");
+            else setUiPreview(null);
+          }}
+        >
           <section
             className="approval-modal"
             role="dialog"
@@ -2304,7 +2916,10 @@ export default function Home() {
               type="button"
               className="game-popup-close approval-close"
               aria-label="승인 요청 닫기"
-              onClick={() => void decide("cancel")}
+              onClick={() => {
+                if (approvalEvent) void decide("cancel");
+                else setUiPreview(null);
+              }}
             >
               닫기
             </button>
@@ -2315,32 +2930,33 @@ export default function Home() {
             <div className="approval-copy">
               <span className="section-kicker">MANAGER REPORT</span>
               <span className="approval-count">
-                대기 {approvalQueue.length}건 · 먼저 온 요청부터 표시
+                대기 {Math.max(1, approvalQueue.length)}건 · 먼저 온 요청부터 표시
               </span>
-              <h2 id="approval-title">{approvalEvent.title}</h2>
-              <p>{approvalEvent.detail}</p>
-              {approvalEvent.command && (
+              <h2 id="approval-title">{visibleApprovalEvent.title}</h2>
+              <p>{visibleApprovalEvent.detail}</p>
+              {visibleApprovalEvent.command && (
                 <pre className="approval-command">
-                  <code>{approvalEvent.command}</code>
+                  <code>{visibleApprovalEvent.command}</code>
                 </pre>
               )}
-              {approvalEvent.files && approvalEvent.files.length > 0 && (
+              {visibleApprovalEvent.files &&
+                visibleApprovalEvent.files.length > 0 && (
                 <div className="approval-detail">
-                  변경 파일 {approvalEvent.files.length}개
+                  변경 파일 {visibleApprovalEvent.files.length}개
                 </div>
               )}
-              {Boolean(approvalEvent.permissions) && (
+              {Boolean(visibleApprovalEvent.permissions) && (
                 <div className="approval-detail">
                   추가 권한 요청 내용이 포함되어 있습니다.
                 </div>
               )}
-              {approvalEvent.usage && (
+              {visibleApprovalEvent.usage && (
                 <div className="token-row">
                   <span>
                     입력{" "}
                     <b>
                       {compactNumber(
-                        normalizeUsage(approvalEvent.usage)?.input_tokens,
+                        normalizeUsage(visibleApprovalEvent.usage)?.input_tokens,
                       )}
                     </b>
                   </span>
@@ -2348,7 +2964,7 @@ export default function Home() {
                     캐시{" "}
                     <b>
                       {compactNumber(
-                        normalizeUsage(approvalEvent.usage)?.cached_input_tokens,
+                        normalizeUsage(visibleApprovalEvent.usage)?.cached_input_tokens,
                       )}
                     </b>
                   </span>
@@ -2356,7 +2972,7 @@ export default function Home() {
                     출력{" "}
                     <b>
                       {compactNumber(
-                        normalizeUsage(approvalEvent.usage)?.output_tokens,
+                        normalizeUsage(visibleApprovalEvent.usage)?.output_tokens,
                       )}
                     </b>
                   </span>
@@ -2366,21 +2982,30 @@ export default function Home() {
                 <button
                   type="button"
                   className="approve"
-                  onClick={() => void decide("approve")}
+                  onClick={() => {
+                    if (approvalEvent) void decide("approve");
+                    else setUiPreview(null);
+                  }}
                 >
                   이번 요청 승인
                 </button>
                 <button
                   type="button"
                   className="review"
-                  onClick={() => void decide("reject")}
+                  onClick={() => {
+                    if (approvalEvent) void decide("reject");
+                    else setUiPreview(null);
+                  }}
                 >
                   거절하고 계속
                 </button>
                 <button
                   type="button"
                   className="reject"
-                  onClick={() => void decide("cancel")}
+                  onClick={() => {
+                    if (approvalEvent) void decide("cancel");
+                    else setUiPreview(null);
+                  }}
                 >
                   작업 취소
                 </button>

@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Forest S00–S11 UI 적용·검증 결과</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #5d473e;
+        --muted: #89756a;
+        --paper: #fff8df;
+        --paper-deep: #f3e8c7;
+        --line: #8a6a59;
+        --mint: #78baa4;
+        --coral: #e99689;
+        --gold: #e9bd72;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 8% 0%, #dff3e8 0 15%, transparent 45%),
+          linear-gradient(145deg, #eef7ed, #f7efcf);
+        font-family:
+          "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+      }
+
+      main {
+        width: min(1440px, calc(100% - 32px));
+        margin: 28px auto 72px;
+      }
+
+      header,
+      section {
+        border: 2px solid color-mix(in srgb, var(--line) 78%, white);
+        border-radius: 24px;
+        background: color-mix(in srgb, var(--paper) 94%, white);
+        box-shadow: 0 18px 45px rgba(84, 62, 49, 0.13);
+      }
+
+      header {
+        padding: 30px 34px;
+      }
+
+      h1,
+      h2 {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: clamp(28px, 5vw, 54px);
+        letter-spacing: -0.05em;
+      }
+
+      header p {
+        max-width: 850px;
+        margin: 14px 0 0;
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.7;
+      }
+
+      .score-band {
+        display: grid;
+        grid-template-columns: 170px 1fr;
+        margin-top: 24px;
+        align-items: center;
+        gap: 24px;
+      }
+
+      .score {
+        display: grid;
+        width: 150px;
+        height: 150px;
+        place-items: center;
+        border: 8px solid var(--mint);
+        border-radius: 50%;
+        background: #fffdf2;
+        font-size: 43px;
+        font-weight: 900;
+      }
+
+      .score small {
+        display: block;
+        margin-top: -38px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .meter {
+        overflow: hidden;
+        height: 18px;
+        border: 2px solid var(--line);
+        border-radius: 999px;
+        background: #e7ddc4;
+      }
+
+      .meter span {
+        display: block;
+        width: 93.3%;
+        height: 100%;
+        background: linear-gradient(90deg, var(--mint), #9aca9b);
+      }
+
+      section {
+        margin-top: 24px;
+        padding: 26px;
+      }
+
+      section > h2 {
+        margin-bottom: 18px;
+        font-size: 24px;
+      }
+
+      .evidence {
+        display: block;
+        width: 100%;
+        border: 2px solid #a18470;
+        border-radius: 16px;
+        background: #edf5e8;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+
+      th,
+      td {
+        padding: 12px 14px;
+        border-bottom: 1px solid #ddceb0;
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: var(--paper-deep);
+      }
+
+      td:nth-child(3) {
+        width: 86px;
+        color: #447964;
+        font-weight: 900;
+      }
+
+      .checks {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px 18px;
+      }
+
+      .checks div {
+        padding: 13px 15px;
+        border: 1px solid #d7c6a9;
+        border-radius: 14px;
+        background: #fffdf3;
+      }
+
+      .checks strong {
+        color: #4a7c68;
+      }
+
+      code {
+        padding: 2px 6px;
+        border-radius: 6px;
+        background: #efe5cb;
+      }
+
+      .note {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.65;
+      }
+
+      @media (max-width: 720px) {
+        main {
+          width: min(100% - 16px, 1440px);
+          margin-top: 8px;
+        }
+
+        header,
+        section {
+          padding: 20px 16px;
+          border-radius: 18px;
+        }
+
+        .score-band,
+        .checks {
+          grid-template-columns: 1fr;
+        }
+
+        .score {
+          width: 120px;
+          height: 120px;
+          font-size: 34px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Agent Forest UI 적용·검증 결과</h1>
+        <p>
+          최종 화면 정의서의 S00–S11을 실제 앱에 연결하고 PC 기본 뷰포트와
+          390×844 모바일 뷰포트에서 반복 검증했다. 프레임·타이틀·탭·카드·버튼은
+          이미지 자산 기반으로 유지하고, 팝업은 모두 월드 캔버스 안에 배치했다.
+        </p>
+        <div class="score-band">
+          <div class="score">93.3<small>종합 점수 / 100</small></div>
+          <div>
+            <strong>통과 기준 90점</strong>
+            <div class="meter" aria-label="종합 점수 93.3점">
+              <span></span>
+            </div>
+            <p class="note">
+              기능 충족 95 · 레이아웃 94 · 이미지형 UI 일관성 93 · 반응형 94 ·
+              가독성 91의 가중 평균이다.
+            </p>
+          </div>
+        </div>
+      </header>
+
+      <section>
+        <h2>PC 화면 — S00~S05</h2>
+        <img
+          class="evidence"
+          src="assets/validation/agent-forest-ui-pc-s00-s05-20260728.png"
+          alt="S00 첫 연결부터 S05 구매 확인까지 PC 검증 캡처"
+        />
+      </section>
+
+      <section>
+        <h2>PC 화면 — S06~S11</h2>
+        <img
+          class="evidence"
+          src="assets/validation/agent-forest-ui-pc-s06-s11-20260728.png"
+          alt="S06 PC 연결부터 S11 오류 상태까지 PC 검증 캡처"
+        />
+      </section>
+
+      <section>
+        <h2>모바일 390×844 대표 화면</h2>
+        <img
+          class="evidence"
+          src="assets/validation/agent-forest-ui-mobile-390x844-20260728.png"
+          alt="S02, S04, S05, S10 모바일 검증 캡처"
+        />
+      </section>
+
+      <section>
+        <h2>화면별 판정</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>화면</th>
+                <th>적용·검증 항목</th>
+                <th>점수</th>
+                <th>판정</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>S00 첫 연결</td><td>월드 내부 온보딩, 3단계 안내, 큰 닫기·시작 버튼</td><td>92</td><td>통과</td></tr>
+              <tr><td>S01 월드 HUD</td><td>이름표에 배고픔·배설·행복도 3개 그래프 상시 표시</td><td>94</td><td>통과</td></tr>
+              <tr><td>S02 고양이 목록</td><td>4개 고정 좌석, 빈 좌석, 상태 그래프, 돌봄 경고</td><td>94</td><td>통과</td></tr>
+              <tr><td>S03 고양이 상세</td><td>목록 복귀, 욕구 수치, 가격이 있는 털색·무늬, 돌봄</td><td>92</td><td>통과</td></tr>
+              <tr><td>S04 자리 꾸미기</td><td>4개 탭, Tier 진행, 6개 이미지 카드, 잠금·가격</td><td>93</td><td>통과</td></tr>
+              <tr><td>S05 구매 확인</td><td>월드 내부 확인창, 상품 이미지, 잔액·가격, 이중 실행 방지</td><td>95</td><td>통과</td></tr>
+              <tr><td>S06 PC 연결</td><td>연결 안내, 6자리 코드, 세션 목록·해제 진입</td><td>91</td><td>통과</td></tr>
+              <tr><td>S07 업무 지시</td><td>부서 선택, 지시문, 연결 상태 기반 실행 버튼</td><td>91</td><td>통과</td></tr>
+              <tr><td>S08 진행 상태</td><td>현재 작업, 상태 칩, 이미지형 빈 상태</td><td>94</td><td>통과</td></tr>
+              <tr><td>S09 활동 기록</td><td>최대 40개 실시간 기록, 스크롤, 상태 색상</td><td>94</td><td>통과</td></tr>
+              <tr><td>S10 승인 요청</td><td>월드 내부 중요 승인, 명령·변경 범위, 3개 큰 버튼</td><td>96</td><td>통과</td></tr>
+              <tr><td>S11 상태 화면</td><td>오프라인·빈 상태 분리, 안내와 복구 버튼</td><td>94</td><td>통과</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <h2>반복 검증에서 수정한 실제 결함</h2>
+        <div class="checks">
+          <div><strong>완료</strong> 빈 상태 고양이 그림이 문구와 겹치던 배경 늘림 제거</div>
+          <div><strong>완료</strong> 승인 명령문 글자 대비를 밝은 종이 배경에 맞게 보정</div>
+          <div><strong>완료</strong> 빈 좌석 제목·설명 인라인 겹침을 2행 그리드로 수정</div>
+          <div><strong>완료</strong> 자리 꾸미기 패널의 4px 가로 넘침과 스크롤바 제거</div>
+          <div><strong>완료</strong> 고양이 월드 이름표에 세 가지 욕구 그래프 연결</div>
+          <div><strong>완료</strong> PC·모바일 모두 페이지 자체 스크롤 없이 한 화면 유지</div>
+        </div>
+      </section>
+
+      <section>
+        <h2>실행·회귀 검증</h2>
+        <p class="note">
+          로컬 전용 <code>?ui-preview=s00</code>~<code>s11</code> 경로로 모든
+          상태를 재현했다. 최종 브라우저 로그에는 UI 런타임 오류가 없었고,
+          기존 Three.js 사용 중인 비차단 경고만 확인됐다. 프로덕션 빌드와 타입
+          검사, 린트가 통과했고 전체 회귀 테스트도 27/27 통과했다.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

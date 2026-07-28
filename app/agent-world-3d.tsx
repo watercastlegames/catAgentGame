@@ -30,6 +30,9 @@ export type SeatView = {
   status: string;
   statusLabel: string;
   blocked: boolean;
+  hunger?: number;
+  toilet?: number;
+  happiness?: number;
 };
 
 type AgentWorld3DProps = {
@@ -51,6 +54,9 @@ const DEFAULT_SEAT_VIEW: SeatView = {
   status: "idle",
   statusLabel: "대기 중",
   blocked: false,
+  hunger: 0,
+  toilet: 0,
+  happiness: 50,
 };
 
 const TENT_WORKSTATION_POSITION = new THREE.Vector3(-2.05, 0, -3.65);
@@ -165,8 +171,8 @@ const MARKER_BEACON_RENDER_ORDER = 241;
 
 // 타건 중 이름표는 고양이의 로컬 오프셋이 아니라 실제 모니터의 월드 좌표에 고정한다.
 // 모니터 회전과 화면 크기, 이름표 높이까지 반영해 화면 상단과 일정한 간격을 유지한다.
-const MARKER_LABEL_LOCAL_Y = 1.12;
-const MARKER_LABEL_HEIGHT = 0.235;
+const MARKER_LABEL_LOCAL_Y = 1.17;
+const MARKER_LABEL_HEIGHT = 0.31;
 const MARKER_DESK_LIFT_Y = 0.12;
 const MONITOR_MARKER_GAP = 0.075;
 const LOW_MONITOR_SCREEN_WORLD_POSITION =
@@ -2079,29 +2085,61 @@ function createInteractionProxy(clickTargetId: string, radius = 0.5) {
   return proxy;
 }
 
-function createAgentMarker(agentName: string) {
+function createAgentMarker(initialSeat: SeatView) {
   const marker = new THREE.Group();
-  marker.name = `agent-marker-${agentName}`;
+  marker.name = `agent-marker-${initialSeat.agentName}`;
   const canvas = document.createElement("canvas");
   canvas.width = 384;
-  canvas.height = 96;
+  canvas.height = 128;
   const context = canvas.getContext("2d");
-  if (context) {
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  let signature = "";
+  const update = (seat: SeatView) => {
+    const nextSignature = [
+      seat.agentName,
+      Math.round(seat.hunger ?? 0),
+      Math.round(seat.toilet ?? 0),
+      Math.round(seat.happiness ?? 50),
+    ].join(":");
+    if (!context || nextSignature === signature) return;
+    signature = nextSignature;
+    context.clearRect(0, 0, canvas.width, canvas.height);
     context.fillStyle = "rgba(251, 241, 213, 0.96)";
     context.strokeStyle = "#816553";
-    context.lineWidth = 8;
+    context.lineWidth = 7;
     context.beginPath();
-    context.roundRect(8, 8, 368, 80, 22);
+    context.roundRect(8, 8, 368, 112, 22);
     context.fill();
     context.stroke();
     context.fillStyle = "#4d4038";
-    context.font = "700 34px sans-serif";
+    context.font = "700 30px sans-serif";
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.fillText(agentName.slice(0, 14), 192, 49);
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
+    context.fillText(seat.agentName.slice(0, 14), 192, 40);
+
+    const gauges = [
+      { value: seat.hunger ?? 0, color: "#dfa56d" },
+      { value: seat.toilet ?? 0, color: "#7eb7aa" },
+      { value: seat.happiness ?? 50, color: "#e99a9a" },
+    ];
+    gauges.forEach(({ value, color }, index) => {
+      const x = 38 + index * 110;
+      context.fillStyle = "rgba(111, 88, 70, 0.18)";
+      context.beginPath();
+      context.roundRect(x, 72, 88, 18, 9);
+      context.fill();
+      context.fillStyle = color;
+      context.beginPath();
+      context.roundRect(x + 3, 75, Math.max(5, 82 * (value / 100)), 12, 6);
+      context.fill();
+      context.fillStyle = "#6d574c";
+      context.font = "700 16px sans-serif";
+      context.fillText(["●", "◆", "♥"][index], x + 44, 104);
+    });
+    texture.needsUpdate = true;
+  };
+  update(initialSeat);
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
@@ -2120,7 +2158,7 @@ function createAgentMarker(agentName: string) {
   marker.add(label);
 
   const beacon = new THREE.Group();
-  beacon.name = `blocked-beacon-${agentName}`;
+  beacon.name = `blocked-beacon-${initialSeat.agentName}`;
   const beaconMaterial = new THREE.MeshBasicMaterial({
     color: 0xd86c5f,
     depthTest: false,
@@ -2156,7 +2194,7 @@ function createAgentMarker(agentName: string) {
   marker.traverse((object) => {
     object.layers.set(MARKER_OVERLAY_LAYER);
   });
-  return { marker, label, beacon, texture };
+  return { marker, label, beacon, texture, update };
 }
 
 export default function AgentWorld3D({
@@ -2748,7 +2786,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       0.52,
     );
     const primaryMarker = createAgentMarker(
-      seatsRef.current[0]?.agentName ?? "코치 모모",
+      seatsRef.current[0] ?? DEFAULT_SEAT_VIEW,
     );
     const primaryMarkerAnchorTarget = new THREE.Vector3();
     characterRoot.add(primaryClickProxy, primaryMarker.marker);
@@ -2936,7 +2974,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       shadow.rotation.x = -Math.PI / 2;
       shadow.position.y = 0.012;
       root.add(shadow);
-      const marker = createAgentMarker(seat.agentName);
+      const marker = createAgentMarker(seat);
       marker.beacon.visible = seat.blocked;
       root.add(marker.marker);
       billboardObjects.push(marker.label, marker.beacon);
@@ -3001,6 +3039,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
                 .add(new THREE.Vector3(index * 0.52, 0, index * 0.18))
             : SEAT_WORLD_POSITIONS[seat.seatId];
         entry.root.position.copy(target);
+        entry.marker.update(seat);
         entry.marker.beacon.visible = seat.blocked;
         // 책상에서 일하는 동안에는 머리 위가 아니라 모니터 위쪽에 뜬다.
         entry.marker.marker.position.lerp(
@@ -3386,6 +3425,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const animationTime = suppressMonitorInteraction ? 0 : clock.elapsedTime;
       const primaryView = seatsRef.current[0] ?? DEFAULT_SEAT_VIEW;
       const isPrimaryBlocked = primaryView.blocked;
+      primaryMarker.update(primaryView);
       primaryMarker.beacon.visible = isPrimaryBlocked;
       syncSecondaryAgents(delta);
       const connectionState = connectionRef.current;

@@ -3689,3 +3689,518 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+/* S00–S11 final screen pass: every interactive surface uses the same painted kit. */
+.radio-screen {
+  font-size: 13px;
+}
+
+.radio-screen .section-heading h2,
+.radio-screen .cat-roster-head b,
+.radio-screen .active-task-card h3 {
+  font-size: 19px;
+}
+
+.radio-screen .section-heading small,
+.radio-screen .cat-roster-head small,
+.radio-screen .ui-card small {
+  font-size: 11px;
+}
+
+.cat-list-panel,
+.cat-detail-panel {
+  min-height: 100%;
+}
+
+.cat-list-grid {
+  display: grid;
+  gap: 7px;
+}
+
+.cat-list-card {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  min-height: 76px;
+  padding: 8px 11px;
+  align-items: center;
+  border: 0;
+  color: #604d45;
+  background: url("/art/ui/slices/card-default-v2.png") center / 100% 100%
+    no-repeat;
+  font-family: "Gowun Dodum", sans-serif;
+  text-align: left;
+  cursor: pointer;
+  gap: 10px;
+}
+
+.cat-list-card.selected {
+  background-image: url("/art/ui/slices/card-selected-v2.png");
+}
+
+.cat-list-card.attention {
+  filter: drop-shadow(0 0 0.5px #bd6b58);
+}
+
+.cat-list-card.empty {
+  color: #877468;
+  background-image: url("/art/ui/slices/card-thumbnail-v2.png");
+}
+
+.cat-list-card.empty > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.cat-list-card.empty > span:last-child > strong,
+.cat-list-card.empty > span:last-child > small {
+  display: block;
+}
+
+.cat-card-avatar {
+  display: block;
+  width: 52px;
+  height: 52px;
+  background:
+    url("/art/ui/slices/icon-paw-v2.png") center / 46% 46% no-repeat,
+    url("/art/ui/slices/card-thumbnail-v2.png") center / 100% 100% no-repeat;
+}
+
+.cat-card-avatar.plus {
+  background-image:
+    url("/art/ui/slices/icon-plus-v2.png"),
+    url("/art/ui/slices/card-thumbnail-v2.png");
+}
+
+.cat-card-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.cat-card-copy strong,
+.cat-list-card > span > strong {
+  font-family: "Gaegu", sans-serif;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.cat-card-copy small,
+.cat-list-card > span > small {
+  color: #8b766a;
+  font-size: 10px;
+}
+
+.cat-list-card > em {
+  min-width: 47px;
+  min-height: 25px;
+  padding: 5px 8px;
+  color: #6b574e;
+  background: url("/art/ui/slices/badge-pill-v2.png") center / 100% 100%
+    no-repeat;
+  font-family: "Gaegu", sans-serif;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+  text-align: center;
+}
+
+.cat-card-gauges {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 4px;
+  gap: 4px;
+}
+
+.cat-card-gauges i {
+  height: 7px;
+  padding: 1px;
+  background: url("/art/ui/slices/progress-track-v2.png") center / 100% 100%
+    no-repeat;
+}
+
+.cat-card-gauges b {
+  display: block;
+  height: 100%;
+  max-width: 100%;
+  background: #72ad9c;
+}
+
+.cat-card-gauges i:nth-child(2) b {
+  background: #dea06e;
+}
+
+.cat-card-gauges i:nth-child(3) b {
+  background: #e99694;
+}
+
+.game-back-button {
+  min-height: 37px;
+  margin: 0 0 7px;
+  padding: 4px 14px 7px 32px;
+  border: 0;
+  color: #654f46;
+  background:
+    url("/art/ui/slices/icon-refresh-v2.png") 11px 48% / 15px 15px no-repeat,
+    url("/art/ui/slices/button-secondary-v2.png") center / 100% 100% no-repeat;
+  font-family: "Gaegu", sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cat-profile-head {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.cat-profile-head .cat-card-avatar {
+  width: 46px;
+  height: 46px;
+}
+
+.cat-profile-head > span:nth-child(2) {
+  display: grid;
+}
+
+.cat-profile-head > em {
+  padding: 5px 8px;
+  background: url("/art/ui/slices/badge-pill-v2.png") center / 100% 100%
+    no-repeat;
+  font-family: "Gaegu", sans-serif;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.desk-tier-summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  margin: 0 0 8px;
+  padding: 9px 11px;
+  align-items: center;
+  background: url("/art/ui/slices/panel-strip-v2.png") center / 100% 100%
+    no-repeat;
+  gap: 4px 9px;
+}
+
+.desk-tier-summary > span {
+  display: grid;
+}
+
+.desk-tier-summary strong {
+  font-family: "Gaegu", sans-serif;
+  font-size: 16px;
+}
+
+.desk-tier-summary small {
+  color: #8b766a;
+  font-size: 9px;
+}
+
+.desk-tier-summary em {
+  font-family: "Gaegu", sans-serif;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.desk-tier-summary > i {
+  grid-column: 1 / -1;
+  height: 11px;
+  padding: 2px;
+  background: url("/art/ui/slices/progress-track-v2.png") center / 100% 100%
+    no-repeat;
+}
+
+.desk-tier-summary > i b {
+  display: block;
+  height: 100%;
+  background: #72aa93;
+}
+
+.desk-item-grid {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.desk-panel {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.desk-item-card {
+  display: grid;
+  min-width: 0;
+  min-height: 142px;
+  padding: 6px 6px 9px;
+  border: 0;
+  color: #5f4c44;
+  background: url("/art/ui/slices/card-default-v2.png") center / 100% 100%
+    no-repeat;
+  cursor: pointer;
+  gap: 1px;
+}
+
+.desk-item-card.equipped {
+  background-image: url("/art/ui/slices/card-selected-v2.png");
+}
+
+.desk-item-card.locked {
+  filter: grayscale(0.72);
+  opacity: 0.72;
+}
+
+.desk-item-preview,
+.desk-purchase-preview {
+  display: block;
+  width: 100%;
+  min-height: 76px;
+  border-radius: 9px;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  filter: saturate(0.86) brightness(1.04);
+}
+
+.desk-item-card strong {
+  font-family: "Gaegu", sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.05;
+}
+
+.desk-item-card small {
+  color: #8e796c;
+  font-size: 8px;
+}
+
+.desk-item-card em {
+  justify-self: center;
+  margin-top: 3px;
+  padding: 2px 7px 4px;
+  background: url("/art/ui/slices/badge-pill-v2.png") center / 100% 100%
+    no-repeat;
+  font-family: "Gaegu", sans-serif;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.ui-empty-state {
+  display: grid;
+  min-height: 210px;
+  padding: 20px 24px;
+  place-items: center;
+  align-content: center;
+  background: url("/art/ui/slices/panel-card-v2.png") center / 100% 100%
+    no-repeat;
+  text-align: center;
+  gap: 6px;
+}
+
+.ui-empty-state > strong {
+  color: #604d45;
+  font-family: "Gaegu", sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.ui-empty-state > p {
+  max-width: 260px;
+  margin: 0;
+  color: #857066;
+  font-size: 11px;
+}
+
+.ui-empty-icon {
+  display: block;
+  width: 56px;
+  height: 56px;
+  background:
+    url("/art/ui/slices/icon-paw-v2.png") center / 52% 52% no-repeat,
+    url("/art/ui/slices/card-thumbnail-v2.png") center / 100% 100% no-repeat;
+}
+
+.ui-empty-state > strong,
+.ui-empty-state > p,
+.ui-empty-state > button,
+.ui-empty-icon {
+  position: relative;
+  z-index: 1;
+}
+
+.ui-empty-icon.offline,
+.ui-empty-icon.error {
+  background-image:
+    url("/art/ui/slices/icon-warning-v2.png"),
+    url("/art/ui/slices/card-thumbnail-v2.png");
+}
+
+.ui-empty-icon.loading {
+  background-image:
+    url("/art/ui/slices/icon-refresh-v2.png"),
+    url("/art/ui/slices/card-thumbnail-v2.png");
+  animation: emptyIconPulse 1s ease-in-out infinite;
+}
+
+.ui-empty-icon.log {
+  background-image:
+    url("/art/ui/slices/icon-check-v2.png"),
+    url("/art/ui/slices/card-thumbnail-v2.png");
+}
+
+.session-empty.ui-empty-state {
+  min-height: 225px;
+}
+
+.activity-log .empty-log.ui-empty-state {
+  display: grid;
+  min-height: 245px;
+}
+
+.approval-command,
+.approval-detail {
+  color: #654f46;
+}
+
+.approval-command code {
+  color: inherit;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.game-button.danger {
+  color: #6f423c;
+  background: url("/art/ui/slices/button-danger-v2.png") center / 100% 100%
+    no-repeat;
+}
+
+.onboarding-modal {
+  width: min(90%, 410px);
+  min-height: 470px;
+}
+
+.onboarding-copy {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  gap: 10px;
+}
+
+.onboarding-cat {
+  display: block;
+  width: 100px;
+  height: 100px;
+  background:
+    url("/art/ui/slices/icon-paw-v2.png") center / 44% 44% no-repeat,
+    url("/art/ui/slices/card-selected-v2.png") center / 100% 100% no-repeat;
+}
+
+.onboarding-copy > strong {
+  max-width: 300px;
+  font-family: "Gaegu", sans-serif;
+  font-size: 24px;
+  line-height: 1.05;
+}
+
+.onboarding-copy > p {
+  max-width: 310px;
+  margin: 0;
+  font-size: 12px;
+}
+
+.onboarding-copy ol {
+  display: grid;
+  width: 100%;
+  margin: 4px 0;
+  padding: 10px 12px;
+  background: url("/art/ui/slices/panel-strip-v2.png") center / 100% 100%
+    no-repeat;
+  list-style: none;
+  text-align: left;
+  gap: 5px;
+}
+
+.onboarding-copy li {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  gap: 8px;
+}
+
+.onboarding-copy li b {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  background: url("/art/ui/slices/badge-pill-v2.png") center / 100% 100%
+    no-repeat;
+  font-family: "Gaegu", sans-serif;
+}
+
+.onboarding-start {
+  width: 100%;
+}
+
+.desk-purchase-preview {
+  width: min(100%, 250px);
+  min-height: 115px;
+  margin: 0 auto 8px;
+}
+
+.important-warning-icon {
+  display: block;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 8px;
+  background:
+    url("/art/ui/slices/icon-warning-v2.png") center / 50% 50% no-repeat,
+    url("/art/ui/slices/card-thumbnail-v2.png") center / 100% 100% no-repeat;
+}
+
+@keyframes emptyIconPulse {
+  50% {
+    transform: scale(0.94);
+  }
+}
+
+@media (max-width: 420px) {
+  .radio-screen {
+    font-size: 12px;
+  }
+
+  .radio-screen .section-heading h2,
+  .radio-screen .cat-roster-head b,
+  .radio-screen .active-task-card h3 {
+    font-size: 18px;
+  }
+
+  .cat-list-card {
+    min-height: 70px;
+    grid-template-columns: 50px minmax(0, 1fr) auto;
+  }
+
+  .cat-card-avatar {
+    width: 46px;
+    height: 46px;
+  }
+
+  .desk-item-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .desk-item-card {
+    min-height: 132px;
+  }
+
+  .onboarding-modal {
+    min-height: 445px;
+    padding-inline: 28px;
+  }
+}

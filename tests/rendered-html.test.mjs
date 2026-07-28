@@ -128,6 +128,17 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /CAT_LOOK_KEY/);
   assert.match(page, /agent-forest-shell-v1/);
   assert.match(page, /NEEDS_KEY/);
+  assert.match(page, /type CatPage = "list" \| "detail"/);
+  assert.match(page, /className="cat-list-grid"/);
+  assert.match(page, /className="panel-section cat-detail-panel"/);
+  assert.match(page, /className="desk-item-grid"/);
+  assert.match(page, /role="group" aria-label="자리 소품"/);
+  assert.match(page, /DESK_OWNERSHIP_KEY/);
+  assert.match(page, /purchaseLockedRef/);
+  assert.match(page, /confirmDeskPurchase/);
+  assert.match(page, /className="ui-empty-state state-error"/);
+  assert.match(page, /className="style-purchase-modal onboarding-modal"/);
+  assert.match(page, /ui-preview/);
   assert.match(catNeeds, /agent-forest-cat-needs-v1/);
   assert.match(catNeeds, /NEEDS_OFFLINE_CAP_MS = 12 \* 60 \* 60/);
   assert.match(page, /LEGACY_ACORN_KEY/);
@@ -455,6 +466,11 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.doesNotMatch(world3d, /disableWorldOutline/);
   assert.match(world3d, /SkeletonUtils/);
   assert.match(world3d, /SeatView/);
+  assert.match(world3d, /function createAgentMarker\(initialSeat: SeatView\)/);
+  assert.match(world3d, /seat\.hunger/);
+  assert.match(world3d, /seat\.toilet/);
+  assert.match(world3d, /seat\.happiness/);
+  assert.match(world3d, /marker\.update\(/);
   assert.match(world3d, /SEAT_WORLD_POSITIONS/);
   assert.match(world3d, /new THREE\.Raycaster/);
   assert.match(world3d, /completion-spectacle-particles/);
@@ -853,6 +869,16 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
       new URL("../public/art/menu-keycaps-pressed-1-v2.png", import.meta.url),
     ),
     access(new URL("../public/concept-approval.jpg", import.meta.url)),
+    ...[
+      "desk-basic-v1.png",
+      "desk-tent-v1.png",
+      "desk-radio-v1.png",
+      "desk-cushion-v1.png",
+      "desk-planter-v1.png",
+      "desk-lantern-v1.png",
+    ].map((file) =>
+      access(new URL(`../public/art/ui/desk-items/${file}`, import.meta.url)),
+    ),
     access(new URL("../bridge/server.mjs", import.meta.url)),
   ]);
 });
