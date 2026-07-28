@@ -31,7 +31,14 @@ import {
   getHappinessBand,
   getNeedTone,
   parseCatNeedsStore,
+  updateCatNeedState,
 } from "./cat-needs";
+import {
+  CAT_STYLE_OWNERSHIP_KEY,
+  CAT_STYLE_PRICES,
+  parseOwnedCatStyles,
+  purchaseCatStyle,
+} from "./cat-style-economy";
 
 type Department = "general" | "coding" | "design" | "music";
 type AgentStatus =
@@ -196,6 +203,12 @@ const RADIO_MENU: Array<{ key: RadioPage; ariaLabel: string }> = [
   { key: "work", ariaLabel: "PC 연결과 업무 지시" },
   { key: "status-log", ariaLabel: "진행 상태와 활동 기록" },
 ];
+const RADIO_TITLES: Record<RadioPage, string> = {
+  cats: "고양이 돌보기",
+  desk: "자리 꾸미기",
+  work: "PC 연결 · 업무",
+  "status-log": "진행 상황 · 기록",
+};
 const KEYCAP_CLICK_SOUNDS = [
   "/audio/keycap-click-1.mp3",
   "/audio/keycap-click-2.mp3",
@@ -343,6 +356,10 @@ export default function Home() {
   const [audioEnabled, setAudioEnabled] = useState(true);
   // 고양이 외형 — 지금은 섬 전체가 한 마리라 전역 하나. 좌석별로 나눌 때 이 값이 기본값이 된다.
   const [catStyle, setCatStyle] = useState("Blue");
+  const [ownedCatStyles, setOwnedCatStyles] = useState<Set<string>>(
+    () => new Set(["Blue"]),
+  );
+  const [pendingCatStyle, setPendingCatStyle] = useState<string | null>(null);
   const catShapeId = "slim";
   const [catNeeds, setCatNeeds] = useState<CatNeedsStore>({});
 
@@ -879,9 +896,28 @@ export default function Home() {
         ) as { style?: string };
         if (saved.style && CAT_STYLES.some((item) => item.id === saved.style)) {
           setCatStyle(saved.style);
+          setOwnedCatStyles(
+            parseOwnedCatStyles(
+              window.localStorage.getItem(CAT_STYLE_OWNERSHIP_KEY),
+              saved.style,
+            ),
+          );
+        } else {
+          setOwnedCatStyles(
+            parseOwnedCatStyles(
+              window.localStorage.getItem(CAT_STYLE_OWNERSHIP_KEY),
+              "Blue",
+            ),
+          );
         }
       } catch {
         window.localStorage.removeItem(CAT_LOOK_KEY);
+        setOwnedCatStyles(
+          parseOwnedCatStyles(
+            window.localStorage.getItem(CAT_STYLE_OWNERSHIP_KEY),
+            "Blue",
+          ),
+        );
       }
     });
   }, []);
@@ -895,6 +931,74 @@ export default function Home() {
       JSON.stringify({ style, updatedAt: Date.now() }),
     );
   }, []);
+
+  const requestCatLook = useCallback(
+    (style: string) => {
+      if (ownedCatStyles.has(style)) {
+        applyCatLook(style);
+        return;
+      }
+      setPendingCatStyle(style);
+    },
+    [applyCatLook, ownedCatStyles],
+  );
+
+  const confirmCatStylePurchase = useCallback(() => {
+    if (!pendingCatStyle) return;
+    const purchase = purchaseCatStyle(
+      pendingCatStyle,
+      shells,
+      ownedCatStyles,
+    );
+    if (!purchase.ok) {
+      if (purchase.reason === "insufficient-shells") {
+        setToast(
+          `${pendingCatStyle} 스타일을 구매하려면 조개 ${purchase.required}개가 필요해요.`,
+        );
+      }
+      return;
+    }
+    setShells(purchase.balance);
+    setOwnedCatStyles(purchase.ownedStyles);
+    window.localStorage.setItem(SHELL_KEY, String(purchase.balance));
+    window.localStorage.setItem(
+      CAT_STYLE_OWNERSHIP_KEY,
+      JSON.stringify([...purchase.ownedStyles]),
+    );
+    applyCatLook(pendingCatStyle);
+    setToast(
+      purchase.charged
+        ? `${pendingCatStyle} 스타일을 조개 ${purchase.charged}개로 구매했어요.`
+        : `${pendingCatStyle} 스타일을 적용했어요.`,
+    );
+    setPendingCatStyle(null);
+  }, [applyCatLook, ownedCatStyles, pendingCatStyle, shells]);
+
+  const feedFocusedCat = useCallback(
+    (kind: "meal" | "snack") => {
+      const now = Date.now();
+      setCatNeeds((current) => {
+        const before = ensureCatNeedState(current, focusedCatId, now);
+        const nextState = updateCatNeedState(
+          before,
+          kind === "meal"
+            ? { hunger: 0, happiness: before.happiness + 4 }
+            : {
+                hunger: Math.max(0, before.hunger - 20),
+                happiness: before.happiness + 8,
+              },
+          now,
+        );
+        const next = { ...current, [focusedCatId]: nextState };
+        catNeedsRef.current = next;
+        window.localStorage.setItem(NEEDS_KEY, JSON.stringify(next));
+        return next;
+      });
+      worldAudioRef.current?.playCat(kind === "meal" ? "greet" : "purr");
+      setToast(kind === "meal" ? "밥그릇을 채웠어요." : "간식을 건넸어요.");
+    },
+    [focusedCatId],
+  );
 
   useEffect(() => {
     // 첫 effect는 저장값 복원이 끝나기 전이므로 기본값 "on"으로 덮어쓰지 않는다.
@@ -1568,20 +1672,33 @@ export default function Home() {
       </section>
 
       {radioOpen && (
-        <aside className="control-panel radio-panel" aria-label="캠핑 라디오">
+        <aside
+          className="control-panel radio-panel game-popup"
+          aria-label={RADIO_TITLES[radioPage]}
+          data-page={radioPage}
+        >
           <div className="radio-hardware">
             <span className={`radio-lamp ${bridgeState}`} />
-            <strong>AGENT FOREST RADIO</strong>
-            <span>{shells} SHELLS</span>
+            <strong>{RADIO_TITLES[radioPage]}</strong>
+            <span>{shells} 조개</span>
             <button
               type="button"
               onClick={() => setRadioOpen(false)}
-              aria-label="라디오 닫기"
+              aria-label="팝업 닫기"
+              className="game-popup-close"
             >
               닫기
             </button>
           </div>
-          <div className="radio-screen">
+          <div
+            className={`radio-screen ${
+              radioPage === "desk" ||
+              radioPage === "work" ||
+              radioPage === "status-log"
+                ? "has-tabs"
+                : ""
+            }`}
+          >
             {radioPage === "cats" && (
               <section className="panel-section task-composer">
                 <div className="section-heading">
@@ -1629,19 +1746,52 @@ export default function Home() {
 
                   <label className="cat-field-label">털 색 · 무늬</label>
                   <div className="cat-style-grid" role="radiogroup" aria-label="고양이 스타일">
-                    {CAT_STYLES.map((style) => (
+                    {CAT_STYLES.map((style) => {
+                      const owned = ownedCatStyles.has(style.id);
+                      const selected = catStyle === style.id;
+                      return (
                       <button
                         type="button"
                         key={style.id}
                         role="radio"
-                        aria-checked={catStyle === style.id}
-                        className={catStyle === style.id ? "selected" : ""}
-                        onClick={() => applyCatLook(style.id)}
+                        aria-checked={selected}
+                        className={[
+                          selected ? "selected" : "",
+                          owned ? "owned" : "for-sale",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        onClick={() => requestCatLook(style.id)}
                         title={style.ko}
                       >
-                        {style.id}
+                        <span>{style.id}</span>
+                        <small>
+                          {selected
+                            ? "사용 중"
+                            : owned
+                              ? "보유"
+                              : `${CAT_STYLE_PRICES[style.id]} 조개`}
+                        </small>
                       </button>
-                    ))}
+                      );
+                    })}
+                  </div>
+
+                  <div className="cat-care-actions">
+                    <button
+                      type="button"
+                      className="game-button secondary"
+                      onClick={() => feedFocusedCat("meal")}
+                    >
+                      밥 주기
+                    </button>
+                    <button
+                      type="button"
+                      className="game-button primary"
+                      onClick={() => feedFocusedCat("snack")}
+                    >
+                      간식 주기
+                    </button>
                   </div>
 
                   <button
@@ -2088,6 +2238,59 @@ export default function Home() {
         </aside>
       )}
 
+      {pendingCatStyle && (
+        <div className="style-purchase-backdrop" role="presentation">
+          <section
+            className="style-purchase-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="style-purchase-title"
+          >
+            <span className="style-purchase-title" id="style-purchase-title">
+              털 색 · 무늬 구매
+            </span>
+            <button
+              type="button"
+              className="game-popup-close"
+              aria-label="구매 창 닫기"
+              onClick={() => setPendingCatStyle(null)}
+            >
+              닫기
+            </button>
+            <div className="style-purchase-copy">
+              <strong>{pendingCatStyle}</strong>
+              <p>
+                처음 한 번만 구매하면 이후에는 조개 없이 다시 적용할 수
+                있어요.
+              </p>
+              <div className="style-purchase-balance">
+                <span>가격 {CAT_STYLE_PRICES[pendingCatStyle]} 조개</span>
+                <span>보유 {shells} 조개</span>
+              </div>
+              <div className="style-purchase-actions">
+                <button
+                  type="button"
+                  className="game-button secondary"
+                  onClick={() => setPendingCatStyle(null)}
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  className="game-button primary"
+                  disabled={shells < CAT_STYLE_PRICES[pendingCatStyle]}
+                  onClick={confirmCatStylePurchase}
+                >
+                  {shells < CAT_STYLE_PRICES[pendingCatStyle]
+                    ? "조개 부족"
+                    : "구매하고 적용"}
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
       {approvalEvent && (
         <div className="approval-backdrop" role="presentation">
           <section
@@ -2096,6 +2299,15 @@ export default function Home() {
             aria-modal="true"
             aria-labelledby="approval-title"
           >
+            <span className="approval-dialog-title">승인 요청</span>
+            <button
+              type="button"
+              className="game-popup-close approval-close"
+              aria-label="승인 요청 닫기"
+              onClick={() => void decide("cancel")}
+            >
+              닫기
+            </button>
             <div className="manager-cat" aria-hidden="true">
               <span />
               <i>REPORT</i>
