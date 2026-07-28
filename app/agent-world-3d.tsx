@@ -37,6 +37,7 @@ export type SeatView = {
 
 type AgentWorld3DProps = {
   seats: SeatView[];
+  activeSeatCount: number;
   companionConnected: "connected" | "pairing" | "offline";
   completionSignal: number;
   /** 팩의 스타일 id(예: "Blue"). 바뀌면 상위에서 key 로 씬을 다시 만든다. */
@@ -45,6 +46,22 @@ type AgentWorld3DProps = {
   catShape?: CatShape;
   onSeatClick?: (seatId: SeatId) => void;
   onRadioClick?: () => void;
+  onShellCollect?: (event: {
+    amount: number;
+    x: number;
+    y: number;
+  }) => void;
+};
+
+type CollectibleShell = {
+  id: string;
+  group: THREE.Group;
+  proxy: THREE.Object3D;
+  baseY: number;
+  baseScale: number;
+  phase: number;
+  collecting: boolean;
+  elapsed: number;
 };
 
 const DEFAULT_SEAT_VIEW: SeatView = {
@@ -523,6 +540,12 @@ const MESHY_WORKSTATION_PLACEMENTS: MeshyWorkstationPlacement[] = [
     obstacle: DESK_OBSTACLE,
   },
 ];
+const WORKSTATION_PLACEMENT_SEATS: SeatId[] = [
+  "seat-2",
+  "seat-3",
+  "seat-4",
+  "seat-1",
+];
 const MESHY_DECORATION_ASSETS: MeshyDecorationAsset[] = [
   {
     id: "camping-supplies",
@@ -617,9 +640,34 @@ const SCENE_OBSTACLES = [
   CAMPING_SUPPLY_CLUSTER_OBSTACLE,
   CAMPING_LANTERN_OBSTACLE,
 ];
-const NON_DESK_OBSTACLES = SCENE_OBSTACLES.filter(
-  (obstacle) => obstacle !== DESK_OBSTACLE,
+const WORKSTATION_OBSTACLES = new Set<SceneObstacle>([
+  DESK_OBSTACLE,
+  TENT_WORKSTATION_OBSTACLE,
+  ROUND_LAPTOP_STATION_OBSTACLE,
+  FOLDING_LAPTOP_STATION_OBSTACLE,
+]);
+const STATIC_SCENE_OBSTACLES = SCENE_OBSTACLES.filter(
+  (obstacle) => !WORKSTATION_OBSTACLES.has(obstacle),
 );
+
+function getActiveWorkstationObstacles(activeSeatCount: number) {
+  const activeSeatIds = new Set(
+    WORKSTATION_PLACEMENT_SEATS.filter((seatId) => {
+      const seatIndex = Number(seatId.slice(-1));
+      return seatIndex <= activeSeatCount;
+    }),
+  );
+  return MESHY_WORKSTATION_PLACEMENTS.filter((_, index) =>
+    activeSeatIds.has(WORKSTATION_PLACEMENT_SEATS[index]),
+  ).map((placement) => placement.obstacle);
+}
+
+function getActiveSceneObstacles(activeSeatCount: number) {
+  return [
+    ...STATIC_SCENE_OBSTACLES,
+    ...getActiveWorkstationObstacles(activeSeatCount),
+  ];
+}
 const OBSTACLE_WAYPOINT_MARGIN = 0.28;
 const OBSTACLE_WAYPOINT_REACHED_DISTANCE = 0.055;
 
@@ -2199,12 +2247,14 @@ function createAgentMarker(initialSeat: SeatView) {
 
 export default function AgentWorld3D({
   seats,
+  activeSeatCount,
   companionConnected,
   completionSignal,
   catStyle = "Blue",
   catShape,
   onSeatClick,
   onRadioClick,
+  onShellCollect,
 }: AgentWorld3DProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const primarySeat = seats[0] ?? DEFAULT_SEAT_VIEW;
@@ -2217,6 +2267,8 @@ export default function AgentWorld3D({
   const completionSignalRef = useRef(completionSignal);
   const onSeatClickRef = useRef(onSeatClick);
   const onRadioClickRef = useRef(onRadioClick);
+  const activeSeatCountRef = useRef(activeSeatCount);
+  const onShellCollectRef = useRef(onShellCollect);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [failed, setFailed] = useState(false);
   const [ready, setReady] = useState(false);
@@ -2233,7 +2285,17 @@ export default function AgentWorld3D({
     completionSignalRef.current = completionSignal;
     onSeatClickRef.current = onSeatClick;
     onRadioClickRef.current = onRadioClick;
-  }, [companionConnected, completionSignal, onRadioClick, onSeatClick, seats]);
+    activeSeatCountRef.current = activeSeatCount;
+    onShellCollectRef.current = onShellCollect;
+  }, [
+    activeSeatCount,
+    companionConnected,
+    completionSignal,
+    onRadioClick,
+    onSeatClick,
+    onShellCollect,
+    seats,
+  ]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -2306,6 +2368,7 @@ export default function AgentWorld3D({
     scene.fog = new THREE.Fog(FAR_OCEAN_STYLE_COLOR, 15, 27);
     const clickableObjects: THREE.Object3D[] = [];
     const billboardObjects: THREE.Object3D[] = [];
+    const workstationGroups = new Map<SeatId, THREE.Group>();
 
     const camera = new THREE.OrthographicCamera(-5, 5, 6, -6, 0.1, 50);
     const cameraBase = new THREE.Vector3(0, 9.2, 12.9);
@@ -2691,7 +2754,8 @@ float shoreOverlayWaterSignal( vec3 color ) {
 
       workstationResults.forEach((result, index) => {
         const placement = MESHY_WORKSTATION_PLACEMENTS[index];
-        if (!placement || result.status !== "fulfilled") return;
+        const seatId = WORKSTATION_PLACEMENT_SEATS[index];
+        if (!placement || !seatId || result.status !== "fulfilled") return;
 
         const workstation = new THREE.Group();
         workstation.name = `${placement.id}-meshy6`;
@@ -2719,6 +2783,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
         if (placement.id === DESK_OBSTACLE.id) {
           workstation.add(interactionGroup);
         }
+        workstation.visible =
+          Number(seatId.slice(-1)) <= activeSeatCountRef.current;
+        workstationGroups.set(seatId, workstation);
         scene.add(workstation);
       });
 
@@ -2852,6 +2919,150 @@ float shoreOverlayWaterSignal( vec3 color ) {
     );
     let lastCompletionSignal = completionSignalRef.current;
     let completionElapsed = 2;
+
+    const shellSpawnPoints = [
+      new THREE.Vector3(-3.42, 0.16, 1.5),
+      new THREE.Vector3(3.34, 0.16, -2.18),
+      new THREE.Vector3(-0.52, 0.16, 5.46),
+      new THREE.Vector3(0.76, 0.16, -5.08),
+      new THREE.Vector3(3.46, 0.16, 1.72),
+      new THREE.Vector3(-3.2, 0.16, -2.54),
+    ];
+    const collectibleShells = new Map<string, CollectibleShell>();
+    let shellSpawnSequence = 0;
+    let shellSpawnElapsed = 0;
+    let nextShellSpawnSeconds = 3.5;
+
+    const shellBurstCount = 10;
+    const shellBurstGeometry = new THREE.DodecahedronGeometry(0.04, 0);
+    const shellBurstMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffd58f,
+      transparent: true,
+      opacity: 0.95,
+      toneMapped: false,
+      depthWrite: false,
+    });
+    disableOutline(shellBurstMaterial);
+    const shellBurst = new THREE.InstancedMesh(
+      shellBurstGeometry,
+      shellBurstMaterial,
+      shellBurstCount,
+    );
+    shellBurst.name = "beach-shell-collection-particles";
+    shellBurst.visible = false;
+    shellBurst.renderOrder = 27;
+    scene.add(shellBurst);
+    const shellBurstDummy = new THREE.Object3D();
+    const shellBurstOrigin = new THREE.Vector3();
+    const shellBurstVelocities = Array.from(
+      { length: shellBurstCount },
+      (_, index) =>
+        new THREE.Vector3(
+          Math.cos((index / shellBurstCount) * Math.PI * 2) *
+            (0.32 + (index % 3) * 0.08),
+          0.32 + (index % 4) * 0.07,
+          Math.sin((index / shellBurstCount) * Math.PI * 2) *
+            (0.32 + ((index + 1) % 3) * 0.08),
+        ),
+    );
+    let shellBurstElapsed = 2;
+
+    const createCollectibleShell = (
+      id: string,
+      position: THREE.Vector3,
+    ) => {
+      const group = new THREE.Group();
+      group.name = id;
+      group.position.copy(position);
+      const baseScale = 0.58;
+      group.scale.setScalar(baseScale);
+
+      const shellShape = new THREE.Shape();
+      shellShape.moveTo(-0.29, -0.12);
+      shellShape.bezierCurveTo(-0.32, 0.07, -0.25, 0.28, 0, 0.34);
+      shellShape.bezierCurveTo(0.25, 0.28, 0.32, 0.07, 0.29, -0.12);
+      shellShape.quadraticCurveTo(0, -0.24, -0.29, -0.12);
+      const shellMaterial = new THREE.MeshStandardMaterial({
+        color: 0xffd8aa,
+        roughness: 0.94,
+        metalness: 0,
+      });
+      const shellBody = new THREE.Mesh(
+        new THREE.ExtrudeGeometry(shellShape, {
+          depth: 0.055,
+          bevelEnabled: true,
+          bevelSize: 0.018,
+          bevelThickness: 0.015,
+          bevelSegments: 2,
+        }),
+        shellMaterial,
+      );
+      shellBody.rotation.x = -Math.PI / 2;
+      shellBody.position.y = 0.04;
+      shellBody.castShadow = true;
+      group.add(shellBody);
+
+      const ridgeMaterial = new THREE.MeshStandardMaterial({
+        color: 0xe8a67c,
+        roughness: 0.95,
+      });
+      for (let index = -2; index <= 2; index += 1) {
+        const angle = index * 0.2;
+        const ridge = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.009, 0.014, 0.38, 8),
+          ridgeMaterial,
+        );
+        const direction = new THREE.Vector3(
+          Math.sin(angle),
+          0,
+          -Math.cos(angle),
+        ).normalize();
+        ridge.quaternion.setFromUnitVectors(
+          new THREE.Vector3(0, 1, 0),
+          direction,
+        );
+        ridge.position
+          .copy(direction)
+          .multiplyScalar(0.11)
+          .add(new THREE.Vector3(0, 0.105, 0.025));
+        group.add(ridge);
+      }
+
+      group.add(createMeshyPropShadow(id, 0.29, 0.09));
+      const proxy = createInteractionProxy(id, 0.78);
+      proxy.position.y = 0.18;
+      group.add(proxy);
+      scene.add(group);
+      clickableObjects.push(proxy);
+      return {
+        id,
+        group,
+        proxy,
+        baseY: position.y,
+        baseScale,
+        phase: Math.random() * Math.PI * 2,
+        collecting: false,
+        elapsed: 0,
+      } satisfies CollectibleShell;
+    };
+
+    const spawnCollectibleShell = () => {
+      if (collectibleShells.size >= 3) return;
+      const occupiedPointIds = new Set(
+        [...collectibleShells.values()].map(
+          (entry) => entry.group.userData.spawnPointId as number,
+        ),
+      );
+      const available = shellSpawnPoints
+        .map((point, index) => ({ point, index }))
+        .filter(({ index }) => !occupiedPointIds.has(index));
+      if (!available.length) return;
+      const selected = available[Math.floor(Math.random() * available.length)];
+      const id = `beach-shell-${++shellSpawnSequence}`;
+      const collectible = createCollectibleShell(id, selected.point);
+      collectible.group.userData.spawnPointId = selected.index;
+      collectibleShells.set(id, collectible);
+    };
 
     const playCompletionChime = () => {
       try {
@@ -3388,10 +3599,27 @@ float shoreOverlayWaterSignal( vec3 color ) {
         while (target && !target.userData.clickTargetId) target = target.parent;
         const targetId = String(target?.userData.clickTargetId ?? "");
         if (targetId === "radio") {
-          onRadioClickRef.current?.();
+          if (activeSeatCountRef.current >= 4) {
+            onRadioClickRef.current?.();
+          }
         } else if (targetId.startsWith("cat-seat-")) {
           const seatId = targetId.slice(4) as SeatId;
           onSeatClickRef.current?.(seatId);
+        } else if (targetId.startsWith("beach-shell-")) {
+          const collectible = collectibleShells.get(targetId);
+          if (!collectible || collectible.collecting) return;
+          collectible.collecting = true;
+          collectible.elapsed = 0;
+          removeClickable(collectible.proxy);
+          collectible.group.getWorldPosition(shellBurstOrigin);
+          shellBurstElapsed = 0;
+          shellBurst.visible = true;
+          const projected = shellBurstOrigin.clone().project(camera);
+          onShellCollectRef.current?.({
+            amount: 5,
+            x: THREE.MathUtils.clamp((projected.x + 1) / 2, 0, 1),
+            y: THREE.MathUtils.clamp((1 - projected.y) / 2, 0, 1),
+          });
         }
       }
     };
@@ -3427,6 +3655,12 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const isPrimaryBlocked = primaryView.blocked;
       primaryMarker.update(primaryView);
       primaryMarker.beacon.visible = isPrimaryBlocked;
+      workstationGroups.forEach((workstation, seatId) => {
+        workstation.visible =
+          Number(seatId.slice(-1)) <= activeSeatCountRef.current;
+      });
+      radioClickProxy.visible = activeSeatCountRef.current >= 4;
+      radioLamp.visible = activeSeatCountRef.current >= 4;
       syncSecondaryAgents(delta);
       const connectionState = connectionRef.current;
       radioLampMaterial.color.setHex(
@@ -3441,6 +3675,53 @@ float shoreOverlayWaterSignal( vec3 color ) {
           ? 0.84 + Math.sin(animationTime * 4) * 0.16
           : 1;
       radioLamp.scale.setScalar(lampPulse);
+
+      shellSpawnElapsed += delta;
+      if (shellSpawnElapsed >= nextShellSpawnSeconds) {
+        shellSpawnElapsed = 0;
+        nextShellSpawnSeconds = randomBetween(9, 16);
+        spawnCollectibleShell();
+      }
+      collectibleShells.forEach((collectible, id) => {
+        if (collectible.collecting) {
+          collectible.elapsed += delta;
+          const progress = Math.min(1, collectible.elapsed / 0.72);
+          collectible.group.position.y =
+            collectible.baseY + progress * 0.82;
+          collectible.group.scale.setScalar(
+            collectible.baseScale *
+              Math.max(0.02, 1 - progress * 0.86),
+          );
+          collectible.group.rotation.y += delta * 8;
+          if (progress >= 1) {
+            scene.remove(collectible.group);
+            collectibleShells.delete(id);
+          }
+          return;
+        }
+        collectible.group.position.y =
+          collectible.baseY +
+          Math.sin(animationTime * 1.8 + collectible.phase) * 0.045;
+        collectible.group.rotation.y =
+          Math.sin(animationTime * 0.72 + collectible.phase) * 0.18;
+      });
+      if (shellBurstElapsed <= 0.78) {
+        shellBurstElapsed += delta;
+        shellBurstVelocities.forEach((velocity, index) => {
+          shellBurstDummy.position
+            .copy(shellBurstOrigin)
+            .addScaledVector(velocity, shellBurstElapsed);
+          shellBurstDummy.position.y -=
+            0.52 * shellBurstElapsed * shellBurstElapsed;
+          shellBurstDummy.scale.setScalar(
+            Math.max(0, 1 - shellBurstElapsed / 0.78),
+          );
+          shellBurstDummy.updateMatrix();
+          shellBurst.setMatrixAt(index, shellBurstDummy.matrix);
+        });
+        shellBurst.instanceMatrix.needsUpdate = true;
+        if (shellBurstElapsed >= 0.78) shellBurst.visible = false;
+      }
 
       if (completionSignalRef.current !== lastCompletionSignal) {
         lastCompletionSignal = completionSignalRef.current;
@@ -3675,9 +3956,12 @@ float shoreOverlayWaterSignal( vec3 color ) {
           ambientDestination === "desk" &&
           ambientPhase === "walking") ||
         (!isAutonomous && motionRef.current.location === "coding");
+      const activeSceneObstacles = getActiveSceneObstacles(
+        activeSeatCountRef.current,
+      );
       const navigationObstacles = wantsDeskInteraction
-        ? NON_DESK_OBSTACLES
-        : SCENE_OBSTACLES;
+        ? activeSceneObstacles.filter((obstacle) => obstacle !== DESK_OBSTACLE)
+        : activeSceneObstacles;
 
       const walkAction = animationActions.get("walk");
 
@@ -3847,7 +4131,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
             setAmbientLabel("책상 안쪽에 앉아 키캡 꾹꾹이 중");
           }
         } else {
-          const wouldCollide = SCENE_OBSTACLES.some((obstacle) =>
+          const wouldCollide = activeSceneObstacles.some((obstacle) =>
             isInsideObstacle(nextPosition, obstacle),
           );
           if (!wouldCollide) {

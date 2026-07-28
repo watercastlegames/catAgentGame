@@ -1,6 +1,8 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import {
+  type CSSProperties,
   type FormEvent,
   useCallback,
   useEffect,
@@ -39,6 +41,14 @@ import {
   parseOwnedCatStyles,
   purchaseCatStyle,
 } from "./cat-style-economy";
+import {
+  ACTIVE_SEAT_KEY,
+  MAX_SEAT_COUNT,
+  WORKSTATION_SLOTS,
+  activeSeatIds,
+  nextWorkstationSlot,
+  parseActiveSeatCount,
+} from "./seat-progression";
 
 type Department = "general" | "coding" | "design" | "music";
 type AgentStatus =
@@ -146,27 +156,10 @@ type StatusLogTab = "status" | "log";
 type ConfirmDialog =
   | { kind: "disconnect" }
   | {
-      kind: "desk-purchase";
-      itemId: DeskItemId;
+      kind: "seat-unlock";
+      seatId: SeatId;
     }
   | null;
-type DeskItemId =
-  | "basic"
-  | "mint-mug"
-  | "shell-radio"
-  | "picnic-cushion"
-  | "coral-planter"
-  | "night-lantern";
-type DeskItem = {
-  id: DeskItemId;
-  label: string;
-  note: string;
-  price: number;
-  tier: number;
-  preview: string;
-  previewPosition: string;
-  decor: "coral" | "mint" | "sunset";
-};
 
 const BRIDGE_URL =
   process.env.NEXT_PUBLIC_AGENT_BRIDGE_URL ?? "http://127.0.0.1:4317";
@@ -179,7 +172,6 @@ const SHELL_KEY = "agent-forest-shell-v1";
 const DECOR_KEY = "agent-forest-decor-v1";
 const DEMO_SEEN_KEY = "agent-forest-demo-seen-v1";
 const EVENT_HISTORY_KEY = "agent-forest-event-history-v1";
-const DESK_OWNERSHIP_KEY = "agent-forest-desk-ownership-v1";
 const ONBOARDING_KEY = "agent-forest-onboarding-v1";
 const INSTALL_HANDOFF =
   "이 저장소의 AGENTS.md를 읽고 Agent Forest를 설치·실행한 뒤 연결 주소를 열어줘.";
@@ -244,69 +236,6 @@ const SHOW_LEGACY_OVERLAYS = false;
 const AUDIO_ENABLED_KEY = "agent-forest-audio-v1";
 const CAT_LOOK_KEY = "agent-forest-cat-look-v1";
 const DEMO_CAT_ID = "agent-forest-demo-cat";
-const WORKSTATION_TIER_COSTS = [0, 50, 120, 250, 450] as const;
-const DESK_ITEMS: DeskItem[] = [
-  {
-    id: "basic",
-    label: "기본 업무 자리",
-    note: "모니터 · 네 키 키캡",
-    price: 0,
-    tier: 0,
-    preview: "/art/ui/desk-items/desk-basic-v1.png",
-    previewPosition: "center",
-    decor: "coral",
-  },
-  {
-    id: "mint-mug",
-    label: "민트 머그",
-    note: "시원한 바닷빛 소품",
-    price: 15,
-    tier: 1,
-    preview: "/art/ui/desk-items/desk-tent-v1.png",
-    previewPosition: "center",
-    decor: "mint",
-  },
-  {
-    id: "shell-radio",
-    label: "조개 라디오",
-    note: "업무 소식을 듣는 라디오",
-    price: 40,
-    tier: 2,
-    preview: "/art/ui/desk-items/desk-radio-v1.png",
-    previewPosition: "center",
-    decor: "sunset",
-  },
-  {
-    id: "picnic-cushion",
-    label: "피크닉 쿠션",
-    note: "잠깐 쉬는 폭신한 자리",
-    price: 30,
-    tier: 2,
-    preview: "/art/ui/desk-items/desk-cushion-v1.png",
-    previewPosition: "center",
-    decor: "coral",
-  },
-  {
-    id: "coral-planter",
-    label: "산호 화분",
-    note: "Tier 3에서 열려요",
-    price: 65,
-    tier: 3,
-    preview: "/art/ui/desk-items/desk-planter-v1.png",
-    previewPosition: "center",
-    decor: "mint",
-  },
-  {
-    id: "night-lantern",
-    label: "밤바다 랜턴",
-    note: "Tier 4에서 열려요",
-    price: 90,
-    tier: 4,
-    preview: "/art/ui/desk-items/desk-lantern-v1.png",
-    previewPosition: "center",
-    decor: "sunset",
-  },
-];
 // 체형은 프리셋으로만 고른다. 숫자 세 개를 그대로 노출하면 사장님이 만질 물건이 아니게 된다.
 const CAT_SHAPE_PRESETS: Array<{
   id: string;
@@ -438,14 +367,13 @@ export default function Home() {
   const [hudDormant, setHudDormant] = useState(false);
   const [completionSignal, setCompletionSignal] = useState(0);
   const [shells, setShells] = useState(0);
+  const [activeSeatCount, setActiveSeatCount] = useState(1);
+  const [shellFlyTokens, setShellFlyTokens] = useState<
+    Array<{ id: number; x: number; y: number; amount: number }>
+  >([]);
+  const [shellHudPulse, setShellHudPulse] = useState(0);
   const [decorChoice, setDecorChoice] = useState("coral");
   const [selectedSeat, setSelectedSeat] = useState<SeatId | null>(null);
-  const [ownedDeskItems, setOwnedDeskItems] = useState<Set<DeskItemId>>(
-    () => new Set(["basic"]),
-  );
-  const [equippedDeskItems, setEquippedDeskItems] = useState<
-    Partial<Record<SeatId, DeskItemId>>
-  >({ "seat-1": "basic" });
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [uiPreview, setUiPreview] = useState<string | null>(null);
@@ -483,6 +411,8 @@ export default function Home() {
   const keycapFeedbackPrimedRef = useRef(false);
   const catNeedsRef = useRef<CatNeedsStore>({});
   const purchaseLockedRef = useRef(false);
+  const activeSeatCountRef = useRef(1);
+  const shellFlyIdRef = useRef(0);
 
   const approvalEvent = approvalQueue[0] ?? null;
   const visibleApprovalEvent =
@@ -533,12 +463,17 @@ export default function Home() {
   const focusedCatId = focusedRuntime?.threadId ?? DEMO_CAT_ID;
   const focusedCatNeeds =
     catNeeds[focusedCatId] ?? createDefaultCatNeedState();
-  const activeDeskSeat = selectedSeat ?? "seat-1";
-  const equippedDeskItemId = equippedDeskItems[activeDeskSeat] ?? "basic";
-  const pendingDeskItem =
-    confirmDialog?.kind === "desk-purchase"
-      ? (DESK_ITEMS.find((item) => item.id === confirmDialog.itemId) ?? null)
+  const pendingSeatSlot =
+    confirmDialog?.kind === "seat-unlock"
+      ? (WORKSTATION_SLOTS.find(
+          (slot) => slot.seatId === confirmDialog.seatId,
+        ) ?? null)
       : null;
+  const nextSeatSlot = nextWorkstationSlot(activeSeatCount);
+  const unlockedSeatIds = useMemo(
+    () => activeSeatIds(activeSeatCount),
+    [activeSeatCount],
+  );
   const pressedRadioIndex = pressedRadioKey
     ? RADIO_MENU.findIndex((item) => item.key === pressedRadioKey) + 1
     : 0;
@@ -549,8 +484,18 @@ export default function Home() {
   useEffect(() => {
     catNeedsRef.current = catNeeds;
   }, [catNeeds]);
+  useEffect(() => {
+    activeSeatCountRef.current = activeSeatCount;
+  }, [activeSeatCount]);
   const seatViews = useMemo<SeatView[]>(() => {
-    const active = runtimeList.slice(0, 5).map((runtime) => ({
+    const unlocked = new Set(unlockedSeatIds);
+    const active = runtimeList
+      .filter(
+        (runtime) =>
+          runtime.seatId !== "queue" && unlocked.has(runtime.seatId),
+      )
+      .slice(0, activeSeatCount)
+      .map((runtime) => ({
       ...(() => {
         const needs =
           catNeeds[runtime.threadId] ?? createDefaultCatNeedState();
@@ -588,7 +533,7 @@ export default function Home() {
             ),
           },
         ];
-  }, [catNeeds, runtimeList]);
+  }, [activeSeatCount, catNeeds, runtimeList, unlockedSeatIds]);
 
   const apiFetch = useCallback(
     (pathname: string, init: RequestInit = {}) => {
@@ -702,7 +647,12 @@ export default function Home() {
           event.department ?? existing?.department ?? "general";
         const seatId =
           existing?.seatId ??
-          assignSeat(next, runtimeKey, seatAssignmentsRef.current);
+          assignSeat(
+            next,
+            runtimeKey,
+            seatAssignmentsRef.current,
+            activeSeatIds(activeSeatCountRef.current),
+          );
         const taskId = event.taskId ?? existing?.taskId ?? null;
         const activeTask: ActiveTask =
           existing?.activeTask ??
@@ -908,6 +858,11 @@ export default function Home() {
         window.localStorage.setItem(SHELL_KEY, String(migratedShells));
       }
       setShells(migratedShells);
+      const restoredSeatCount = parseActiveSeatCount(
+        window.localStorage.getItem(ACTIVE_SEAT_KEY),
+      );
+      activeSeatCountRef.current = restoredSeatCount;
+      setActiveSeatCount(restoredSeatCount);
       setDecorChoice(window.localStorage.getItem(DECOR_KEY) ?? "coral");
       const restoredNeeds = parseCatNeedsStore(
         window.localStorage.getItem(NEEDS_KEY),
@@ -934,14 +889,6 @@ export default function Home() {
       if (savedToken) setCompanionToken(savedToken);
       if (savedTransport === "cloud") setCompanionTransport("cloud");
       if (savedSession) setSelectedThreadId(savedSession);
-      try {
-        const owned = JSON.parse(
-          window.localStorage.getItem(DESK_OWNERSHIP_KEY) ?? '["basic"]',
-        ) as DeskItemId[];
-        setOwnedDeskItems(new Set(["basic", ...owned]));
-      } catch {
-        window.localStorage.removeItem(DESK_OWNERSHIP_KEY);
-      }
       const preview = new URLSearchParams(window.location.search).get(
         "ui-preview",
       );
@@ -1228,7 +1175,10 @@ export default function Home() {
       } else if (uiPreview === "s04" || uiPreview === "s05") {
         setRadioPage("desk");
         if (uiPreview === "s05") {
-          setConfirmDialog({ kind: "desk-purchase", itemId: "mint-mug" });
+          const slot = nextWorkstationSlot(activeSeatCountRef.current);
+          if (slot) {
+            setConfirmDialog({ kind: "seat-unlock", seatId: slot.seatId });
+          }
         }
       } else if (uiPreview === "s06" || uiPreview === "s07") {
         setRadioPage("work");
@@ -1548,63 +1498,71 @@ export default function Home() {
     setConfirmDialog({ kind: "disconnect" });
   }
 
-  function requestDeskItem(item: DeskItem) {
-    if (item.tier > 2) {
-      setToast(`${item.label}은 Tier ${item.tier}에서 열려요.`);
+  function requestSeatUnlock() {
+    const slot = nextWorkstationSlot(activeSeatCount);
+    if (!slot) {
+      setToast("네 자리 모두 열렸어요.");
       return;
     }
-    if (ownedDeskItems.has(item.id)) {
-      setEquippedDeskItems((current) => ({
-        ...current,
-        [activeDeskSeat]: item.id,
-      }));
-      chooseDecor(item.decor);
-      setToast(`${item.label}을 자리 ${activeDeskSeat.slice(-1)}에 놓았어요.`);
-      return;
-    }
-    setConfirmDialog({ kind: "desk-purchase", itemId: item.id });
+    setConfirmDialog({ kind: "seat-unlock", seatId: slot.seatId });
   }
 
-  function confirmDeskPurchase(item: DeskItem) {
-    if (purchaseLockedRef.current) return;
+  function confirmSeatUnlock() {
+    if (!pendingSeatSlot || purchaseLockedRef.current) return;
     purchaseLockedRef.current = true;
     try {
-      if (ownedDeskItems.has(item.id)) {
-        setEquippedDeskItems((current) => ({
-          ...current,
-          [activeDeskSeat]: item.id,
-        }));
-        chooseDecor(item.decor);
-        setConfirmDialog(null);
+      if (shells < pendingSeatSlot.price) {
+        setToast(`조개 ${pendingSeatSlot.price - shells}개가 더 필요해요.`);
         return;
       }
-      if (shells < item.price) {
-        setToast(`조개 ${item.price - shells}개가 더 필요해요.`);
-        return;
-      }
-      const nextShells = shells - item.price;
-      const nextOwned = new Set(ownedDeskItems);
-      nextOwned.add(item.id);
+      const nextCount = Math.min(MAX_SEAT_COUNT, activeSeatCount + 1);
+      const nextShells = shells - pendingSeatSlot.price;
+      activeSeatCountRef.current = nextCount;
+      setActiveSeatCount(nextCount);
       setShells(nextShells);
-      setOwnedDeskItems(nextOwned);
-      setEquippedDeskItems((current) => ({
-        ...current,
-        [activeDeskSeat]: item.id,
-      }));
+      setSelectedSeat(pendingSeatSlot.seatId);
+      window.localStorage.setItem(ACTIVE_SEAT_KEY, String(nextCount));
       window.localStorage.setItem(SHELL_KEY, String(nextShells));
-      window.localStorage.setItem(
-        DESK_OWNERSHIP_KEY,
-        JSON.stringify([...nextOwned]),
-      );
-      chooseDecor(item.decor);
       setConfirmDialog(null);
-      setToast(`${item.label}을 구매하고 바로 배치했어요.`);
+      setToast(
+        `자리 ${pendingSeatSlot.seatId.slice(-1)}과 ${pendingSeatSlot.title}을 열었어요.`,
+      );
     } finally {
       window.setTimeout(() => {
         purchaseLockedRef.current = false;
       }, 240);
     }
   }
+
+  const collectBeachShell = useCallback(
+    ({
+      amount,
+      x,
+      y,
+    }: {
+      amount: number;
+      x: number;
+      y: number;
+    }) => {
+      const id = ++shellFlyIdRef.current;
+      setShells((current) => {
+        const next = current + amount;
+        window.localStorage.setItem(SHELL_KEY, String(next));
+        return next;
+      });
+      setShellFlyTokens((current) => [
+        ...current,
+        { id, x, y, amount },
+      ]);
+      window.setTimeout(() => {
+        setShellFlyTokens((current) =>
+          current.filter((token) => token.id !== id),
+        );
+        setShellHudPulse((current) => current + 1);
+      }, 820);
+    },
+    [],
+  );
 
   async function selectSession(threadId: string) {
     setSelectedThreadId(threadId);
@@ -1815,6 +1773,7 @@ export default function Home() {
             catStyle={catStyle}
             catShape={catShape}
             seats={seatViews}
+            activeSeatCount={activeSeatCount}
             companionConnected={
               bridgeState === "connected"
                 ? "connected"
@@ -1823,6 +1782,7 @@ export default function Home() {
                   : "offline"
             }
             completionSignal={completionSignal}
+            onShellCollect={collectBeachShell}
             onSeatClick={(seatId) => {
               // 쓰다듬는 반응 — 짧게 인사하고 잠깐 골골거린다.
               worldAudioRef.current?.playCat("greet");
@@ -1835,9 +1795,33 @@ export default function Home() {
             onRadioClick={() => setRadioOpen(true)}
           />
 
+          <div
+            key={`shell-hud-${shellHudPulse}`}
+            className="world-currency-hud"
+            aria-label={`조개 ${shells}개`}
+          >
+            <img src="/art/ui/hud-shell-v1.png" alt="" aria-hidden="true" />
+            <strong>{shells.toLocaleString("ko-KR")}</strong>
+          </div>
+
+          {shellFlyTokens.map((token) => (
+            <span
+              className="shell-fly-token"
+              key={token.id}
+              style={{
+                "--shell-from-x": `${token.x * 100}%`,
+                "--shell-from-y": `${token.y * 100}%`,
+              } as CSSProperties}
+              aria-hidden="true"
+            >
+              <img src="/art/ui/hud-shell-v1.png" alt="" />
+              <b>+{token.amount}</b>
+            </span>
+          ))}
+
           <button
             type="button"
-            className={`sound-toggle hud-fade ${hudDormant ? "is-dormant" : ""}`}
+            className="sound-toggle"
             aria-pressed={audioEnabled}
             aria-label={audioEnabled ? "소리 끄기" : "소리 켜기"}
             title={audioEnabled ? "소리 끄기" : "소리 켜기"}
@@ -1846,17 +1830,15 @@ export default function Home() {
               setAudioEnabled((current) => !current);
             }}
           >
-            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-              <path d="M4 9.5h3.2L12 5.4v13.2L7.2 14.5H4z" />
-              {audioEnabled ? (
-                <>
-                  <path className="wave" d="M15.4 9.1a4.1 4.1 0 0 1 0 5.8" />
-                  <path className="wave" d="M17.9 6.6a7.6 7.6 0 0 1 0 10.8" />
-                </>
-              ) : (
-                <path className="wave" d="M16 9.4l5.2 5.2M21.2 9.4L16 14.6" />
-              )}
-            </svg>
+            <img
+              src={
+                audioEnabled
+                  ? "/art/ui/hud-sound-on-v1.png"
+                  : "/art/ui/hud-sound-off-v1.png"
+              }
+              alt=""
+              aria-hidden="true"
+            />
           </button>
 
           <nav
@@ -1982,7 +1964,7 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="cat-list-grid" role="list" aria-label="고양이 목록">
-                  {Array.from({ length: 4 }, (_, index) => {
+                  {Array.from({ length: activeSeatCount }, (_, index) => {
                     const seatId = `seat-${index + 1}` as SeatId;
                     const seat =
                       seatViews.find((candidate) => candidate.seatId === seatId) ??
@@ -2048,13 +2030,17 @@ export default function Home() {
                 <button
                   type="button"
                   className="cat-add-button"
-                  onClick={() => {
-                    setWorkTab("connect");
-                    setRadioPage("work");
-                  }}
+                  disabled={activeSeatCount >= MAX_SEAT_COUNT}
+                  onClick={requestSeatUnlock}
                 >
-                  고양이 추가하기
-                  <small>내 PC의 Codex 세션을 새 자리에 연결해요</small>
+                  {activeSeatCount >= MAX_SEAT_COUNT
+                    ? "모든 자리 사용 중"
+                    : `자리 ${activeSeatCount + 1} 추가하기`}
+                  <small>
+                    {activeSeatCount >= MAX_SEAT_COUNT
+                      ? "최대 네 자리까지 사용할 수 있어요"
+                      : "새 업무 객체와 고양이 자리를 함께 열어요"}
+                  </small>
                 </button>
               </section>
             )}
@@ -2170,7 +2156,7 @@ export default function Home() {
                   <span className="shell-balance">{shells} 조개</span>
                 </div>
                 <div className="desk-seat-tabs" role="tablist" aria-label="꾸밀 좌석">
-                  {(["seat-1", "seat-2", "seat-3", "seat-4"] as SeatId[]).map(
+                  {unlockedSeatIds.map(
                     (seatId, index) => (
                       <button
                         type="button"
@@ -2184,60 +2170,79 @@ export default function Home() {
                       </button>
                     ),
                   )}
+                  {activeSeatCount < MAX_SEAT_COUNT && (
+                    <button
+                      type="button"
+                      className="seat-unlock-tab"
+                      aria-label={`자리 ${activeSeatCount + 1} 추가`}
+                      onClick={requestSeatUnlock}
+                    >
+                      + 자리
+                    </button>
+                  )}
                 </div>
                 <div className="desk-tier-summary">
                   <span>
-                    <strong>나의 업무 자리</strong>
-                    <small>Tier 2 · 다음 해금 {WORKSTATION_TIER_COSTS[3]} 조개</small>
+                    <strong>{activeSeatCount}개의 업무 자리</strong>
+                    <small>
+                      {nextSeatSlot
+                        ? `다음 자리 ${nextSeatSlot.price} 조개`
+                        : "모든 자리 해금 완료"}
+                    </small>
                   </span>
                   <em>{shells} 조개</em>
-                  <i aria-label="Tier 진행 68%">
-                    <b style={{ width: "68%" }} />
+                  <i aria-label={`자리 해금 ${activeSeatCount * 25}%`}>
+                    <b style={{ width: `${activeSeatCount * 25}%` }} />
                   </i>
                 </div>
-                <div className="desk-item-grid" role="group" aria-label="자리 소품">
-                  {DESK_ITEMS.map((item) => {
-                    const owned = ownedDeskItems.has(item.id);
-                    const equipped = equippedDeskItemId === item.id;
-                    const locked = item.tier > 2;
+                <div className="desk-item-grid" role="group" aria-label="자리 객체">
+                  {WORKSTATION_SLOTS.map((slot, index) => {
+                    const unlocked = index < activeSeatCount;
+                    const next = index === activeSeatCount;
                     return (
                       <button
                         type="button"
                         className={[
                           "desk-item-card",
-                          equipped ? "equipped" : "",
-                          locked ? "locked" : "",
+                          unlocked ? "equipped" : "",
+                          !unlocked ? "locked" : "",
+                          next ? "next-seat" : "",
                         ]
                           .filter(Boolean)
                           .join(" ")}
-                        key={item.id}
-                        onClick={() => requestDeskItem(item)}
+                        key={slot.seatId}
+                        disabled={!unlocked && !next}
+                        onClick={() => {
+                          if (unlocked) {
+                            setSelectedSeat(slot.seatId);
+                            return;
+                          }
+                          if (next) requestSeatUnlock();
+                        }}
                       >
                         <span
                           className="desk-item-preview"
                           style={{
-                            backgroundImage: `url("${item.preview}")`,
-                            backgroundPosition: item.previewPosition,
+                            backgroundImage: `url("${slot.preview}")`,
+                            backgroundPosition: "center",
                           }}
                           aria-hidden="true"
                         />
-                        <strong>{item.label}</strong>
-                        <small>{item.note}</small>
+                        <strong>{slot.title}</strong>
+                        <small>{slot.description}</small>
                         <em>
-                          {equipped
-                            ? "장착 중"
-                            : locked
-                              ? `Tier ${item.tier}`
-                              : owned
-                                ? "장착"
-                                : `${item.price} 조개`}
+                          {unlocked
+                            ? "배치 완료"
+                            : next
+                              ? `${slot.price} 조개로 추가`
+                              : "이전 자리 먼저 추가"}
                         </em>
                       </button>
                     );
                   })}
                 </div>
                 <p className="desk-safety-note">
-                  소품만 바뀌며 고양이와 책상은 다시 불러오지 않아요.
+                  자리 하나마다 업무 객체 하나만 배치됩니다.
                 </p>
               </section>
             )}
@@ -2774,7 +2779,7 @@ export default function Home() {
         </div>
       )}
 
-      {pendingDeskItem && (
+      {pendingSeatSlot && (
         <div
           className="style-purchase-backdrop"
           role="presentation"
@@ -2783,38 +2788,37 @@ export default function Home() {
           }}
         >
           <section
-            className="style-purchase-modal desk-purchase-modal"
+            className="style-purchase-modal seat-unlock-modal"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="desk-purchase-title"
+            aria-labelledby="seat-unlock-title"
           >
-            <span className="style-purchase-title" id="desk-purchase-title">
-              자리 소품 구매
+            <span className="style-purchase-title" id="seat-unlock-title">
+              새 자리 추가
             </span>
             <button
               type="button"
               className="game-popup-close"
-              aria-label="자리 소품 구매 닫기"
+              aria-label="새 자리 추가 닫기"
               onClick={() => setConfirmDialog(null)}
             >
               닫기
             </button>
             <div className="style-purchase-copy">
               <span
-                className="desk-purchase-preview"
+                className="desk-purchase-preview workstation-unlock-preview"
                 style={{
-                  backgroundImage: `url("${pendingDeskItem.preview}")`,
-                  backgroundPosition: pendingDeskItem.previewPosition,
+                  backgroundImage: `url("${pendingSeatSlot.preview}")`,
                 }}
                 aria-hidden="true"
               />
-              <strong>{pendingDeskItem.label}</strong>
+              <strong>{pendingSeatSlot.title}</strong>
               <p>
-                자리 {activeDeskSeat.slice(-1)}에 바로 배치할까요? 한 번 구매한
-                소품은 추가 비용 없이 다시 쓸 수 있어요.
+                자리 {pendingSeatSlot.seatId.slice(-1)}과{" "}
+                {pendingSeatSlot.description} 객체를 함께 배치할까요?
               </p>
               <div className="style-purchase-balance">
-                <span>가격 {pendingDeskItem.price} 조개</span>
+                <span>가격 {pendingSeatSlot.price} 조개</span>
                 <span>보유 {shells} 조개</span>
               </div>
               <div className="style-purchase-actions">
@@ -2828,10 +2832,10 @@ export default function Home() {
                 <button
                   type="button"
                   className="game-button primary"
-                  disabled={shells < pendingDeskItem.price}
-                  onClick={() => confirmDeskPurchase(pendingDeskItem)}
+                  disabled={shells < pendingSeatSlot.price}
+                  onClick={confirmSeatUnlock}
                 >
-                  {shells < pendingDeskItem.price ? "조개 부족" : "구매하고 배치"}
+                  {shells < pendingSeatSlot.price ? "조개 부족" : "자리 추가"}
                 </button>
               </div>
             </div>

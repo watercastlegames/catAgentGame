@@ -3690,6 +3690,169 @@ button {
   }
 }
 
+/* Minimal picture-only world HUD. Currency and sound float without button plates. */
+.world-currency-hud {
+  position: absolute;
+  z-index: 48;
+  top: clamp(12px, 2.2%, 24px);
+  left: clamp(12px, 2.4%, 26px);
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  color: #fff7df;
+  filter: drop-shadow(0 2px 0 rgba(77, 54, 45, 0.92))
+    drop-shadow(0 4px 5px rgba(60, 45, 38, 0.24));
+  pointer-events: none;
+  gap: 2px;
+  animation: shellHudCollect 380ms ease-out;
+}
+
+.world-currency-hud img {
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+}
+
+.world-currency-hud strong {
+  margin-left: -2px;
+  font-family: "Gaegu", "Gowun Dodum", sans-serif;
+  font-size: clamp(23px, 4cqw, 34px);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+.sound-toggle,
+.sound-toggle[aria-pressed="false"],
+.sound-toggle:hover {
+  top: clamp(12px, 2.2%, 24px);
+  right: clamp(12px, 2.4%, 26px);
+  width: 54px;
+  height: 54px;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  filter: drop-shadow(0 3px 3px rgba(64, 45, 37, 0.24));
+}
+
+.sound-toggle img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transition: transform 120ms ease;
+}
+
+.sound-toggle:hover img,
+.sound-toggle:focus-visible img {
+  transform: scale(1.08) rotate(-3deg);
+}
+
+.sound-toggle:active img {
+  transform: scale(0.9);
+}
+
+.sound-toggle:focus-visible {
+  outline: 3px solid rgba(255, 248, 214, 0.9);
+  outline-offset: 2px;
+}
+
+.shell-fly-token {
+  --shell-from-x: 50%;
+  --shell-from-y: 50%;
+  position: absolute;
+  z-index: 70;
+  top: var(--shell-from-y);
+  left: var(--shell-from-x);
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: shellFlyToHud 820ms cubic-bezier(0.2, 0.76, 0.26, 1) forwards;
+}
+
+.shell-fly-token img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 2px rgba(83, 54, 42, 0.28));
+}
+
+.shell-fly-token b {
+  position: absolute;
+  top: -13px;
+  left: 50%;
+  color: #fff7dd;
+  font-family: "Gaegu", sans-serif;
+  font-size: 18px;
+  filter: drop-shadow(0 2px 0 #735044);
+  transform: translateX(-50%);
+}
+
+.workstation-unlock-preview {
+  min-height: 230px;
+  background-color: #f4e7bf;
+  background-position: center;
+  background-size: contain;
+}
+
+.desk-item-card.next-seat {
+  filter: none;
+  opacity: 1;
+}
+
+@keyframes shellFlyToHud {
+  0% {
+    top: var(--shell-from-y);
+    left: var(--shell-from-x);
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.55) rotate(-12deg);
+  }
+  14% {
+    opacity: 1;
+    transform: translate(-50%, -78%) scale(1.18) rotate(4deg);
+  }
+  100% {
+    top: 4%;
+    left: 5.3%;
+    opacity: 0.2;
+    transform: translate(-50%, -50%) scale(0.48) rotate(22deg);
+  }
+}
+
+@keyframes shellHudCollect {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  48% {
+    transform: scale(1.12);
+  }
+}
+
+@media (max-width: 540px) {
+  .world-currency-hud img {
+    width: 43px;
+    height: 43px;
+  }
+
+  .sound-toggle,
+  .sound-toggle[aria-pressed="false"],
+  .sound-toggle:hover {
+    width: 48px;
+    height: 48px;
+  }
+
+  .workstation-unlock-preview {
+    min-height: 180px;
+  }
+}
+
 /* S00–S11 final screen pass: every interactive surface uses the same painted kit. */
 .radio-screen {
   font-size: 13px;
@@ -4844,5 +5007,28 @@ button {
   .onboarding-modal {
     min-height: 80%;
     padding-inline: 24px;
+  }
+}
+
+/* Final workstation picker overrides must win over shared popup/card sizing. */
+.world-3d-location {
+  display: none;
+}
+
+.desk-item-card.locked.next-seat {
+  filter: none;
+  opacity: 1;
+}
+
+.desk-purchase-preview.workstation-unlock-preview {
+  min-height: 230px;
+  background-color: #f4e7bf;
+  background-position: center;
+  background-size: contain;
+}
+
+@media (max-width: 540px) {
+  .desk-purchase-preview.workstation-unlock-preview {
+    min-height: 180px;
   }
 }

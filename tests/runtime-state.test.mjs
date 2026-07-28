@@ -40,6 +40,20 @@ test("assigns saved free seats first and queues the fifth runtime", () => {
   );
 });
 
+test("only assigns runtimes to currently unlocked seats", () => {
+  const availableSeats = ["seat-1"];
+  assert.equal(assignSeat({}, "first", {}, availableSeats), "seat-1");
+  assert.equal(
+    assignSeat(
+      { first: { threadId: "first", seatId: "seat-1" } },
+      "second",
+      { second: "seat-4" },
+      availableSeats,
+    ),
+    "queue",
+  );
+});
+
 test("routes threadless task events and preserves approval FIFO", () => {
   assert.equal(
     resolveRuntimeKey(

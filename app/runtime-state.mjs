@@ -8,7 +8,12 @@ export function resolveRuntimeKey(event, taskToThread) {
   return null;
 }
 
-export function assignSeat(runtimes, runtimeKey, savedAssignments) {
+export function assignSeat(
+  runtimes,
+  runtimeKey,
+  savedAssignments,
+  availableSeats = SEAT_ORDER,
+) {
   const occupied = new Set(
     Object.entries(runtimes)
       .filter(([key]) => key !== runtimeKey)
@@ -16,8 +21,10 @@ export function assignSeat(runtimes, runtimeKey, savedAssignments) {
       .filter((seat) => seat !== "queue"),
   );
   const saved = savedAssignments[runtimeKey];
-  if (saved && !occupied.has(saved)) return saved;
-  return SEAT_ORDER.find((seat) => !occupied.has(seat)) ?? "queue";
+  if (saved && availableSeats.includes(saved) && !occupied.has(saved)) {
+    return saved;
+  }
+  return availableSeats.find((seat) => !occupied.has(seat)) ?? "queue";
 }
 
 export function rekeyRuntime(runtimes, previousKey, nextThreadId) {

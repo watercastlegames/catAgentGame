@@ -75,6 +75,10 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     readFile(new URL("../app/cat-styles.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/cat-body.ts", import.meta.url), "utf8"),
   ]);
+  const seatProgression = await readFile(
+    new URL("../app/seat-progression.ts", import.meta.url),
+    "utf8",
+  );
 
   // 체형 살찌우기는 몸통 뼈 가중치를 쓰는 바인드 포즈 정점 조작이어야 한다.
   // (뼈 스케일은 클립 68개가 전부 .scale 트랙을 갖고 있어 매 프레임 덮어쓴다)
@@ -132,10 +136,8 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /className="cat-list-grid"/);
   assert.match(page, /className="panel-section cat-detail-panel"/);
   assert.match(page, /className="desk-item-grid"/);
-  assert.match(page, /role="group" aria-label="자리 소품"/);
-  assert.match(page, /DESK_OWNERSHIP_KEY/);
+  assert.match(page, /role="group" aria-label="자리 객체"/);
   assert.match(page, /purchaseLockedRef/);
-  assert.match(page, /confirmDeskPurchase/);
   assert.match(page, /className="ui-empty-state state-error"/);
   assert.match(page, /className="style-purchase-modal onboarding-modal"/);
   assert.match(page, /ui-preview/);
@@ -143,7 +145,19 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(catNeeds, /NEEDS_OFFLINE_CAP_MS = 12 \* 60 \* 60/);
   assert.match(page, /LEGACY_ACORN_KEY/);
   assert.match(page, /value \+ 10/);
-  assert.match(page, /고양이 추가하기/);
+  assert.match(page, /새 업무 객체와 고양이 자리를 함께 열어요/);
+  assert.match(page, /activeSeatCount=\{activeSeatCount\}/);
+  assert.match(page, /onShellCollect=\{collectBeachShell\}/);
+  assert.match(page, /hud-shell-v1\.png/);
+  assert.match(page, /hud-sound-on-v1\.png/);
+  assert.match(page, /className="world-currency-hud"/);
+  assert.match(seatProgression, /agent-forest-active-seat-count-v1/);
+  assert.match(seatProgression, /MAX_SEAT_COUNT = 4/);
+  assert.match(seatProgression, /workstation-seat-1-v1\.png/);
+  assert.match(seatProgression, /workstation-seat-4-v1\.png/);
+  assert.match(world3d, /WORKSTATION_PLACEMENT_SEATS/);
+  assert.match(world3d, /spawnCollectibleShell/);
+  assert.match(world3d, /beach-shell-collection-particles/);
   assert.match(page, /catStyle=\{catStyle\}/);
   assert.match(page, /catShape=\{catShape\}/);
   assert.doesNotMatch(page, /radioPage === "mission"/);
@@ -200,8 +214,10 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /playCat\("purr"\)/);
   assert.match(page, /AUDIO_ENABLED_KEY/);
   assert.match(page, /audioPreferenceHydratedRef/);
-  assert.match(page, /className={`sound-toggle hud-fade/);
+  assert.match(page, /className="sound-toggle"/);
   assert.match(css, /\.sound-toggle \{/);
+  assert.match(css, /\.world-currency-hud \{/);
+  assert.match(css, /@keyframes shellFlyToHud/);
 
   assert.match(page, /new EventSource/);
   assert.match(page, /127\.0\.0\.1:4317/);
@@ -885,6 +901,23 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
       "desk-lantern-v1.png",
     ].map((file) =>
       access(new URL(`../public/art/ui/desk-items/${file}`, import.meta.url)),
+    ),
+    ...[
+      "hud-shell-v1.png",
+      "hud-sound-on-v1.png",
+      "hud-sound-off-v1.png",
+    ].map((file) =>
+      access(new URL(`../public/art/ui/${file}`, import.meta.url)),
+    ),
+    ...[
+      "workstation-seat-1-v1.png",
+      "workstation-seat-2-v1.png",
+      "workstation-seat-3-v1.png",
+      "workstation-seat-4-v1.png",
+    ].map((file) =>
+      access(
+        new URL(`../public/art/ui/workstations/${file}`, import.meta.url),
+      ),
     ),
     access(new URL("../bridge/server.mjs", import.meta.url)),
   ]);
