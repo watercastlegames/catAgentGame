@@ -167,6 +167,13 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     /monitorAblationMode\s*&&\s*monitorAblationMode\s*!==\s*"no-live-screen"/,
   );
   assert.match(css, /\.cat-style-grid button\.selected/);
+  // 메인 팝업은 월드(Canvas) 너비·높이의 약 80%를 점유한다.
+  assert.match(
+    css,
+    /\.radio-panel\.game-popup\s*\{[\s\S]*?width:\s*min\(80vw,[\s\S]*?height:\s*80%/m,
+  );
+  assert.match(css, /\.cat-list-grid\s*\{[\s\S]*?repeat\(2,/m);
+  assert.match(css, /@media \(max-width: 820px\)[\s\S]*?width:\s*calc\(100% - 28px\)/m);
   // 1번 키캡 아트만 고양이 버전으로 갈아끼웠다(2~4번 키는 원본 그대로).
   assert.match(css, /menu-keycaps-base-v5\.png/);
   assert.match(css, /menu-keycaps-pressed-1-v2\.png/);
