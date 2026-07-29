@@ -549,7 +549,7 @@ export default function Home() {
   const resetHudTimer = useCallback(() => {
     setHudDormant(false);
     if (hudTimerRef.current) window.clearTimeout(hudTimerRef.current);
-    hudTimerRef.current = window.setTimeout(() => setHudDormant(true), 4_000);
+    hudTimerRef.current = window.setTimeout(() => setHudDormant(true), 3_000);
   }, []);
 
   const playBlockedChime = useCallback(() => {
@@ -603,7 +603,6 @@ export default function Home() {
     (event: BridgeEvent) => {
       if (event.version !== undefined) setCodexVersion(event.version ?? null);
       if (event.available !== undefined) setCodexAvailable(event.available);
-      resetHudTimer();
 
       if (event.type === "bridge.snapshot") {
         for (const pending of event.pendingApprovals ?? []) {
@@ -762,7 +761,7 @@ export default function Home() {
         });
       }
     },
-    [raiseBlockedAlert, resetHudTimer],
+    [raiseBlockedAlert],
   );
 
   const runFreeDemo = useCallback(
@@ -1800,7 +1799,7 @@ export default function Home() {
             className="world-currency-hud"
             aria-label={`조개 ${shells}개`}
           >
-            <img src="/art/ui/hud-shell-v1.png" alt="" aria-hidden="true" />
+            <img src="/art/ui/hud-shell-v2.png" alt="" aria-hidden="true" />
             <strong>{shells.toLocaleString("ko-KR")}</strong>
           </div>
 
@@ -1814,7 +1813,7 @@ export default function Home() {
               } as CSSProperties}
               aria-hidden="true"
             >
-              <img src="/art/ui/hud-shell-v1.png" alt="" />
+              <img src="/art/ui/hud-shell-v2.png" alt="" />
               <b>+{token.amount}</b>
             </span>
           ))}
@@ -1833,8 +1832,8 @@ export default function Home() {
             <img
               src={
                 audioEnabled
-                  ? "/art/ui/hud-sound-on-v1.png"
-                  : "/art/ui/hud-sound-off-v1.png"
+                  ? "/art/ui/hud-sound-on-v2.png"
+                  : "/art/ui/hud-sound-off-v2.png"
               }
               alt=""
               aria-hidden="true"

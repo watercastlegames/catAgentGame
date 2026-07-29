@@ -148,8 +148,9 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /새 업무 객체와 고양이 자리를 함께 열어요/);
   assert.match(page, /activeSeatCount=\{activeSeatCount\}/);
   assert.match(page, /onShellCollect=\{collectBeachShell\}/);
-  assert.match(page, /hud-shell-v1\.png/);
-  assert.match(page, /hud-sound-on-v1\.png/);
+  assert.match(page, /hud-shell-v2\.png/);
+  assert.match(page, /hud-sound-on-v2\.png/);
+  assert.match(page, /hud-sound-off-v2\.png/);
   assert.match(page, /className="world-currency-hud"/);
   assert.match(seatProgression, /agent-forest-active-seat-count-v1/);
   assert.match(seatProgression, /MAX_SEAT_COUNT = 4/);
@@ -158,8 +159,10 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /WORKSTATION_PLACEMENT_SEATS/);
   assert.match(world3d, /spawnCollectibleShell/);
   assert.match(world3d, /beach-shell-collection-particles/);
-  assert.match(world3d, /shorelineShellSpawnPoints/);
+  assert.match(world3d, /upperAndSideShellSpawnPoints/);
   assert.match(world3d, /shorelineOnly = true/);
+  assert.match(world3d, /camera-facing-shell/);
+  assert.match(world3d, /applyShellOutline/);
   assert.match(world3d, /shoreline-shimmer/);
   assert.match(world3d, /water-ripple/);
   assert.match(page, /catStyle=\{catStyle\}/);
@@ -236,6 +239,10 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /SEAT_ASSIGNMENTS_KEY/);
   assert.match(page, /runFreeDemo/);
   assert.match(page, /hudDormant/);
+  assert.match(page, /setHudDormant\(true\), 3_000/);
+  assert.match(css, /\.hud-dormant \.keycap-menu/);
+  assert.match(css, /\.hud-dormant \.world-currency-hud/);
+  assert.match(css, /\.hud-dormant \.sound-toggle/);
   assert.match(page, /KEYCAP_CLICK_SOUNDS/);
   assert.match(page, /keycapAudioPoolRef/);
   assert.match(page, /pressRadioMenuKey/);
@@ -907,9 +914,9 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
       access(new URL(`../public/art/ui/desk-items/${file}`, import.meta.url)),
     ),
     ...[
-      "hud-shell-v1.png",
-      "hud-sound-on-v1.png",
-      "hud-sound-off-v1.png",
+      "hud-shell-v2.png",
+      "hud-sound-on-v2.png",
+      "hud-sound-off-v2.png",
     ].map((file) =>
       access(new URL(`../public/art/ui/${file}`, import.meta.url)),
     ),

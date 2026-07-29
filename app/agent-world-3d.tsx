@@ -2928,32 +2928,36 @@ float shoreOverlayWaterSignal( vec3 color ) {
     let lastCompletionSignal = completionSignalRef.current;
     let completionElapsed = 2;
 
-    // 조개는 섬 안쪽에 놓지 않는다. 각 좌표는 해변 텍스처의 모래/물
-    // 경계선 위이며, 회전값은 부채꼴이 육지 쪽을 향하도록 고정한다.
-    const shorelineShellSpawnPoints = [
+    // 조개는 하단 메뉴 뒤나 섬 안쪽에 놓지 않는다. 상단과 좌우 해안선만
+    // 사용하고, 부채꼴 앞면은 항상 카메라 쪽을 향하도록 고정한다.
+    const upperAndSideShellSpawnPoints = [
       {
         position: new THREE.Vector3(0, 0.065, -5.55),
         rotationY: Math.PI,
       },
       {
-        position: new THREE.Vector3(2.12, 0.065, -5.5),
+        position: new THREE.Vector3(2.18, 0.065, -5.32),
         rotationY: Math.PI,
       },
       {
-        position: new THREE.Vector3(-2.15, 0.065, -5.52),
+        position: new THREE.Vector3(-2.2, 0.065, -5.34),
         rotationY: Math.PI,
       },
       {
-        position: new THREE.Vector3(-1.92, 0.065, 5.5),
-        rotationY: 0,
+        position: new THREE.Vector3(-3.48, 0.065, -3.72),
+        rotationY: Math.PI,
       },
       {
-        position: new THREE.Vector3(0, 0.065, 5.54),
-        rotationY: 0,
+        position: new THREE.Vector3(3.46, 0.065, -3.68),
+        rotationY: Math.PI,
       },
       {
-        position: new THREE.Vector3(1.9, 0.065, 5.48),
-        rotationY: 0,
+        position: new THREE.Vector3(-3.58, 0.065, -1.55),
+        rotationY: Math.PI,
+      },
+      {
+        position: new THREE.Vector3(3.56, 0.065, -1.48),
+        rotationY: Math.PI,
       },
     ];
     const collectibleShells = new Map<string, CollectibleShell>();
@@ -3080,6 +3084,23 @@ float shoreOverlayWaterSignal( vec3 color ) {
       group.userData.shorelineOnly = true;
       const baseScale = 0.82;
       group.scale.setScalar(baseScale);
+      const shellVisual = new THREE.Group();
+      shellVisual.name = `${id}-camera-facing-shell`;
+      shellVisual.rotation.x = THREE.MathUtils.degToRad(12);
+      group.add(shellVisual);
+
+      const applyShellOutline = (
+        material: THREE.Material,
+        thickness: number,
+        alpha: number,
+      ) => {
+        material.userData.outlineParameters = {
+          thickness,
+          color: ILLUSTRATION_OUTLINE_COLOR.toArray(),
+          alpha,
+          visible: true,
+        };
+      };
 
       const shellGeometry = createScallopSurfaceGeometry();
       const shellBackMaterial = new THREE.MeshToonMaterial({
@@ -3088,10 +3109,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
         emissiveIntensity: 0.08,
         side: THREE.DoubleSide,
       });
+      applyShellOutline(shellBackMaterial, 0.0052, 0.88);
       const shellBack = new THREE.Mesh(shellGeometry.clone(), shellBackMaterial);
       shellBack.position.y = -0.025;
       shellBack.scale.set(1.035, 1, 1.035);
-      group.add(shellBack);
+      shellVisual.add(shellBack);
 
       const shellMaterial = new THREE.MeshToonMaterial({
         color: 0xfff0c2,
@@ -3099,15 +3121,17 @@ float shoreOverlayWaterSignal( vec3 color ) {
         emissiveIntensity: 0.2,
         side: THREE.DoubleSide,
       });
+      applyShellOutline(shellMaterial, 0.0052, 0.9);
       const shellBody = new THREE.Mesh(shellGeometry, shellMaterial);
       shellBody.castShadow = true;
-      group.add(shellBody);
+      shellVisual.add(shellBody);
 
       const ridgeMaterial = new THREE.MeshToonMaterial({
         color: 0xffd18e,
         emissive: 0xffc86f,
         emissiveIntensity: 0.14,
       });
+      applyShellOutline(ridgeMaterial, 0.0026, 0.64);
       for (const angle of [-0.9, -0.6, -0.3, 0, 0.3, 0.6, 0.9]) {
         const ribPoints = Array.from({ length: 6 }, (_, index) => {
           const progress = 0.11 + (index / 5) * 0.84;
@@ -3128,7 +3152,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
           ),
           ridgeMaterial,
         );
-        group.add(ridge);
+        shellVisual.add(ridge);
       }
 
       const hingeMaterial = new THREE.MeshToonMaterial({
@@ -3136,13 +3160,14 @@ float shoreOverlayWaterSignal( vec3 color ) {
         emissive: 0xffdda0,
         emissiveIntensity: 0.2,
       });
+      applyShellOutline(hingeMaterial, 0.0038, 0.82);
       const hinge = new THREE.Mesh(
         new THREE.SphereGeometry(0.075, 18, 12),
         hingeMaterial,
       );
       hinge.position.set(0, 0.066, 0.115);
       hinge.scale.set(1.05, 0.55, 0.68);
-      group.add(hinge);
+      shellVisual.add(hinge);
 
       const rippleMaterial = new THREE.MeshBasicMaterial({
         color: 0xe9fff5,
@@ -3219,7 +3244,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
           (entry) => entry.group.userData.spawnPointId as number,
         ),
       );
-      const available = shorelineShellSpawnPoints
+      const available = upperAndSideShellSpawnPoints
         .map((point, index) => ({ point, index }))
         .filter(({ index }) => !occupiedPointIds.has(index));
       if (!available.length) return;
