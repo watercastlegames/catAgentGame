@@ -79,6 +79,9 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     new URL("../app/seat-progression.ts", import.meta.url),
     "utf8",
   );
+  assert.match(seatProgression, /seatId: "seat-2"[\s\S]*?price: 250/);
+  assert.match(seatProgression, /seatId: "seat-3"[\s\S]*?price: 600/);
+  assert.match(seatProgression, /seatId: "seat-4"[\s\S]*?price: 1250/);
 
   // 체형 살찌우기는 몸통 뼈 가중치를 쓰는 바인드 포즈 정점 조작이어야 한다.
   // (뼈 스케일은 클립 68개가 전부 .scale 트랙을 갖고 있어 매 프레임 덮어쓴다)
@@ -158,17 +161,62 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(seatProgression, /workstation-seat-4-v1\.png/);
   assert.match(world3d, /WORKSTATION_PLACEMENT_SEATS/);
   assert.match(world3d, /spawnCollectibleShell/);
+  assert.match(world3d, /amount: 1/);
+  assert.doesNotMatch(world3d, /amount: 5/);
   assert.match(world3d, /beach-shell-collection-particles/);
+  assert.match(world3d, /beach-shell-collection-flash/);
+  assert.match(world3d, /beach-shell-collection-water-ring/);
+  assert.match(world3d, /const popWave = Math\.sin\(progress \* Math\.PI\)/);
+  assert.doesNotMatch(world3d, /collectible\.group\.rotation\.y \+= delta \* 8/);
+  assert.doesNotMatch(
+    world3d,
+    /collectible\.baseY \+ progress \* 0\.82/,
+  );
+  assert.match(world3d, /plump-closed-scallop-meshy6-v1\.glb/);
+  assert.match(
+    world3d,
+    /COLLECTIBLE_SHELL_REFERENCE_YAW = THREE\.MathUtils\.degToRad\(-10\)/,
+  );
+  assert.match(
+    world3d,
+    /rotationY: COLLECTIBLE_SHELL_REFERENCE_YAW/,
+  );
+  assert.doesNotMatch(world3d, /shellVisual\.rotation\.x/);
+  assert.match(world3d, /shellVisual\.scale\.setScalar\(0\.2\)/);
   assert.match(world3d, /upperAndSideShellSpawnPoints/);
   assert.match(world3d, /shorelineOnly = true/);
   assert.match(world3d, /camera-facing-shell/);
-  assert.match(world3d, /applyShellOutline/);
+  assert.match(world3d, /collectibleShellGltf\.scene/);
+  assert.match(world3d, /shellSpawnElapsed = nextShellSpawnSeconds/);
+  assert.match(world3d, /0\.0028,\s*0\.72/);
+  assert.match(
+    world3d,
+    /plump-closed-scallop-meshy6-v1_base_color-soft-seam-v2\.png/,
+  );
+  assert.match(world3d, /material\.map = softSeamTexture/);
+  assert.match(world3d, /new THREE\.RingGeometry\(0\.18, 0\.22, 48\)/);
+  assert.match(
+    world3d,
+    /shorelineSparkleGeometry = createFourPointStarGeometry\(0\.11, 0\.026\)/,
+  );
+  assert.match(world3d, /const shellBurstCount = 20/);
+  assert.match(world3d, /new THREE\.CanvasTexture/);
+  assert.match(world3d, /drawSparkleRays/);
+  assert.doesNotMatch(world3d, /createRadialGradient/);
+  assert.match(world3d, /shoreline-glow/);
+  assert.match(world3d, /glowShimmer/);
+  assert.doesNotMatch(world3d, /createScallopSurfaceGeometry/);
   assert.match(world3d, /shoreline-shimmer/);
   assert.match(world3d, /water-ripple/);
   assert.match(page, /catStyle=\{catStyle\}/);
   assert.match(page, /catShape=\{catShape\}/);
   assert.doesNotMatch(page, /radioPage === "mission"/);
   assert.match(world3d, /catStyleModelUrl\(catStyle\)/);
+  assert.match(world3d, /PolyArt_Cats_color\.png/);
+  assert.match(
+    world3d,
+    /texturedMaterial\.map = catPaletteTexture/,
+  );
   assert.match(world3d, /fattenCat\(model, catShape\)/);
   // 후처리 비교 캡처는 꾹꾹이용 코딩 화면·눌림 키캡을 강제로 띄우지 않는다.
   // monitorAblation 존재만으로 실시간 화면을 켰던 이전 회귀를 막는다.
@@ -224,7 +272,10 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /className="sound-toggle"/);
   assert.match(css, /\.sound-toggle \{/);
   assert.match(css, /\.world-currency-hud \{/);
-  assert.match(css, /@keyframes shellFlyToHud/);
+  assert.match(css, /@keyframes shellCollectPop/);
+  assert.match(css, /\.shell-collect-token::before/);
+  assert.doesNotMatch(css, /@keyframes shellFlyToHud/);
+  assert.doesNotMatch(page, /shellFlyTokens/);
 
   assert.match(page, /new EventSource/);
   assert.match(page, /127\.0\.0\.1:4317/);
@@ -253,7 +304,7 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /world-stage[\s\S]*keycap-menu/);
   assert.doesNotMatch(page, /keycap-menu-pressed-\$\{pressedRadioIndex\} hud-fade/);
   assert.match(page, /const SHOW_LEGACY_OVERLAYS = false/);
-  assert.match(page, /\{radioOpen && \(/);
+  assert.match(page, /\{radioOpen && popupAssetsReady && \(/);
   assert.doesNotMatch(page, /SHOW_LEGACY_OVERLAYS && radioOpen/);
   assert.doesNotMatch(page, /className="radio-dials"/);
   assert.match(page, /비용 없는 화면 시연/);
@@ -318,6 +369,14 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /RoundedBoxGeometry/);
   assert.match(world3d, /MESHY_WORKSTATION_PLACEMENTS/);
   assert.match(world3d, /MESHY_DECORATION_ASSETS/);
+  assert.doesNotMatch(
+    world3d,
+    /id: "camping-lantern",\s*url: CAMPING_LANTERN_MODEL_URL/,
+  );
+  assert.doesNotMatch(
+    world3d,
+    /else if \(asset\.id === "camping-lantern"\)/,
+  );
   assert.match(world3d, /createCodingStationInteractionOverlay/);
   assert.match(world3d, /low-monitor-workstation-live-code-screen/);
   assert.match(world3d, /desk-keycap-1-top-flat-v1\.png/);
@@ -345,8 +404,9 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /MONITOR_CODE_FRAME_RATE = 8/);
   assert.match(world3d, /nextMonitorScreenFrame/);
   assert.match(world3d, /coding-desk-keycap-\$\{index \+ 1\}-top-texture/);
-  assert.doesNotMatch(world3d, /new THREE\.Sprite/);
-  assert.doesNotMatch(world3d, /SpriteMaterial/);
+  assert.match(world3d, /const halo = new THREE\.Sprite\(haloMaterial\)/);
+  assert.match(world3d, /const haloMaterial = new THREE\.SpriteMaterial/);
+  assert.doesNotMatch(world3d, /coding-desk-keycap[\s\S]{0,320}new THREE\.Sprite/);
   assert.match(world3d, /isNavigationObstacle/);
   assert.match(world3d, /SCENE_OBSTACLES/);
   assert.match(world3d, /findAvoidancePath2D/);
@@ -504,6 +564,15 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /seat\.hunger/);
   assert.match(world3d, /seat\.toilet/);
   assert.match(world3d, /seat\.happiness/);
+  assert.match(page, />\s*사료 주기\s*</);
+  assert.match(page, /litterLevel=\{litterLevel\}/);
+  assert.match(page, /onLitterBoxClick=\{cleanLitterFacility\}/);
+  assert.match(world3d, /outcome: "toilet-blocked"/);
+  assert.match(world3d, /litter-box-level-gauge/);
+  assert.match(world3d, /litter-box-odor-particles/);
+  assert.match(world3d, /litterLevelRef\.current = addLitterWaste/);
+  assert.match(world3d, /targetId === "litter-box"/);
+  assert.match(world3d, /primaryInsideLitterBox/);
   assert.match(world3d, /marker\.update\(/);
   assert.match(world3d, /SEAT_WORLD_POSITIONS/);
   assert.match(world3d, /new THREE\.Raycaster/);

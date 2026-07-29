@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { POPUP_UI_ASSETS } from "./popup-assets.mjs";
 
 export const metadata: Metadata = {
   metadataBase: new URL(
@@ -47,6 +48,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ko">
+      <head>
+        {POPUP_UI_ASSETS.map((source) => (
+          <link key={source} rel="preload" as="image" href={source} />
+        ))}
+      </head>
       <body>{children}</body>
     </html>
   );

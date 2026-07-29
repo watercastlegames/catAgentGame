@@ -59,3 +59,10 @@ next-env.d.ts
 /public/models/raccoon-*.png
 /public/models/raccoon-*.json
 /public/models/hybrid-coach-01-rigged.glb
+
+# Keep heavyweight Meshy source exports locally. The deployed site uses only
+# the web GLBs and the final shell texture listed outside these patterns.
+/public/models/cat-care-v1/*-meshy6-v1.glb
+/public/models/cat-care-v1/*-meshy6-v1_base_color.png
+/public/models/collectible-shell-v2/*_base_color-soft-seam-v1.png
+/public/models/collectible-shell-v2/*_base_color.png

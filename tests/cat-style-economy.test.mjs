@@ -37,6 +37,8 @@ test("every shipped cat style has a non-zero shell price", () => {
   ];
   assert.deepEqual(Object.keys(economy.CAT_STYLE_PRICES).sort(), expectedStyles);
   assert.ok(Object.values(economy.CAT_STYLE_PRICES).every((price) => price > 0));
+  assert.equal(economy.CAT_STYLE_PRICES.White, 75);
+  assert.equal(economy.CAT_STYLE_PRICES.Maine, 200);
 });
 
 test("owned styles are free to reapply and new styles charge once", () => {
@@ -46,10 +48,10 @@ test("owned styles are free to reapply and new styles charge once", () => {
   assert.equal(reapplied.balance, 50);
   assert.equal(reapplied.charged, 0);
 
-  const purchased = economy.purchaseCatStyle("White", 50, owned);
+  const purchased = economy.purchaseCatStyle("White", 100, owned);
   assert.equal(purchased.ok, true);
-  assert.equal(purchased.balance, 35);
-  assert.equal(purchased.charged, 15);
+  assert.equal(purchased.balance, 25);
+  assert.equal(purchased.charged, 75);
   assert.equal(purchased.ownedStyles.has("White"), true);
 });
 
@@ -59,6 +61,6 @@ test("invalid storage fails closed and insufficient balances do not unlock", () 
   assert.deepEqual(result, {
     ok: false,
     reason: "insufficient-shells",
-    required: 40,
+    required: 200,
   });
 });

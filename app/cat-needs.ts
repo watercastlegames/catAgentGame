@@ -8,6 +8,18 @@ export const NEED_FORCE_THRESHOLD = 100;
 export const NEEDS_OFFLINE_CAP_MS = 12 * 60 * 60 * 1_000;
 export const HUNGER_FILL_MS = 45 * 60 * 1_000;
 export const TOILET_FILL_MS = 90 * 60 * 1_000;
+export const CAT_CARE_SEEK_THRESHOLD = NEED_DANGER_THRESHOLD;
+export const EMPTY_BOWL_HAPPINESS_LOSS = 6;
+export const FULL_LITTER_BOX_HAPPINESS_LOSS = 8;
+export const MEAL_HAPPINESS_GAIN = 4;
+export const TOILET_HAPPINESS_GAIN = 2;
+
+export type CatCareIntent = "food" | "toilet";
+export type CatCareOutcome =
+  | "meal-completed"
+  | "meal-missed"
+  | "toilet-completed"
+  | "toilet-blocked";
 
 export type CatNeedState = {
   hunger: number;
@@ -123,6 +135,20 @@ export function getNeedTone(
   return "normal";
 }
 
+export function selectCatCareIntent(
+  state: Pick<CatNeedState, "hunger" | "toilet">,
+): CatCareIntent | null {
+  const hunger = clampNeed(state.hunger);
+  const toilet = clampNeed(state.toilet);
+  if (
+    hunger < CAT_CARE_SEEK_THRESHOLD &&
+    toilet < CAT_CARE_SEEK_THRESHOLD
+  ) {
+    return null;
+  }
+  return hunger >= toilet ? "food" : "toilet";
+}
+
 export function updateCatNeedState(
   state: CatNeedState,
   patch: Partial<Pick<CatNeedState, "hunger" | "toilet" | "happiness">>,
@@ -135,6 +161,50 @@ export function updateCatNeedState(
     happiness: clampNeed(patch.happiness ?? current.happiness, 30),
     lastComputedAt: now,
   };
+}
+
+export function applyCatCareOutcome(
+  state: CatNeedState,
+  outcome: CatCareOutcome,
+  now = Date.now(),
+): CatNeedState {
+  const current = computeCatNeedState(state, now);
+  if (outcome === "meal-completed") {
+    return updateCatNeedState(
+      current,
+      {
+        hunger: 0,
+        happiness: current.happiness + MEAL_HAPPINESS_GAIN,
+      },
+      now,
+    );
+  }
+  if (outcome === "meal-missed") {
+    return updateCatNeedState(
+      current,
+      {
+        happiness: current.happiness - EMPTY_BOWL_HAPPINESS_LOSS,
+      },
+      now,
+    );
+  }
+  if (outcome === "toilet-blocked") {
+    return updateCatNeedState(
+      current,
+      {
+        happiness: current.happiness - FULL_LITTER_BOX_HAPPINESS_LOSS,
+      },
+      now,
+    );
+  }
+  return updateCatNeedState(
+    current,
+    {
+      toilet: 0,
+      happiness: current.happiness + TOILET_HAPPINESS_GAIN,
+    },
+    now,
+  );
 }
 
 export function parseCatNeedsStore(

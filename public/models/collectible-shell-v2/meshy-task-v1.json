@@ -1,0 +1,14 @@
+{
+  "taskId": "019fabb0-9ec0-73fc-84dd-693a81a2c6c7",
+  "taskType": "image-to-3d",
+  "aiModel": "meshy-6",
+  "sourceImage": "assets/meshy-references/collectible-shell-v2/plump-closed-scallop-ref-v1.png",
+  "targetFormats": [
+    "glb"
+  ],
+  "textured": true,
+  "pbr": false,
+  "hdTexture": false,
+  "removeLighting": true,
+  "consumedCredits": 30
+}

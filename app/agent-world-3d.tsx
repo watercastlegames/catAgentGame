@@ -7,10 +7,32 @@ import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
-import { findAvoidancePath2D } from "./navigation.mjs";
+import {
+  findAvoidancePath2D,
+  resolvePointOutsideObstacles2D,
+} from "./navigation.mjs";
 import { catStyleModelUrl } from "./cat-styles";
 import { type CatShape, fattenCat } from "./cat-body";
+import {
+  type CatCareIntent,
+  type CatCareOutcome,
+  selectCatCareIntent,
+} from "./cat-needs";
+import {
+  addLitterWaste,
+  isLitterBoxFull,
+} from "./litter-box-state.mjs";
 import { SketchOutlineEffect } from "./sketch-outline-effect";
+import {
+  HARD_CODED_WORLD_OBJECT_LAYOUT,
+  WORLD_OBJECT_LAYOUT_STORAGE_KEY,
+  isWorldLayoutAdminHost,
+  parseWorldObjectLayout,
+  transformObstacleBounds,
+  transformWorldPoint,
+  type WorldObjectLayout,
+  type WorldObjectPose,
+} from "./world-object-layout.mjs";
 
 export type AgentWorldLocation =
   | "entrance"
@@ -25,6 +47,7 @@ export type SeatId = "seat-1" | "seat-2" | "seat-3" | "seat-4";
 
 export type SeatView = {
   seatId: SeatId | "queue";
+  catId: string;
   agentName: string;
   location: AgentWorldLocation;
   status: string;
@@ -51,6 +74,34 @@ type AgentWorld3DProps = {
     x: number;
     y: number;
   }) => void;
+  foodAvailable: boolean;
+  litterLevel: number;
+  onFoodBowlClick?: () => void;
+  onLitterBoxClick?: () => void;
+  onCatCareEvent?: (event: {
+    catId: string;
+    seatId: SeatId;
+    outcome: CatCareOutcome;
+  }) => void;
+};
+
+type CatCarePhase =
+  | "approaching"
+  | "waiting"
+  | "using"
+  | "recovering"
+  | "returning";
+
+type CatCareRuntime = {
+  intent: CatCareIntent;
+  phase: CatCarePhase;
+  timer: number;
+  insideFacility: boolean;
+};
+
+type CareFacilityState = {
+  occupant: string | null;
+  queue: string[];
 };
 
 type CollectibleShell = {
@@ -60,9 +111,12 @@ type CollectibleShell = {
   ripple: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
   sparkles: Array<{
     star: THREE.Mesh<THREE.ShapeGeometry, THREE.MeshBasicMaterial>;
+    halo: THREE.Sprite<THREE.SpriteMaterial>;
     baseScale: number;
+    haloBaseScale: number;
     phase: number;
     baseY: number;
+    spin: number;
   }>;
   baseY: number;
   baseScale: number;
@@ -74,6 +128,7 @@ type CollectibleShell = {
 
 const DEFAULT_SEAT_VIEW: SeatView = {
   seatId: "seat-1",
+  catId: "demo-cat",
   agentName: "코치 모모",
   location: "general",
   status: "idle",
@@ -142,6 +197,13 @@ const AMBIENT_MOVE_SPEED = 0.46;
 const TASK_MOVE_SPEED = 1.35;
 const AMBIENT_ARRIVAL_DISTANCE = 0.045;
 const TASK_ARRIVAL_DISTANCE = 0.025;
+const CARE_ARRIVAL_DISTANCE = 0.075;
+const CARE_MOVE_SPEED = 0.62;
+const FOOD_USE_SECONDS = 5.2;
+const TOILET_USE_SECONDS = 5.8;
+const CARE_RECOVERY_SECONDS = 1.4;
+const EMPTY_BOWL_RETRY_SECONDS = 24;
+const LITTER_FULL_RETRY_SECONDS = 30;
 const DESK_KNEADING_ANIMATION_KEY = "desk-knead";
 const DESK_KNEADING_ANIMATION_SUFFIX = "|Caress_sitting";
 const DESK_KNEADING_DURATION_SECONDS = 7;
@@ -170,6 +232,29 @@ const TROPICAL_FOLIAGE_MODEL_URL =
   "/models/camping-style-locked-v1/tropical-foliage-flowers-cluster-meshy6-web-v1.glb";
 const SHORELINE_DECOR_MODEL_URL =
   "/models/camping-style-locked-v1/shoreline-rock-starfish-shell-cluster-meshy6-web-v1.glb";
+const COLLECTIBLE_SHELL_MODEL_URL =
+  "/models/collectible-shell-v2/plump-closed-scallop-meshy6-v1.glb";
+const COLLECTIBLE_SHELL_SOFT_SEAM_TEXTURE_URL =
+  "/models/collectible-shell-v2/plump-closed-scallop-meshy6-v1_base_color-soft-seam-v2.png";
+const FOOD_BOWL_EMPTY_MODEL_URL =
+  "/models/cat-care-v1/cat-food-bowl-empty-meshy6-web-v1.glb";
+const FOOD_BOWL_FULL_MODEL_URL =
+  "/models/cat-care-v1/cat-food-bowl-full-meshy6-web-v1.glb";
+// Keep both care facilities together below the upper-right palm. The bowl is
+// offset to the left so its coffee-cup-sized silhouette remains unobstructed.
+const FOOD_BOWL_POSITION = new THREE.Vector3(2.18, 0, -2.65);
+const FOOD_BOWL_APPROACH_POSITION = new THREE.Vector3(2.12, 0, -2.08);
+const FOOD_BOWL_WAIT_POSITION = new THREE.Vector3(1.56, 0, -1.75);
+// Meshy props are normalized to one world-unit tall. The coding-desk coffee
+// cup is about 0.15 world units tall after the desk scale is applied.
+const FOOD_BOWL_RENDER_HEIGHT = 0.15;
+const LITTER_BOX_POSITION = new THREE.Vector3(3.05, 0, -2.58);
+const LITTER_BOX_APPROACH_POSITION = new THREE.Vector3(2.96, 0, -1.92);
+const LITTER_BOX_USE_POSITION = new THREE.Vector3(3.05, 0, -2.5);
+const LITTER_BOX_WAIT_POSITION = new THREE.Vector3(2.54, 0, -1.52);
+// Keep the illustrated front face and the right hinge cap visible, matching
+// plump-closed-scallop-ref-v1.png. Math.PI exposed the generated back plate.
+const COLLECTIBLE_SHELL_REFERENCE_YAW = THREE.MathUtils.degToRad(-10);
 const DESK_KEYCAP_TEXTURE_URLS = [
   "/art/desk-keycap-1-top-flat-v1.png",
   "/art/desk-keycap-2-top-flat-v1.png",
@@ -241,11 +326,12 @@ function markerAnchorFor(
   seatId: SeatId | "queue",
   working: boolean,
   target: THREE.Vector3,
+  workingPositions = SEAT_WORKING_MARKER_WORLD_POSITIONS,
 ) {
   if (!working || seatId === "queue") return target.set(0, 0, 0);
   root.updateWorldMatrix(true, false);
   return root.worldToLocal(
-    target.copy(SEAT_WORKING_MARKER_WORLD_POSITIONS[seatId]),
+    target.copy(workingPositions[seatId]),
   );
 }
 
@@ -253,12 +339,11 @@ function typingMonitorAnchorFor(
   root: THREE.Object3D,
   isTyping: boolean,
   target: THREE.Vector3,
+  workingPosition = LOW_MONITOR_WORKING_MARKER_WORLD_POSITION,
 ) {
   if (!isTyping) return target.set(0, 0, 0);
   root.updateWorldMatrix(true, false);
-  return root.worldToLocal(
-    target.copy(LOW_MONITOR_WORKING_MARKER_WORLD_POSITION),
-  );
+  return root.worldToLocal(target.copy(workingPosition));
 }
 
 type AmbientAnimation = {
@@ -345,6 +430,32 @@ type SceneObstacle = {
   maxX: number;
   minZ: number;
   maxZ: number;
+};
+
+type EditableWorldObject = {
+  id: string;
+  label: string;
+  object: THREE.Object3D;
+  initialPose: WorldObjectPose;
+  defaultPose: WorldObjectPose;
+  obstacle: SceneObstacle | null;
+  initialObstacle: SceneObstacle | null;
+  onTransform?: (entry: EditableWorldObject) => void;
+};
+
+type WorldLayoutEditorRuntime = {
+  setEnabled: (enabled: boolean) => void;
+  rotateSelected: (radians: number) => void;
+  resetSelected: () => void;
+  saveLayout: () => void;
+};
+
+const WORLD_OBJECT_ROTATION_STEP = THREE.MathUtils.degToRad(15);
+const WORLD_OBJECT_POSITION_LIMITS = {
+  minX: -4.35,
+  maxX: 4.35,
+  minZ: -5.65,
+  maxZ: 5.85,
 };
 
 const DESK_POSITION = LOW_MONITOR_STATION_POSITION;
@@ -510,6 +621,20 @@ const CAMPING_LANTERN_OBSTACLE: SceneObstacle = {
   minZ: -2.16,
   maxZ: -1.48,
 };
+const FOOD_BOWL_OBSTACLE: SceneObstacle = {
+  id: "cat-food-bowl",
+  minX: FOOD_BOWL_POSITION.x - 0.17,
+  maxX: FOOD_BOWL_POSITION.x + 0.17,
+  minZ: FOOD_BOWL_POSITION.z - 0.15,
+  maxZ: FOOD_BOWL_POSITION.z + 0.15,
+};
+const LITTER_BOX_OBSTACLE: SceneObstacle = {
+  id: "covered-cat-litter-box",
+  minX: LITTER_BOX_POSITION.x - 0.55,
+  maxX: LITTER_BOX_POSITION.x + 0.55,
+  minZ: LITTER_BOX_POSITION.z - 0.5,
+  maxZ: LITTER_BOX_POSITION.z + 0.5,
+};
 const MESHY_WORKSTATION_PLACEMENTS: MeshyWorkstationPlacement[] = [
   {
     id: TENT_WORKSTATION_OBSTACLE.id,
@@ -566,20 +691,6 @@ const MESHY_DECORATION_ASSETS: MeshyDecorationAsset[] = [
         height: 0.88,
         shadowRadius: 0.74,
         obstacle: CAMPING_SUPPLY_CLUSTER_OBSTACLE,
-      },
-    ],
-  },
-  {
-    id: "camping-lantern",
-    url: CAMPING_LANTERN_MODEL_URL,
-    placements: [
-      {
-        id: CAMPING_LANTERN_OBSTACLE.id,
-        position: CAMPING_LANTERN_POSITION,
-        rotationY: -0.18,
-        height: 0.78,
-        shadowRadius: 0.32,
-        obstacle: CAMPING_LANTERN_OBSTACLE,
       },
     ],
   },
@@ -646,7 +757,8 @@ const SCENE_OBSTACLES = [
   ROUND_LAPTOP_STATION_OBSTACLE,
   FOLDING_LAPTOP_STATION_OBSTACLE,
   CAMPING_SUPPLY_CLUSTER_OBSTACLE,
-  CAMPING_LANTERN_OBSTACLE,
+  FOOD_BOWL_OBSTACLE,
+  LITTER_BOX_OBSTACLE,
 ];
 const WORKSTATION_OBSTACLES = new Set<SceneObstacle>([
   DESK_OBSTACLE,
@@ -678,6 +790,7 @@ function getActiveSceneObstacles(activeSeatCount: number) {
 }
 const OBSTACLE_WAYPOINT_MARGIN = 0.28;
 const OBSTACLE_WAYPOINT_REACHED_DISTANCE = 0.055;
+const OBSTACLE_ESCAPE_CLEARANCE = 0.065;
 
 function randomBetween(min: number, max: number) {
   return min + Math.random() * (max - min);
@@ -730,8 +843,158 @@ function findAvoidancePath(
   );
 }
 
+function resolvePositionOutsideObstacles(
+  position: THREE.Vector3,
+  obstacles: SceneObstacle[],
+  clearance = OBSTACLE_ESCAPE_CLEARANCE,
+) {
+  const resolved = resolvePointOutsideObstacles2D(
+    position,
+    obstacles,
+    clearance,
+  );
+  position.set(resolved.x, position.y, resolved.z);
+}
+
 function disableOutline(material: THREE.Material) {
   material.userData.outlineParameters = { visible: false };
+}
+
+function createIllustratedMaterial(color: number) {
+  const material = new THREE.MeshStandardMaterial({
+    color,
+    roughness: 1,
+    metalness: 0,
+  });
+  material.userData.outlineParameters = {
+    thickness: ILLUSTRATION_OUTLINE_THICKNESS,
+    color: ILLUSTRATION_OUTLINE_COLOR.toArray(),
+    alpha: ILLUSTRATION_OUTLINE_ALPHA,
+    visible: true,
+  };
+  return material;
+}
+
+function createCoveredCatLitterBox() {
+  const litterBox = new THREE.Group();
+  litterBox.name = "covered-cat-litter-box";
+  const bodyMaterial = createIllustratedMaterial(0xf6e6c8);
+  const rimMaterial = createIllustratedMaterial(0xe6957e);
+  const interiorMaterial = createIllustratedMaterial(0x79645c);
+  const scoopMaterial = createIllustratedMaterial(0x83bfc0);
+
+  const base = new THREE.Mesh(
+    new RoundedBoxGeometry(1.06, 0.32, 0.84, 4, 0.12),
+    rimMaterial,
+  );
+  base.name = "covered-cat-litter-box-base";
+  base.position.y = 0.16;
+  litterBox.add(base);
+
+  const hood = new THREE.Mesh(
+    new THREE.SphereGeometry(
+      0.54,
+      32,
+      18,
+      0,
+      Math.PI * 2,
+      0,
+      Math.PI / 2,
+    ),
+    bodyMaterial,
+  );
+  hood.name = "covered-cat-litter-box-hood";
+  hood.position.y = 0.31;
+  hood.scale.set(1, 1.05, 0.78);
+  litterBox.add(hood);
+
+  const doorway = new THREE.Mesh(
+    new THREE.CircleGeometry(0.25, 32),
+    interiorMaterial,
+  );
+  doorway.name = "covered-cat-litter-box-door";
+  doorway.position.set(0, 0.48, 0.425);
+  doorway.scale.set(0.78, 1.12, 1);
+  litterBox.add(doorway);
+
+  const doorwayLower = new THREE.Mesh(
+    new RoundedBoxGeometry(0.39, 0.31, 0.025, 3, 0.04),
+    interiorMaterial,
+  );
+  doorwayLower.name = "covered-cat-litter-box-door-lower";
+  doorwayLower.position.set(0, 0.34, 0.425);
+  litterBox.add(doorwayLower);
+
+  const entranceLip = new THREE.Mesh(
+    new RoundedBoxGeometry(0.55, 0.09, 0.18, 3, 0.04),
+    rimMaterial,
+  );
+  entranceLip.name = "covered-cat-litter-box-entrance-lip";
+  entranceLip.position.set(0, 0.12, 0.48);
+  litterBox.add(entranceLip);
+
+  const scoopHandle = new THREE.Mesh(
+    new RoundedBoxGeometry(0.1, 0.42, 0.08, 3, 0.035),
+    scoopMaterial,
+  );
+  scoopHandle.name = "covered-cat-litter-box-scoop-handle";
+  scoopHandle.position.set(0.54, 0.35, -0.04);
+  scoopHandle.rotation.z = -0.22;
+  litterBox.add(scoopHandle);
+
+  const scoop = new THREE.Mesh(
+    new RoundedBoxGeometry(0.24, 0.18, 0.07, 3, 0.045),
+    scoopMaterial,
+  );
+  scoop.name = "covered-cat-litter-box-scoop";
+  scoop.position.set(0.58, 0.13, -0.01);
+  scoop.rotation.z = -0.22;
+  litterBox.add(scoop);
+  return litterBox;
+}
+
+function createFallbackFoodBowl(filled: boolean) {
+  const bowl = new THREE.Group();
+  const bodyMaterial = createIllustratedMaterial(0xf7ecd7);
+  const rimMaterial = createIllustratedMaterial(0xe98f78);
+  const foodMaterial = createIllustratedMaterial(0xb97942);
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.42, 0.52, 0.2, 32, 1, true),
+    bodyMaterial,
+  );
+  body.position.y = 0.1;
+  bowl.add(body);
+  const rim = new THREE.Mesh(
+    new THREE.TorusGeometry(0.42, 0.055, 12, 40),
+    rimMaterial,
+  );
+  rim.rotation.x = Math.PI / 2;
+  rim.position.y = 0.2;
+  bowl.add(rim);
+  const basin = new THREE.Mesh(
+    new THREE.CircleGeometry(0.38, 32),
+    bodyMaterial,
+  );
+  basin.rotation.x = -Math.PI / 2;
+  basin.position.y = 0.11;
+  bowl.add(basin);
+  if (filled) {
+    for (let index = 0; index < 13; index += 1) {
+      const angle = (index / 13) * Math.PI * 2;
+      const radius = 0.08 + (index % 3) * 0.09;
+      const kibble = new THREE.Mesh(
+        new THREE.SphereGeometry(0.055, 10, 7),
+        foodMaterial,
+      );
+      kibble.position.set(
+        Math.cos(angle) * radius,
+        0.16 + (index % 2) * 0.025,
+        Math.sin(angle) * radius,
+      );
+      bowl.add(kibble);
+    }
+  }
+  return bowl;
 }
 
 function disposeMaterial(material: THREE.Material) {
@@ -2253,6 +2516,105 @@ function createAgentMarker(initialSeat: SeatView) {
   return { marker, label, beacon, texture, update };
 }
 
+function createLitterLevelGauge(initialLevel: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 320;
+  canvas.height = 112;
+  const context = canvas.getContext("2d");
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  let signature = -1;
+  const update = (level: number) => {
+    const nextSignature = Math.round(
+      THREE.MathUtils.clamp(level, 0, 100),
+    );
+    if (!context || signature === nextSignature) return;
+    signature = nextSignature;
+    const ratio = nextSignature / 100;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "rgba(251, 241, 213, 0.97)";
+    context.strokeStyle = "#816553";
+    context.lineWidth = 7;
+    context.beginPath();
+    context.roundRect(7, 7, 306, 98, 25);
+    context.fill();
+    context.stroke();
+
+    context.fillStyle = "#765745";
+    context.beginPath();
+    context.arc(40, 66, 14, Math.PI, 0);
+    context.arc(54, 66, 15, Math.PI, 0);
+    context.arc(68, 66, 13, Math.PI, 0);
+    context.lineTo(75, 78);
+    context.lineTo(33, 78);
+    context.closePath();
+    context.fill();
+    context.beginPath();
+    context.arc(54, 49, 11, 0, Math.PI * 2);
+    context.fill();
+
+    context.fillStyle = "rgba(111, 88, 70, 0.2)";
+    context.beginPath();
+    context.roundRect(92, 42, 190, 38, 19);
+    context.fill();
+    if (ratio > 0) {
+      const fillWidth = Math.max(16, 182 * ratio);
+      context.fillStyle =
+        ratio >= 1 ? "#bd665b" : ratio >= 0.67 ? "#d99a61" : "#83b99d";
+      context.beginPath();
+      context.roundRect(96, 46, fillWidth, 30, 15);
+      context.fill();
+    }
+    if (ratio >= 1) {
+      context.fillStyle = "#fff4d9";
+      context.font = "900 25px sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText("!", 187, 61);
+    }
+    texture.needsUpdate = true;
+  };
+  update(initialLevel);
+  const material = new THREE.MeshBasicMaterial({
+    map: texture,
+    transparent: true,
+    alphaTest: 0.02,
+    depthTest: false,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  disableOutline(material);
+  const label = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.88, 0.31),
+    material,
+  );
+  label.name = "litter-box-level-gauge";
+  label.renderOrder = MARKER_LABEL_RENDER_ORDER;
+  label.layers.set(MARKER_OVERLAY_LAYER);
+  return { label, texture, update };
+}
+
+function createLitterOdorTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 96;
+  canvas.height = 96;
+  const context = canvas.getContext("2d");
+  if (context) {
+    for (let radius = 44; radius >= 4; radius -= 2) {
+      const coreRatio = 1 - radius / 44;
+      context.fillStyle = `rgba(145, 155, 91, ${
+        0.015 + coreRatio * coreRatio * 0.12
+      })`;
+      context.beginPath();
+      context.arc(48, 48, radius, 0, Math.PI * 2);
+      context.fill();
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 export default function AgentWorld3D({
   seats,
   activeSeatCount,
@@ -2263,6 +2625,11 @@ export default function AgentWorld3D({
   onSeatClick,
   onRadioClick,
   onShellCollect,
+  foodAvailable,
+  litterLevel,
+  onFoodBowlClick,
+  onLitterBoxClick,
+  onCatCareEvent,
 }: AgentWorld3DProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const primarySeat = seats[0] ?? DEFAULT_SEAT_VIEW;
@@ -2277,10 +2644,26 @@ export default function AgentWorld3D({
   const onRadioClickRef = useRef(onRadioClick);
   const activeSeatCountRef = useRef(activeSeatCount);
   const onShellCollectRef = useRef(onShellCollect);
+  const foodAvailableRef = useRef(foodAvailable);
+  const litterLevelRef = useRef(litterLevel);
+  const onFoodBowlClickRef = useRef(onFoodBowlClick);
+  const onLitterBoxClickRef = useRef(onLitterBoxClick);
+  const onCatCareEventRef = useRef(onCatCareEvent);
+  const layoutEditorRuntimeRef = useRef<WorldLayoutEditorRuntime | null>(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [failed, setFailed] = useState(false);
   const [ready, setReady] = useState(false);
   const [ambientLabel, setAmbientLabel] = useState("주변을 구경하는 중");
+  const [layoutEditMode, setLayoutEditMode] = useState(false);
+  const [layoutAdminEnabled, setLayoutAdminEnabled] = useState(false);
+  const [layoutSaveRevision, setLayoutSaveRevision] = useState(0);
+  const [selectedLayoutObjectLabel, setSelectedLayoutObjectLabel] = useState<
+    string | null
+  >(null);
+
+  useEffect(() => {
+    setLayoutAdminEnabled(isWorldLayoutAdminHost(window.location.hostname));
+  }, []);
 
   useEffect(() => {
     const currentPrimary = seats[0] ?? DEFAULT_SEAT_VIEW;
@@ -2295,6 +2678,11 @@ export default function AgentWorld3D({
     onRadioClickRef.current = onRadioClick;
     activeSeatCountRef.current = activeSeatCount;
     onShellCollectRef.current = onShellCollect;
+    foodAvailableRef.current = foodAvailable;
+    litterLevelRef.current = litterLevel;
+    onFoodBowlClickRef.current = onFoodBowlClick;
+    onLitterBoxClickRef.current = onLitterBoxClick;
+    onCatCareEventRef.current = onCatCareEvent;
   }, [
     activeSeatCount,
     companionConnected,
@@ -2302,6 +2690,11 @@ export default function AgentWorld3D({
     onRadioClick,
     onSeatClick,
     onShellCollect,
+    foodAvailable,
+    litterLevel,
+    onFoodBowlClick,
+    onLitterBoxClick,
+    onCatCareEvent,
     seats,
   ]);
 
@@ -2310,6 +2703,24 @@ export default function AgentWorld3D({
     if (!host) return;
 
     const diagnosticParams = new URLSearchParams(window.location.search);
+    const layoutEditorAuthorized = isWorldLayoutAdminHost(
+      window.location.hostname,
+    );
+    const requestedCarePreview = diagnosticParams.get("carePreview");
+    const carePreviewMode =
+      ["food", "empty-food", "toilet"].includes(
+        requestedCarePreview ?? "",
+      ) &&
+      ["localhost", "127.0.0.1", "::1", "[::1]"].includes(
+        window.location.hostname,
+      )
+        ? requestedCarePreview
+        : null;
+    let carePreviewConsumed = false;
+    const hasFoodAvailable = () =>
+      carePreviewMode === "empty-food"
+        ? false
+        : foodAvailableRef.current;
     const monitorAblationMode = diagnosticParams.get("monitorAblation");
     const suppressMonitorInteraction =
       diagnosticParams.get("monitorCapture") === "static";
@@ -2398,6 +2809,389 @@ export default function AgentWorld3D({
     camera.position.copy(cameraBase);
     camera.lookAt(cameraLookAt);
 
+    const runtimeObstacleById = new Map(
+      SCENE_OBSTACLES.map((obstacle) => [
+        obstacle.id,
+        { ...obstacle } satisfies SceneObstacle,
+      ]),
+    );
+    const runtimeObstacleFor = (obstacle: SceneObstacle) =>
+      runtimeObstacleById.get(obstacle.id) ?? { ...obstacle };
+    const getRuntimeSceneObstacles = (seatCount: number) =>
+      getActiveSceneObstacles(seatCount).map(runtimeObstacleFor);
+    const deskObstacle = runtimeObstacleFor(DESK_OBSTACLE);
+    const foodBowlObstacle = runtimeObstacleFor(FOOD_BOWL_OBSTACLE);
+    const litterBoxObstacle = runtimeObstacleFor(LITTER_BOX_OBSTACLE);
+
+    const codingDeskTarget = CODING_DESK_TARGET.clone();
+    const worldTargets: Record<AgentWorldLocation, THREE.Vector3> = {
+      entrance: WORLD_TARGETS.entrance.clone(),
+      general: WORLD_TARGETS.general.clone(),
+      coding: codingDeskTarget,
+      design: WORLD_TARGETS.design.clone(),
+      music: WORLD_TARGETS.music.clone(),
+      queue: WORLD_TARGETS.queue.clone(),
+      office: WORLD_TARGETS.office.clone(),
+    };
+    const seatWorldPositions: Record<SeatId, THREE.Vector3> = {
+      "seat-1": SEAT_WORLD_POSITIONS["seat-1"].clone(),
+      "seat-2": SEAT_WORLD_POSITIONS["seat-2"].clone(),
+      "seat-3": SEAT_WORLD_POSITIONS["seat-3"].clone(),
+      "seat-4": SEAT_WORLD_POSITIONS["seat-4"].clone(),
+    };
+    const seatWorkingMarkerWorldPositions: Record<SeatId, THREE.Vector3> = {
+      "seat-1": SEAT_WORKING_MARKER_WORLD_POSITIONS["seat-1"].clone(),
+      "seat-2": SEAT_WORKING_MARKER_WORLD_POSITIONS["seat-2"].clone(),
+      "seat-3": SEAT_WORKING_MARKER_WORLD_POSITIONS["seat-3"].clone(),
+      "seat-4": SEAT_WORKING_MARKER_WORLD_POSITIONS["seat-4"].clone(),
+    };
+    const lowMonitorWorkingMarkerWorldPosition =
+      LOW_MONITOR_WORKING_MARKER_WORLD_POSITION.clone();
+    const deskKneadingExitPosition = DESK_KNEADING_EXIT_POSITION.clone();
+    const baseDeskKneadingLookTarget =
+      LOW_MONITOR_KNEADING_LOCAL_TARGET.clone()
+        .applyAxisAngle(
+          new THREE.Vector3(0, 1, 0),
+          LOW_MONITOR_STATION_ROTATION_Y,
+        )
+        .add(LOW_MONITOR_STATION_POSITION);
+    const deskKneadingLookTarget = baseDeskKneadingLookTarget.clone();
+    const foodBowlApproachPosition = FOOD_BOWL_APPROACH_POSITION.clone();
+    const foodBowlWaitPosition = FOOD_BOWL_WAIT_POSITION.clone();
+    const litterBoxApproachPosition = LITTER_BOX_APPROACH_POSITION.clone();
+    const litterBoxUsePosition = LITTER_BOX_USE_POSITION.clone();
+    const litterBoxWaitPosition = LITTER_BOX_WAIT_POSITION.clone();
+
+    let savedWorldLayout: WorldObjectLayout = {};
+    if (layoutEditorAuthorized) {
+      try {
+        savedWorldLayout = parseWorldObjectLayout(
+          window.localStorage.getItem(WORLD_OBJECT_LAYOUT_STORAGE_KEY),
+        );
+      } catch {
+        // Storage can be unavailable in privacy mode. Editing still works in-memory.
+      }
+    }
+
+    const editableWorldObjects = new Map<string, EditableWorldObject>();
+    let selectedEditableObject: EditableWorldObject | null = null;
+    let layoutEditorEnabled = false;
+    let objectDragPointerId: number | null = null;
+    let objectDragMoved = false;
+    const objectDragOffset = new THREE.Vector3();
+    const objectDragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const objectDragHit = new THREE.Vector3();
+    const objectPoseFor = (object: THREE.Object3D): WorldObjectPose => ({
+      x: object.position.x,
+      z: object.position.z,
+      rotationY: object.rotation.y,
+    });
+    const persistWorldLayout = () => {
+      if (!layoutEditorAuthorized) return;
+      try {
+        window.localStorage.setItem(
+          WORLD_OBJECT_LAYOUT_STORAGE_KEY,
+          JSON.stringify(savedWorldLayout),
+        );
+      } catch {
+        // Keep the current scene editable even when local storage is blocked.
+      }
+    };
+    const persistEditableObject = (entry: EditableWorldObject) => {
+      if (!layoutEditorAuthorized) return;
+      savedWorldLayout[entry.id] = objectPoseFor(entry.object);
+      persistWorldLayout();
+    };
+    const updateAnchoredVector = (
+      entry: EditableWorldObject,
+      base: THREE.Vector3,
+      target: THREE.Vector3,
+    ) => {
+      const transformed = transformWorldPoint(
+        base,
+        entry.initialPose,
+        objectPoseFor(entry.object),
+      );
+      target.set(transformed.x, base.y, transformed.z);
+    };
+    const keepAnchoredVectorOutsideObstacle = (
+      entry: EditableWorldObject,
+      target: THREE.Vector3,
+    ) => {
+      if (!entry.obstacle) return;
+      resolvePositionOutsideObstacles(
+        target,
+        [entry.obstacle],
+        OBSTACLE_ESCAPE_CLEARANCE * 1.35,
+      );
+    };
+    const syncWorkstationAnchors = (entry: EditableWorldObject) => {
+      switch (entry.id) {
+        case TENT_WORKSTATION_OBSTACLE.id:
+          updateAnchoredVector(
+            entry,
+            SEAT_WORLD_POSITIONS["seat-1"],
+            seatWorldPositions["seat-1"],
+          );
+          updateAnchoredVector(
+            entry,
+            WORLD_TARGETS.general,
+            worldTargets.general,
+          );
+          updateAnchoredVector(
+            entry,
+            WORLD_TARGETS.office,
+            worldTargets.office,
+          );
+          keepAnchoredVectorOutsideObstacle(
+            entry,
+            seatWorldPositions["seat-1"],
+          );
+          keepAnchoredVectorOutsideObstacle(entry, worldTargets.general);
+          keepAnchoredVectorOutsideObstacle(entry, worldTargets.office);
+          updateAnchoredVector(
+            entry,
+            SEAT_WORKING_MARKER_WORLD_POSITIONS["seat-1"],
+            seatWorkingMarkerWorldPositions["seat-1"],
+          );
+          break;
+        case ROUND_LAPTOP_STATION_OBSTACLE.id:
+          updateAnchoredVector(
+            entry,
+            SEAT_WORLD_POSITIONS["seat-3"],
+            seatWorldPositions["seat-3"],
+          );
+          updateAnchoredVector(
+            entry,
+            WORLD_TARGETS.design,
+            worldTargets.design,
+          );
+          keepAnchoredVectorOutsideObstacle(
+            entry,
+            seatWorldPositions["seat-3"],
+          );
+          keepAnchoredVectorOutsideObstacle(entry, worldTargets.design);
+          updateAnchoredVector(
+            entry,
+            SEAT_WORKING_MARKER_WORLD_POSITIONS["seat-3"],
+            seatWorkingMarkerWorldPositions["seat-3"],
+          );
+          break;
+        case FOLDING_LAPTOP_STATION_OBSTACLE.id:
+          updateAnchoredVector(
+            entry,
+            SEAT_WORLD_POSITIONS["seat-4"],
+            seatWorldPositions["seat-4"],
+          );
+          updateAnchoredVector(
+            entry,
+            WORLD_TARGETS.music,
+            worldTargets.music,
+          );
+          keepAnchoredVectorOutsideObstacle(
+            entry,
+            seatWorldPositions["seat-4"],
+          );
+          keepAnchoredVectorOutsideObstacle(entry, worldTargets.music);
+          updateAnchoredVector(
+            entry,
+            SEAT_WORKING_MARKER_WORLD_POSITIONS["seat-4"],
+            seatWorkingMarkerWorldPositions["seat-4"],
+          );
+          break;
+        case DESK_OBSTACLE.id:
+          updateAnchoredVector(
+            entry,
+            SEAT_WORLD_POSITIONS["seat-2"],
+            seatWorldPositions["seat-2"],
+          );
+          updateAnchoredVector(
+            entry,
+            CODING_DESK_TARGET,
+            codingDeskTarget,
+          );
+          updateAnchoredVector(
+            entry,
+            DESK_KNEADING_EXIT_POSITION,
+            deskKneadingExitPosition,
+          );
+          updateAnchoredVector(
+            entry,
+            LOW_MONITOR_WORKING_MARKER_WORLD_POSITION,
+            lowMonitorWorkingMarkerWorldPosition,
+          );
+          seatWorkingMarkerWorldPositions["seat-2"].copy(
+            lowMonitorWorkingMarkerWorldPosition,
+          );
+          updateAnchoredVector(
+            entry,
+            baseDeskKneadingLookTarget,
+            deskKneadingLookTarget,
+          );
+          break;
+      }
+    };
+    const syncEditableObject = (entry: EditableWorldObject) => {
+      if (entry.obstacle && entry.initialObstacle) {
+        const nextBounds = transformObstacleBounds(
+          entry.initialObstacle,
+          entry.initialPose,
+          objectPoseFor(entry.object),
+        );
+        Object.assign(entry.obstacle, nextBounds);
+        entry.object.userData.collisionBounds = {
+          ...entry.obstacle,
+        };
+      }
+      entry.onTransform?.(entry);
+    };
+
+    const selectionRingMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffdc79,
+      transparent: true,
+      opacity: 0.92,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    disableOutline(selectionRingMaterial);
+    const selectionRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.82, 0.94, 48),
+      selectionRingMaterial,
+    );
+    selectionRing.name = "world-layout-selection-ring";
+    selectionRing.rotation.x = -Math.PI / 2;
+    selectionRing.position.y = 0.028;
+    selectionRing.renderOrder = 225;
+    selectionRing.visible = false;
+    scene.add(selectionRing);
+
+    const updateSelectionRing = () => {
+      if (!selectedEditableObject || !layoutEditorEnabled) {
+        selectionRing.visible = false;
+        return;
+      }
+
+      const entry = selectedEditableObject;
+      const width = entry.obstacle
+        ? entry.obstacle.maxX - entry.obstacle.minX
+        : 0.7;
+      const depth = entry.obstacle
+        ? entry.obstacle.maxZ - entry.obstacle.minZ
+        : 0.7;
+      const radius = THREE.MathUtils.clamp(
+        Math.max(width, depth) * 0.66,
+        0.32,
+        1.6,
+      );
+      selectionRing.position.set(
+        entry.object.position.x,
+        0.028,
+        entry.object.position.z,
+      );
+      selectionRing.scale.setScalar(radius);
+      selectionRing.visible = true;
+    };
+    const selectEditableObject = (entry: EditableWorldObject | null) => {
+      selectedEditableObject = entry;
+      setSelectedLayoutObjectLabel(entry?.label ?? null);
+      updateSelectionRing();
+    };
+    const registerEditableWorldObject = ({
+      id,
+      label,
+      object,
+      obstacle,
+      onTransform,
+    }: {
+      id: string;
+      label: string;
+      object: THREE.Object3D;
+      obstacle?: SceneObstacle;
+      onTransform?: (entry: EditableWorldObject) => void;
+    }) => {
+      const initialPose = objectPoseFor(object);
+      const defaultPose =
+        HARD_CODED_WORLD_OBJECT_LAYOUT[id] ?? initialPose;
+      const entry: EditableWorldObject = {
+        id,
+        label,
+        object,
+        initialPose,
+        defaultPose,
+        obstacle: obstacle ?? null,
+        initialObstacle: obstacle ? { ...obstacle } : null,
+        onTransform,
+      };
+      object.userData.editableWorldObjectId = id;
+      object.userData.editableWorldObjectLabel = label;
+      editableWorldObjects.set(id, entry);
+
+      const appliedPose = savedWorldLayout[id] ?? defaultPose;
+      if (appliedPose) {
+        object.position.x = THREE.MathUtils.clamp(
+          appliedPose.x,
+          WORLD_OBJECT_POSITION_LIMITS.minX,
+          WORLD_OBJECT_POSITION_LIMITS.maxX,
+        );
+        object.position.z = THREE.MathUtils.clamp(
+          appliedPose.z,
+          WORLD_OBJECT_POSITION_LIMITS.minZ,
+          WORLD_OBJECT_POSITION_LIMITS.maxZ,
+        );
+        object.rotation.y = appliedPose.rotationY;
+      }
+      syncEditableObject(entry);
+      return entry;
+    };
+    const setLayoutEditorEnabled = (enabled: boolean) => {
+      if (enabled && !layoutEditorAuthorized) return;
+      layoutEditorEnabled = enabled;
+      objectDragPointerId = null;
+      objectDragMoved = false;
+      renderer.domElement.classList.toggle("is-layout-editing", enabled);
+      renderer.domElement.style.cursor = enabled ? "crosshair" : "grab";
+      setLayoutEditMode(enabled);
+      if (!enabled) selectEditableObject(null);
+    };
+    const rotateSelectedEditableObject = (radians: number) => {
+      if (!selectedEditableObject) return;
+      selectedEditableObject.object.rotation.y += radians;
+      syncEditableObject(selectedEditableObject);
+      updateSelectionRing();
+      persistEditableObject(selectedEditableObject);
+    };
+    const resetSelectedEditableObject = () => {
+      if (!selectedEditableObject) return;
+      selectedEditableObject.object.position.x =
+        selectedEditableObject.defaultPose.x;
+      selectedEditableObject.object.position.z =
+        selectedEditableObject.defaultPose.z;
+      selectedEditableObject.object.rotation.y =
+        selectedEditableObject.defaultPose.rotationY;
+      delete savedWorldLayout[selectedEditableObject.id];
+      syncEditableObject(selectedEditableObject);
+      updateSelectionRing();
+      persistWorldLayout();
+    };
+    const saveCurrentWorldLayout = () => {
+      if (!layoutEditorAuthorized) return;
+      savedWorldLayout = Object.fromEntries(
+        [...editableWorldObjects.entries()]
+          .sort(([leftId], [rightId]) => leftId.localeCompare(rightId))
+          .map(([id, entry]) => [id, objectPoseFor(entry.object)]),
+      );
+      persistWorldLayout();
+      host.dataset.savedWorldLayout = JSON.stringify(savedWorldLayout);
+      setLayoutSaveRevision((revision) => revision + 1);
+    };
+    layoutEditorRuntimeRef.current = {
+      setEnabled: setLayoutEditorEnabled,
+      rotateSelected: rotateSelectedEditableObject,
+      resetSelected: resetSelectedEditableObject,
+      saveLayout: saveCurrentWorldLayout,
+    };
+
     scene.add(new THREE.HemisphereLight(0xfff6dd, 0x536c49, 1.7));
 
     const keyLight = new THREE.DirectionalLight(0xfff2d1, 2.1);
@@ -2409,6 +3203,14 @@ export default function AgentWorld3D({
     scene.add(fillLight);
 
     const textureLoader = new THREE.TextureLoader();
+    const catPaletteTexture = textureLoader.load(
+      "/models/PolyArt/Animals/Cats/Texture/PolyArt_Cats_color.png",
+    );
+    catPaletteTexture.colorSpace = THREE.SRGBColorSpace;
+    catPaletteTexture.anisotropy = Math.min(
+      4,
+      renderer.capabilities.getMaxAnisotropy(),
+    );
     const oceanTexture = textureLoader.load(
       "/art/ocean-water-tile-v1.png",
     );
@@ -2673,13 +3475,6 @@ float shoreOverlayWaterSignal( vec3 color ) {
       monitorScreenTexture.minFilter = THREE.LinearMipmapLinearFilter;
       monitorScreenTexture.needsUpdate = true;
     }
-    const deskKneadingLookTarget = LOW_MONITOR_KNEADING_LOCAL_TARGET.clone()
-      .applyAxisAngle(
-        new THREE.Vector3(0, 1, 0),
-        LOW_MONITOR_STATION_ROTATION_Y,
-      )
-      .add(LOW_MONITOR_STATION_POSITION);
-
     const islandPropsWatercolorTexture = textureLoader.load(
       "/art/island-props-watercolor-grain-v1.png",
     );
@@ -2690,14 +3485,191 @@ float shoreOverlayWaterSignal( vec3 color ) {
     islandPropsWatercolorTexture.anisotropy = maximumAnisotropy;
 
     ROCK_CLUSTER_PLACEMENTS.forEach((placement) => {
-      scene.add(
-        createRockCluster(islandPropsWatercolorTexture, placement),
+      const rockCluster = createRockCluster(
+        islandPropsWatercolorTexture,
+        placement,
       );
+      const obstacle = ROCK_CLUSTER_OBSTACLES.find(
+        (candidate) => candidate.id === placement.id,
+      );
+      registerEditableWorldObject({
+        id: placement.id,
+        label: `해변 바위 ${placement.id.split("-").at(-1) ?? ""}`,
+        object: rockCluster,
+        obstacle: obstacle ? runtimeObstacleFor(obstacle) : undefined,
+      });
+      scene.add(rockCluster);
     });
     const palmLeafSwayTargets: PalmLeafSwayTarget[] = [];
 
     const meshyPropLoader = new GLTFLoader();
     meshyPropLoader.setMeshoptDecoder(MeshoptDecoder);
+    let collectibleShellTemplate: THREE.Group | null = null;
+
+    const foodBowlGroup = new THREE.Group();
+    foodBowlGroup.name = "cat-food-bowl-facility";
+    foodBowlGroup.position.copy(FOOD_BOWL_POSITION);
+    foodBowlGroup.rotation.y = -0.18;
+    foodBowlGroup.userData.isNavigationObstacle = true;
+    foodBowlGroup.userData.collisionBounds = { ...foodBowlObstacle };
+    let emptyBowlVisual = createFallbackFoodBowl(false);
+    let fullBowlVisual = createFallbackFoodBowl(true);
+    emptyBowlVisual.name = "cat-food-bowl-empty-fallback";
+    fullBowlVisual.name = "cat-food-bowl-full-fallback";
+    emptyBowlVisual.scale.setScalar(0.6);
+    fullBowlVisual.scale.setScalar(0.6);
+    emptyBowlVisual.visible = !hasFoodAvailable();
+    fullBowlVisual.visible = hasFoodAvailable();
+    const foodBowlProxy = createInteractionProxy("food-bowl", 0.21);
+    foodBowlProxy.position.y = 0.08;
+    foodBowlGroup.add(
+      emptyBowlVisual,
+      fullBowlVisual,
+      createMeshyPropShadow("cat-food-bowl", 0.19, 0.1),
+      foodBowlProxy,
+    );
+    scene.add(foodBowlGroup);
+    clickableObjects.push(foodBowlProxy);
+    registerEditableWorldObject({
+      id: FOOD_BOWL_OBSTACLE.id,
+      label: "고양이 밥그릇",
+      object: foodBowlGroup,
+      obstacle: foodBowlObstacle,
+      onTransform: (entry) => {
+        updateAnchoredVector(
+          entry,
+          FOOD_BOWL_APPROACH_POSITION,
+          foodBowlApproachPosition,
+        );
+        updateAnchoredVector(
+          entry,
+          FOOD_BOWL_WAIT_POSITION,
+          foodBowlWaitPosition,
+        );
+      },
+    });
+
+    void Promise.all([
+      meshyPropLoader.loadAsync(FOOD_BOWL_EMPTY_MODEL_URL),
+      meshyPropLoader.loadAsync(FOOD_BOWL_FULL_MODEL_URL),
+    ])
+      .then(([emptyGltf, fullGltf]) => {
+        if (disposed) return;
+        const nextEmpty = createMeshyPropTemplate(
+          emptyGltf.scene,
+          new THREE.Color(0xffffff),
+          maximumAnisotropy,
+          0.0032,
+          0.78,
+        );
+        const nextFull = createMeshyPropTemplate(
+          fullGltf.scene,
+          new THREE.Color(0xffffff),
+          maximumAnisotropy,
+          0.0032,
+          0.78,
+        );
+        nextEmpty.name = "cat-food-bowl-empty-meshy6";
+        nextFull.name = "cat-food-bowl-full-meshy6";
+        nextEmpty.scale.setScalar(FOOD_BOWL_RENDER_HEIGHT);
+        nextFull.scale.setScalar(FOOD_BOWL_RENDER_HEIGHT);
+        foodBowlGroup.remove(emptyBowlVisual, fullBowlVisual);
+        emptyBowlVisual = nextEmpty;
+        fullBowlVisual = nextFull;
+        emptyBowlVisual.visible = !hasFoodAvailable();
+        fullBowlVisual.visible = hasFoodAvailable();
+        foodBowlGroup.add(emptyBowlVisual, fullBowlVisual);
+      })
+      .catch((error) => {
+        console.warn("Cat food bowl models failed to load.", error);
+      });
+
+    const litterBoxGroup = new THREE.Group();
+    litterBoxGroup.name = "covered-cat-litter-box-facility";
+    litterBoxGroup.position.copy(LITTER_BOX_POSITION);
+    litterBoxGroup.rotation.y = -0.16;
+    litterBoxGroup.userData.isNavigationObstacle = true;
+    litterBoxGroup.userData.collisionBounds = { ...litterBoxObstacle };
+    const litterBoxVisual = createCoveredCatLitterBox();
+    litterBoxVisual.scale.setScalar(0.86);
+    const litterBoxProxy = createInteractionProxy("litter-box", 0.62);
+    litterBoxProxy.position.y = 0.31;
+    const litterLevelGauge = createLitterLevelGauge(litterLevelRef.current);
+    litterLevelGauge.label.position.set(
+      litterBoxGroup.position.x,
+      1.12,
+      litterBoxGroup.position.z,
+    );
+    scene.add(litterLevelGauge.label);
+    billboardObjects.push(litterLevelGauge.label);
+
+    const litterOdorTexture = createLitterOdorTexture();
+    const litterOdorParticles = Array.from({ length: 7 }, (_, index) => {
+      const material = new THREE.SpriteMaterial({
+        map: litterOdorTexture,
+        color: index % 2 ? 0xb8a65d : 0x91a66f,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      disableOutline(material);
+      const sprite = new THREE.Sprite(material);
+      const phase = index / 7;
+      sprite.name = `litter-odor-particle-${index + 1}`;
+      sprite.position.set(
+        ((index % 3) - 1) * 0.13,
+        0.52 + phase * 0.45,
+        -0.02 + (index % 2) * 0.08,
+      );
+      sprite.scale.setScalar(0.12);
+      return {
+        sprite,
+        material,
+        phase,
+        drift: index % 2 ? 1 : -1,
+      };
+    });
+    const litterOdorGroup = new THREE.Group();
+    litterOdorGroup.name = "litter-box-odor-particles";
+    litterOdorParticles.forEach(({ sprite }) => litterOdorGroup.add(sprite));
+    litterBoxGroup.add(
+      litterBoxVisual,
+      createMeshyPropShadow("covered-cat-litter-box", 0.58, 0.1),
+      litterOdorGroup,
+      litterBoxProxy,
+    );
+    scene.add(litterBoxGroup);
+    clickableObjects.push(litterBoxProxy);
+    registerEditableWorldObject({
+      id: LITTER_BOX_OBSTACLE.id,
+      label: "고양이 화장실",
+      object: litterBoxGroup,
+      obstacle: litterBoxObstacle,
+      onTransform: (entry) => {
+        updateAnchoredVector(
+          entry,
+          LITTER_BOX_APPROACH_POSITION,
+          litterBoxApproachPosition,
+        );
+        updateAnchoredVector(
+          entry,
+          LITTER_BOX_USE_POSITION,
+          litterBoxUsePosition,
+        );
+        updateAnchoredVector(
+          entry,
+          LITTER_BOX_WAIT_POSITION,
+          litterBoxWaitPosition,
+        );
+        litterLevelGauge.label.position.set(
+          entry.object.position.x,
+          1.12,
+          entry.object.position.z,
+        );
+      },
+    });
+
     void Promise.allSettled([
       meshyPropLoader.loadAsync(PALM_TREE_MODEL_URL),
       ...MESHY_WORKSTATION_PLACEMENTS.map((placement) =>
@@ -2710,14 +3682,17 @@ float shoreOverlayWaterSignal( vec3 color ) {
       if (disposed) return;
 
       const palmResult = propResults[0];
+      const decorationStart = 1 + MESHY_WORKSTATION_PLACEMENTS.length;
+      const decorationEnd =
+        decorationStart + MESHY_DECORATION_ASSETS.length;
       const workstationResults = propResults.slice(
         1,
-        1 + MESHY_WORKSTATION_PLACEMENTS.length,
+        decorationStart,
       );
       const decorationResults = propResults.slice(
-        1 + MESHY_WORKSTATION_PLACEMENTS.length,
+        decorationStart,
+        decorationEnd,
       );
-
       if (palmResult.status === "fulfilled") {
         const palmTemplate = createMeshyPropTemplate(
           palmResult.value.scene,
@@ -2730,9 +3705,12 @@ float shoreOverlayWaterSignal( vec3 color ) {
           palm.position.copy(placement.position);
           palm.rotation.y = placement.rotationY;
           palm.userData.isNavigationObstacle = true;
-          const obstacle = PALM_TREE_OBSTACLES.find(
+          const sourceObstacle = PALM_TREE_OBSTACLES.find(
             (candidate) => candidate.id === placement.id,
           );
+          const obstacle = sourceObstacle
+            ? runtimeObstacleFor(sourceObstacle)
+            : undefined;
           if (obstacle) {
             palm.userData.collisionBounds = { ...obstacle };
           }
@@ -2752,11 +3730,32 @@ float shoreOverlayWaterSignal( vec3 color ) {
             0.12,
           );
           palm.add(shadow);
+          registerEditableWorldObject({
+            id: placement.id,
+            label: `야자수 ${index + 1}`,
+            object: palm,
+            obstacle,
+          });
           scene.add(palm);
         });
       } else {
-        PALM_TREE_PLACEMENTS.forEach((placement) => {
-          scene.add(createPalmTree(islandPropsWatercolorTexture, placement));
+        PALM_TREE_PLACEMENTS.forEach((placement, index) => {
+          const palm = createPalmTree(
+            islandPropsWatercolorTexture,
+            placement,
+          );
+          const sourceObstacle = PALM_TREE_OBSTACLES.find(
+            (candidate) => candidate.id === placement.id,
+          );
+          registerEditableWorldObject({
+            id: placement.id,
+            label: `야자수 ${index + 1}`,
+            object: palm,
+            obstacle: sourceObstacle
+              ? runtimeObstacleFor(sourceObstacle)
+              : undefined,
+          });
+          scene.add(palm);
         });
       }
 
@@ -2770,7 +3769,8 @@ float shoreOverlayWaterSignal( vec3 color ) {
         workstation.position.copy(placement.position);
         workstation.rotation.y = placement.rotationY;
         workstation.userData.isNavigationObstacle = true;
-        workstation.userData.collisionBounds = { ...placement.obstacle };
+        const workstationObstacle = runtimeObstacleFor(placement.obstacle);
+        workstation.userData.collisionBounds = { ...workstationObstacle };
 
         const visual = createMeshyPropTemplate(
           result.value.scene,
@@ -2792,8 +3792,23 @@ float shoreOverlayWaterSignal( vec3 color ) {
           workstation.add(interactionGroup);
         }
         workstation.visible =
+          layoutEditorEnabled ||
           Number(seatId.slice(-1)) <= activeSeatCountRef.current;
         workstationGroups.set(seatId, workstation);
+        registerEditableWorldObject({
+          id: placement.id,
+          label:
+            placement.id === TENT_WORKSTATION_OBSTACLE.id
+              ? "텐트 작업 자리"
+              : placement.id === ROUND_LAPTOP_STATION_OBSTACLE.id
+                ? "피크닉 작업 자리"
+                : placement.id === FOLDING_LAPTOP_STATION_OBSTACLE.id
+                  ? "라디오 작업 자리"
+                  : "모니터 작업 자리",
+          object: workstation,
+          obstacle: workstationObstacle,
+          onTransform: syncWorkstationAnchors,
+        });
         scene.add(workstation);
       });
 
@@ -2803,13 +3818,18 @@ float shoreOverlayWaterSignal( vec3 color ) {
 
         if (result.status !== "fulfilled") {
           if (asset.id === "camping-supplies") {
-            scene.add(
-              createCampingSupplyCluster(islandPropsWatercolorTexture),
+            const campingSupplies = createCampingSupplyCluster(
+              islandPropsWatercolorTexture,
             );
-          } else if (asset.id === "camping-lantern") {
-            scene.add(
-              createCampingLantern(islandPropsWatercolorTexture),
-            );
+            registerEditableWorldObject({
+              id: CAMPING_SUPPLY_CLUSTER_OBSTACLE.id,
+              label: "캠핑 소품",
+              object: campingSupplies,
+              obstacle: runtimeObstacleFor(
+                CAMPING_SUPPLY_CLUSTER_OBSTACLE,
+              ),
+            });
+            scene.add(campingSupplies);
           }
           return;
         }
@@ -2824,10 +3844,13 @@ float shoreOverlayWaterSignal( vec3 color ) {
           decoration.name = `${placement.id}-meshy6`;
           decoration.position.copy(placement.position);
           decoration.rotation.y = placement.rotationY;
+          const decorationObstacle = placement.obstacle
+            ? runtimeObstacleFor(placement.obstacle)
+            : undefined;
           if (placement.obstacle) {
             decoration.userData.isNavigationObstacle = true;
             decoration.userData.collisionBounds = {
-              ...placement.obstacle,
+              ...decorationObstacle,
             };
           }
 
@@ -2841,17 +3864,66 @@ float shoreOverlayWaterSignal( vec3 color ) {
               0.085,
             ),
           );
+          registerEditableWorldObject({
+            id: placement.id,
+            label:
+              asset.id === "camping-supplies"
+                ? "캠핑 소품"
+                : asset.id === "tropical-foliage"
+                  ? "해변 식물"
+                  : "해변 장식",
+            object: decoration,
+            obstacle: decorationObstacle,
+          });
           scene.add(decoration);
         });
       });
 
       setLoadingProgress((value) => Math.max(value, 48));
     });
+    void Promise.all([
+      meshyPropLoader.loadAsync(COLLECTIBLE_SHELL_MODEL_URL),
+      textureLoader.loadAsync(COLLECTIBLE_SHELL_SOFT_SEAM_TEXTURE_URL),
+    ])
+      .then(([collectibleShellGltf, softSeamTexture]) => {
+        if (disposed) return;
+        softSeamTexture.colorSpace = THREE.SRGBColorSpace;
+        softSeamTexture.flipY = false;
+        softSeamTexture.anisotropy = maximumAnisotropy;
+        collectibleShellTemplate = createMeshyPropTemplate(
+          collectibleShellGltf.scene,
+          new THREE.Color(0xffffff),
+          maximumAnisotropy,
+          0.0028,
+          0.72,
+        );
+        collectibleShellTemplate.traverse((object) => {
+          if (!(object instanceof THREE.Mesh)) return;
+          const materials = Array.isArray(object.material)
+            ? object.material
+            : [object.material];
+          materials.forEach((material) => {
+            if (
+              material instanceof THREE.MeshStandardMaterial ||
+              material instanceof THREE.MeshPhysicalMaterial ||
+              material instanceof THREE.MeshBasicMaterial ||
+              material instanceof THREE.MeshToonMaterial
+            ) {
+              material.map = softSeamTexture;
+              material.needsUpdate = true;
+            }
+          });
+        });
+        shellSpawnElapsed = nextShellSpawnSeconds;
+      })
+      .catch((error) => {
+        console.warn("Collectible shell model failed to load.", error);
+      });
 
     const characterRoot = new THREE.Group();
     const characterVisual = new THREE.Group();
     characterRoot.add(characterVisual);
-    characterRoot.position.copy(WORLD_TARGETS.general);
+    characterRoot.position.copy(worldTargets.general);
     const primarySeatId =
       seatsRef.current[0]?.seatId === "queue"
         ? "seat-1"
@@ -2933,31 +4005,31 @@ float shoreOverlayWaterSignal( vec3 color ) {
     const upperAndSideShellSpawnPoints = [
       {
         position: new THREE.Vector3(0, 0.065, -5.55),
-        rotationY: Math.PI,
+        rotationY: COLLECTIBLE_SHELL_REFERENCE_YAW,
       },
       {
         position: new THREE.Vector3(2.18, 0.065, -5.32),
-        rotationY: Math.PI,
+        rotationY: COLLECTIBLE_SHELL_REFERENCE_YAW,
       },
       {
         position: new THREE.Vector3(-2.2, 0.065, -5.34),
-        rotationY: Math.PI,
+        rotationY: COLLECTIBLE_SHELL_REFERENCE_YAW,
       },
       {
         position: new THREE.Vector3(-3.48, 0.065, -3.72),
-        rotationY: Math.PI,
+        rotationY: COLLECTIBLE_SHELL_REFERENCE_YAW,
       },
       {
         position: new THREE.Vector3(3.46, 0.065, -3.68),
-        rotationY: Math.PI,
+        rotationY: COLLECTIBLE_SHELL_REFERENCE_YAW,
       },
       {
         position: new THREE.Vector3(-3.58, 0.065, -1.55),
-        rotationY: Math.PI,
+        rotationY: COLLECTIBLE_SHELL_REFERENCE_YAW,
       },
       {
         position: new THREE.Vector3(3.56, 0.065, -1.48),
-        rotationY: Math.PI,
+        rotationY: COLLECTIBLE_SHELL_REFERENCE_YAW,
       },
     ];
     const collectibleShells = new Map<string, CollectibleShell>();
@@ -2978,10 +4050,70 @@ float shoreOverlayWaterSignal( vec3 color ) {
       shape.closePath();
       return new THREE.ShapeGeometry(shape);
     };
-    const shorelineSparkleGeometry = createFourPointStarGeometry(0.08, 0.019);
+    const shorelineSparkleGeometry = createFourPointStarGeometry(0.11, 0.026);
+    const sparkleGlowCanvas = document.createElement("canvas");
+    sparkleGlowCanvas.width = 128;
+    sparkleGlowCanvas.height = 128;
+    const sparkleGlowContext = sparkleGlowCanvas.getContext("2d");
+    if (sparkleGlowContext) {
+      sparkleGlowContext.clearRect(0, 0, 128, 128);
+      sparkleGlowContext.save();
+      sparkleGlowContext.translate(64, 64);
+      sparkleGlowContext.globalCompositeOperation = "lighter";
+      const drawSparkleRays = (
+        length: number,
+        halfWidth: number,
+        centerColor: string,
+        edgeColor: string,
+      ) => {
+        for (let index = 0; index < 4; index += 1) {
+          sparkleGlowContext.save();
+          sparkleGlowContext.rotate((Math.PI / 2) * index);
+          const rayGradient = sparkleGlowContext.createLinearGradient(
+            0,
+            0,
+            length,
+            0,
+          );
+          rayGradient.addColorStop(0, centerColor);
+          rayGradient.addColorStop(0.28, centerColor);
+          rayGradient.addColorStop(1, edgeColor);
+          sparkleGlowContext.fillStyle = rayGradient;
+          sparkleGlowContext.beginPath();
+          sparkleGlowContext.moveTo(-2, -halfWidth);
+          sparkleGlowContext.lineTo(length, 0);
+          sparkleGlowContext.lineTo(-2, halfWidth);
+          sparkleGlowContext.closePath();
+          sparkleGlowContext.fill();
+          sparkleGlowContext.restore();
+        }
+      };
+      // Four long tapered rays read as a sparkling glint instead of a round
+      // bloom. A narrow white core keeps the center crisp on small screens.
+      drawSparkleRays(
+        58,
+        5.5,
+        "rgba(255, 224, 139, 0.72)",
+        "rgba(255, 201, 100, 0)",
+      );
+      drawSparkleRays(
+        39,
+        2.6,
+        "rgba(255, 255, 244, 1)",
+        "rgba(255, 244, 202, 0)",
+      );
+      sparkleGlowContext.restore();
+    }
+    const shorelineSparkleGlowTexture = new THREE.CanvasTexture(
+      sparkleGlowCanvas,
+    );
+    shorelineSparkleGlowTexture.colorSpace = THREE.SRGBColorSpace;
+    shorelineSparkleGlowTexture.minFilter = THREE.LinearFilter;
+    shorelineSparkleGlowTexture.magFilter = THREE.LinearFilter;
+    shorelineSparkleGlowTexture.generateMipmaps = false;
 
-    const shellBurstCount = 14;
-    const shellBurstGeometry = createFourPointStarGeometry(0.09, 0.022);
+    const shellBurstCount = 20;
+    const shellBurstGeometry = createFourPointStarGeometry(0.11, 0.027);
     const shellBurstMaterial = new THREE.MeshBasicMaterial({
       color: 0xffffd6,
       transparent: true,
@@ -3000,6 +4132,43 @@ float shoreOverlayWaterSignal( vec3 color ) {
     shellBurst.visible = false;
     shellBurst.renderOrder = 27;
     scene.add(shellBurst);
+    const shellCollectFlashMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffe7,
+      transparent: true,
+      opacity: 0,
+      toneMapped: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    });
+    disableOutline(shellCollectFlashMaterial);
+    const shellCollectFlash = new THREE.Mesh(
+      createFourPointStarGeometry(0.24, 0.038),
+      shellCollectFlashMaterial,
+    );
+    shellCollectFlash.name = "beach-shell-collection-flash";
+    shellCollectFlash.visible = false;
+    shellCollectFlash.renderOrder = 29;
+    scene.add(shellCollectFlash);
+    const shellCollectRingMaterial = new THREE.MeshBasicMaterial({
+      color: 0xfff4bf,
+      transparent: true,
+      opacity: 0,
+      toneMapped: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    });
+    disableOutline(shellCollectRingMaterial);
+    const shellCollectRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.16, 0.205, 64),
+      shellCollectRingMaterial,
+    );
+    shellCollectRing.name = "beach-shell-collection-water-ring";
+    shellCollectRing.rotation.x = -Math.PI / 2;
+    shellCollectRing.visible = false;
+    shellCollectRing.renderOrder = 28;
+    scene.add(shellCollectRing);
     const shellBurstDummy = new THREE.Object3D();
     const shellBurstOrigin = new THREE.Vector3();
     const shellBurstVelocities = Array.from(
@@ -3015,68 +4184,12 @@ float shoreOverlayWaterSignal( vec3 color ) {
     );
     let shellBurstElapsed = 2;
 
-    const createScallopSurfaceGeometry = () => {
-      const fanSegments = 14;
-      const ringSegments = 5;
-      const vertices: number[] = [];
-      const uvs: number[] = [];
-      const indices: number[] = [];
-
-      for (let ring = 0; ring <= ringSegments; ring += 1) {
-        const progress = ring / ringSegments;
-        for (let fan = 0; fan <= fanSegments; fan += 1) {
-          const fanProgress = fan / fanSegments;
-          const angle = -1.08 + fanProgress * 2.16;
-          const edgeScallop =
-            ring === ringSegments
-              ? 1 + Math.cos(fanProgress * Math.PI * 14) * 0.025
-              : 1;
-          const radius = (0.055 + progress * 0.315) * edgeScallop;
-          const ridgeLift =
-            Math.pow(Math.max(0, Math.cos(angle * 3.35)), 8) *
-            progress *
-            0.012;
-          vertices.push(
-            Math.sin(angle) * radius * (0.9 + progress * 0.1),
-            0.038 + Math.sin(progress * Math.PI) * 0.072 + ridgeLift,
-            0.12 - Math.cos(angle) * radius,
-          );
-          uvs.push(fanProgress, progress);
-        }
-      }
-
-      const row = fanSegments + 1;
-      for (let ring = 0; ring < ringSegments; ring += 1) {
-        for (let fan = 0; fan < fanSegments; fan += 1) {
-          const topLeft = ring * row + fan;
-          const bottomLeft = (ring + 1) * row + fan;
-          indices.push(
-            topLeft,
-            bottomLeft,
-            topLeft + 1,
-            topLeft + 1,
-            bottomLeft,
-            bottomLeft + 1,
-          );
-        }
-      }
-
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute(
-        "position",
-        new THREE.Float32BufferAttribute(vertices, 3),
-      );
-      geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
-      geometry.setIndex(indices);
-      geometry.computeVertexNormals();
-      return geometry;
-    };
-
     const createCollectibleShell = (
       id: string,
       position: THREE.Vector3,
       baseRotationY: number,
     ) => {
+      if (!collectibleShellTemplate) return null;
       const group = new THREE.Group();
       group.name = id;
       group.position.copy(position);
@@ -3084,90 +4197,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
       group.userData.shorelineOnly = true;
       const baseScale = 0.82;
       group.scale.setScalar(baseScale);
-      const shellVisual = new THREE.Group();
+      const shellVisual = collectibleShellTemplate.clone(true);
       shellVisual.name = `${id}-camera-facing-shell`;
-      shellVisual.rotation.x = THREE.MathUtils.degToRad(12);
+      shellVisual.position.y = -0.045;
+      shellVisual.scale.setScalar(0.2);
       group.add(shellVisual);
-
-      const applyShellOutline = (
-        material: THREE.Material,
-        thickness: number,
-        alpha: number,
-      ) => {
-        material.userData.outlineParameters = {
-          thickness,
-          color: ILLUSTRATION_OUTLINE_COLOR.toArray(),
-          alpha,
-          visible: true,
-        };
-      };
-
-      const shellGeometry = createScallopSurfaceGeometry();
-      const shellBackMaterial = new THREE.MeshToonMaterial({
-        color: 0xffb985,
-        emissive: 0xffb46f,
-        emissiveIntensity: 0.08,
-        side: THREE.DoubleSide,
-      });
-      applyShellOutline(shellBackMaterial, 0.0052, 0.88);
-      const shellBack = new THREE.Mesh(shellGeometry.clone(), shellBackMaterial);
-      shellBack.position.y = -0.025;
-      shellBack.scale.set(1.035, 1, 1.035);
-      shellVisual.add(shellBack);
-
-      const shellMaterial = new THREE.MeshToonMaterial({
-        color: 0xfff0c2,
-        emissive: 0xffd78a,
-        emissiveIntensity: 0.2,
-        side: THREE.DoubleSide,
-      });
-      applyShellOutline(shellMaterial, 0.0052, 0.9);
-      const shellBody = new THREE.Mesh(shellGeometry, shellMaterial);
-      shellBody.castShadow = true;
-      shellVisual.add(shellBody);
-
-      const ridgeMaterial = new THREE.MeshToonMaterial({
-        color: 0xffd18e,
-        emissive: 0xffc86f,
-        emissiveIntensity: 0.14,
-      });
-      applyShellOutline(ridgeMaterial, 0.0026, 0.64);
-      for (const angle of [-0.9, -0.6, -0.3, 0, 0.3, 0.6, 0.9]) {
-        const ribPoints = Array.from({ length: 6 }, (_, index) => {
-          const progress = 0.11 + (index / 5) * 0.84;
-          const radius = 0.055 + progress * 0.315;
-          return new THREE.Vector3(
-            Math.sin(angle) * radius * (0.9 + progress * 0.1),
-            0.058 + Math.sin(progress * Math.PI) * 0.073,
-            0.12 - Math.cos(angle) * radius,
-          );
-        });
-        const ridge = new THREE.Mesh(
-          new THREE.TubeGeometry(
-            new THREE.CatmullRomCurve3(ribPoints),
-            14,
-            0.009,
-            6,
-            false,
-          ),
-          ridgeMaterial,
-        );
-        shellVisual.add(ridge);
-      }
-
-      const hingeMaterial = new THREE.MeshToonMaterial({
-        color: 0xffffdf,
-        emissive: 0xffdda0,
-        emissiveIntensity: 0.2,
-      });
-      applyShellOutline(hingeMaterial, 0.0038, 0.82);
-      const hinge = new THREE.Mesh(
-        new THREE.SphereGeometry(0.075, 18, 12),
-        hingeMaterial,
-      );
-      hinge.position.set(0, 0.066, 0.115);
-      hinge.scale.set(1.05, 0.55, 0.68);
-      shellVisual.add(hinge);
 
       const rippleMaterial = new THREE.MeshBasicMaterial({
         color: 0xe9fff5,
@@ -3179,7 +4213,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       });
       disableOutline(rippleMaterial);
       const ripple = new THREE.Mesh(
-        new THREE.RingGeometry(0.35, 0.39, 48),
+        new THREE.RingGeometry(0.18, 0.22, 48),
         rippleMaterial,
       );
       ripple.name = `${id}-water-ripple`;
@@ -3189,13 +4223,50 @@ float shoreOverlayWaterSignal( vec3 color ) {
       group.add(ripple);
 
       const sparkleSpecs = [
-        { x: -0.34, y: 0.24, z: -0.04, scale: 1.05, phase: 0.1 },
-        { x: 0.29, y: 0.31, z: 0.02, scale: 0.82, phase: 2.2 },
-        { x: 0.06, y: 0.4, z: -0.22, scale: 0.68, phase: 4.1 },
+        {
+          x: -0.19,
+          y: 0.15,
+          z: -0.02,
+          scale: 1.12,
+          phase: 0.1,
+          color: 0xffffff,
+        },
+        {
+          x: 0.17,
+          y: 0.19,
+          z: 0.02,
+          scale: 0.96,
+          phase: 1.35,
+          color: 0xfff0a6,
+        },
+        {
+          x: 0.02,
+          y: 0.27,
+          z: -0.11,
+          scale: 0.82,
+          phase: 2.65,
+          color: 0xffffff,
+        },
+        {
+          x: -0.08,
+          y: 0.23,
+          z: 0.06,
+          scale: 0.7,
+          phase: 4.05,
+          color: 0xffd98e,
+        },
+        {
+          x: 0.2,
+          y: 0.12,
+          z: -0.08,
+          scale: 0.64,
+          phase: 5.25,
+          color: 0xfff8d6,
+        },
       ];
       const sparkles = sparkleSpecs.map((spec, index) => {
         const material = new THREE.MeshBasicMaterial({
-          color: index === 1 ? 0xfff0aa : 0xffffff,
+          color: spec.color,
           transparent: true,
           opacity: 0.75,
           depthWrite: false,
@@ -3209,16 +4280,36 @@ float shoreOverlayWaterSignal( vec3 color ) {
         star.position.set(spec.x, spec.y, spec.z);
         star.scale.setScalar(spec.scale);
         group.add(star);
+        const haloMaterial = new THREE.SpriteMaterial({
+          map: shorelineSparkleGlowTexture,
+          color: spec.color,
+          transparent: true,
+          opacity: 0.28,
+          depthWrite: false,
+          toneMapped: false,
+          blending: THREE.AdditiveBlending,
+        });
+        disableOutline(haloMaterial);
+        const halo = new THREE.Sprite(haloMaterial);
+        const haloBaseScale = 0.27 * spec.scale;
+        halo.name = `${id}-shoreline-glow-${index + 1}`;
+        halo.position.copy(star.position);
+        halo.scale.setScalar(haloBaseScale);
+        halo.renderOrder = 26;
+        group.add(halo);
         return {
           star,
+          halo,
           baseScale: spec.scale,
+          haloBaseScale,
           phase: spec.phase,
           baseY: spec.y,
+          spin: index % 2 === 0 ? 1 : -1,
         };
       });
 
-      const proxy = createInteractionProxy(id, 0.58);
-      proxy.position.y = 0.12;
+      const proxy = createInteractionProxy(id, 0.34);
+      proxy.position.y = 0.07;
       group.add(proxy);
       scene.add(group);
       clickableObjects.push(proxy);
@@ -3238,7 +4329,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
     };
 
     const spawnCollectibleShell = () => {
-      if (collectibleShells.size >= 3) return;
+      if (!collectibleShellTemplate || collectibleShells.size >= 3) return false;
       const occupiedPointIds = new Set(
         [...collectibleShells.values()].map(
           (entry) => entry.group.userData.spawnPointId as number,
@@ -3247,7 +4338,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const available = upperAndSideShellSpawnPoints
         .map((point, index) => ({ point, index }))
         .filter(({ index }) => !occupiedPointIds.has(index));
-      if (!available.length) return;
+      if (!available.length) return false;
       const selected = available[shellSpawnSequence % available.length];
       const id = `beach-shell-${++shellSpawnSequence}`;
       const collectible = createCollectibleShell(
@@ -3255,8 +4346,10 @@ float shoreOverlayWaterSignal( vec3 color ) {
         selected.point.position,
         selected.point.rotationY,
       );
+      if (!collectible) return false;
       collectible.group.userData.spawnPointId = selected.index;
       collectibleShells.set(id, collectible);
+      return true;
     };
 
     const playCompletionChime = () => {
@@ -3314,15 +4407,81 @@ float shoreOverlayWaterSignal( vec3 color ) {
     let currentAction: THREE.AnimationAction | null = null;
     let characterModel: THREE.Object3D | null = null;
     let loadedAnimationClips: THREE.AnimationClip[] = [];
+    const careFacilities: Record<CatCareIntent, CareFacilityState> = {
+      food: { occupant: null, queue: [] },
+      toilet: { occupant: null, queue: [] },
+    };
+    const litterIsFull = () => isLitterBoxFull(litterLevelRef.current);
+    const careApproachPosition = (intent: CatCareIntent) =>
+      intent === "food"
+        ? foodBowlApproachPosition
+        : litterBoxUsePosition;
+    const careWaitPosition = (intent: CatCareIntent, catId: string) => {
+      const facility = careFacilities[intent];
+      const queueIndex = Math.max(0, facility.queue.indexOf(catId));
+      const base =
+        intent === "food" ? foodBowlWaitPosition : litterBoxWaitPosition;
+      return base
+        .clone()
+        .add(new THREE.Vector3(-queueIndex * 0.34, 0, queueIndex * 0.18));
+    };
+    const enqueueCare = (intent: CatCareIntent, catId: string) => {
+      const facility = careFacilities[intent];
+      if (
+        facility.occupant !== catId &&
+        !facility.queue.includes(catId)
+      ) {
+        facility.queue.push(catId);
+      }
+    };
+    const leaveCareQueue = (intent: CatCareIntent, catId: string) => {
+      const facility = careFacilities[intent];
+      facility.queue = facility.queue.filter((queuedId) => queuedId !== catId);
+      if (facility.occupant === catId) facility.occupant = null;
+    };
+    const canClaimCareFacility = (
+      intent: CatCareIntent,
+      catId: string,
+    ) => {
+      const facility = careFacilities[intent];
+      if (intent === "toilet" && litterIsFull()) return false;
+      return (
+        facility.occupant === catId ||
+        (facility.occupant === null && facility.queue[0] === catId)
+      );
+    };
+    const claimCareFacility = (intent: CatCareIntent, catId: string) => {
+      const facility = careFacilities[intent];
+      if (facility.occupant === catId) return true;
+      if (facility.occupant !== null || facility.queue[0] !== catId) {
+        return false;
+      }
+      facility.queue.shift();
+      facility.occupant = catId;
+      return true;
+    };
+    const releaseCareFacility = (intent: CatCareIntent, catId: string) => {
+      const facility = careFacilities[intent];
+      if (facility.occupant === catId) facility.occupant = null;
+    };
+
     type SecondaryAgent = {
       root: THREE.Group;
       model: THREE.Object3D;
+      shadow: THREE.Mesh;
       mixer: THREE.AnimationMixer;
       actions: Map<string, THREE.AnimationAction>;
       currentKey: string;
       marker: ReturnType<typeof createAgentMarker>;
       markerAnchorTarget: THREE.Vector3;
       clickProxy: THREE.Object3D | null;
+      catId: string;
+      seatId: SeatId;
+      care: CatCareRuntime | null;
+      careRetrySeconds: number;
+      careWaypoints: THREE.Vector3[];
+      careLastTarget: THREE.Vector3;
+      yaw: number;
     };
     const secondaryAgents = new Map<string, SecondaryAgent>();
     let characterYaw = DEFAULT_CHARACTER_YAW;
@@ -3343,6 +4502,10 @@ float shoreOverlayWaterSignal( vec3 color ) {
     let monitorScreenFrame = -1;
     let wasKneadingLastFrame = false;
     let wasAutonomous = AUTONOMOUS_STATUSES.has(motionRef.current.status);
+    let primaryCare: CatCareRuntime | null = null;
+    let primaryCareCatId =
+      (seatsRef.current[0] ?? DEFAULT_SEAT_VIEW).catId;
+    let primaryCareRetrySeconds = 0;
     let modelProgress = 0;
     let animationsProgress = 0;
 
@@ -3396,6 +4559,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
         ["walk", "|Walk_F"],
         ["idle", "|Idle_1"],
         ["sit", "|Sitting_Idle"],
+        ["eat", "|EatDrink"],
         ["work", DESK_KNEADING_ANIMATION_SUFFIX],
       ] as const;
       for (const [key, suffix] of clipEntries) {
@@ -3413,12 +4577,21 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const entry: SecondaryAgent = {
         root,
         model,
+        shadow,
         mixer,
         actions,
         currentKey: initial ? "idle" : "",
         marker,
         markerAnchorTarget: new THREE.Vector3(),
         clickProxy,
+        catId: seat.catId,
+        seatId:
+          seat.seatId === "queue" ? "seat-1" : seat.seatId,
+        care: null,
+        careRetrySeconds: 0,
+        careWaypoints: [],
+        careLastTarget: root.position.clone(),
+        yaw: DEFAULT_CHARACTER_YAW,
       };
       scene.add(root);
       secondaryAgents.set(String(seat.seatId), entry);
@@ -3430,21 +4603,261 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const desiredKeys = new Set(desiredSeats.map((seat) => String(seat.seatId)));
       for (const [key, entry] of secondaryAgents) {
         if (desiredKeys.has(key)) continue;
+        if (entry.care) leaveCareQueue(entry.care.intent, entry.catId);
         removeClickable(entry.clickProxy);
         entry.root.removeFromParent();
         secondaryAgents.delete(key);
       }
+
+      const setSecondaryAnimation = (
+        entry: SecondaryAgent,
+        nextKey: string,
+      ) => {
+        if (nextKey === entry.currentKey) return;
+        const previous = entry.actions.get(entry.currentKey);
+        const next =
+          entry.actions.get(nextKey) ??
+          entry.actions.get("idle") ??
+          entry.actions.values().next().value;
+        previous?.fadeOut(0.3);
+        next?.reset().fadeIn(0.3).play();
+        entry.currentKey = nextKey;
+      };
+
+      const moveSecondaryTowards = (
+        entry: SecondaryAgent,
+        target: THREE.Vector3,
+        obstacles: SceneObstacle[],
+      ) => {
+        if (entry.careLastTarget.distanceToSquared(target) > 0.01) {
+          entry.careLastTarget.copy(target);
+          entry.careWaypoints.length = 0;
+        }
+        while (
+          entry.careWaypoints.length &&
+          entry.root.position.distanceTo(entry.careWaypoints[0]) <=
+            OBSTACLE_WAYPOINT_REACHED_DISTANCE
+        ) {
+          entry.careWaypoints.shift();
+        }
+        if (!entry.careWaypoints.length) {
+          entry.careWaypoints.push(
+            ...findAvoidancePath(entry.root.position, target, obstacles),
+          );
+        }
+        const goal = entry.careWaypoints[0] ?? target;
+        const distance = entry.root.position.distanceTo(goal);
+        if (distance <= CARE_ARRIVAL_DISTANCE) {
+          if (entry.careWaypoints.length) entry.careWaypoints.shift();
+          if (entry.root.position.distanceTo(target) <= CARE_ARRIVAL_DISTANCE) {
+            entry.root.position.copy(target);
+            return true;
+          }
+          return false;
+        }
+        const direction = goal.clone().sub(entry.root.position);
+        const targetYaw = Math.atan2(direction.x, direction.z);
+        entry.yaw = lerpAngle(
+          entry.yaw,
+          targetYaw,
+          1 - Math.exp(-delta * 7),
+        );
+        entry.model.rotation.y = entry.yaw;
+        const step = Math.min(distance, CARE_MOVE_SPEED * delta);
+        entry.root.position.addScaledVector(direction.normalize(), step);
+        return entry.root.position.distanceTo(target) <= CARE_ARRIVAL_DISTANCE;
+      };
+
       desiredSeats.forEach((seat, index) => {
         const key = String(seat.seatId);
         const entry = secondaryAgents.get(key) ?? createSecondaryAgent(seat);
         if (!entry) return;
-        const target =
+        const homeTarget =
           seat.seatId === "queue"
-            ? WORLD_TARGETS.queue
+            ? worldTargets.queue
                 .clone()
                 .add(new THREE.Vector3(index * 0.52, 0, index * 0.18))
-            : SEAT_WORLD_POSITIONS[seat.seatId];
-        entry.root.position.copy(target);
+            : seatWorldPositions[seat.seatId];
+        if (entry.catId !== seat.catId) {
+          if (entry.care) leaveCareQueue(entry.care.intent, entry.catId);
+          entry.catId = seat.catId;
+          entry.care = null;
+          entry.careRetrySeconds = 0;
+          entry.careWaypoints.length = 0;
+        }
+        if (seat.seatId !== "queue") entry.seatId = seat.seatId;
+        entry.careRetrySeconds = Math.max(
+          0,
+          entry.careRetrySeconds - delta,
+        );
+
+        if (
+          !entry.care &&
+          seat.seatId !== "queue" &&
+          !seat.blocked &&
+          entry.careRetrySeconds <= 0
+        ) {
+          const intent = selectCatCareIntent({
+            hunger: seat.hunger ?? 0,
+            toilet: seat.toilet ?? 0,
+          });
+          if (intent) {
+            entry.care = {
+              intent,
+              phase: "approaching",
+              timer: 0,
+              insideFacility: false,
+            };
+            enqueueCare(intent, entry.catId);
+          }
+        }
+
+        const ownPlacementIndex = WORKSTATION_PLACEMENT_SEATS.indexOf(
+          entry.seatId,
+        );
+        const ownObstacle =
+          ownPlacementIndex >= 0
+            ? runtimeObstacleById.get(
+                MESHY_WORKSTATION_PLACEMENTS[ownPlacementIndex]?.obstacle.id ??
+                  "",
+              )
+            : undefined;
+        let navigationObstacles = getRuntimeSceneObstacles(
+          activeSeatCountRef.current,
+        ).filter((obstacle) => obstacle !== ownObstacle);
+        if (entry.care?.intent === "toilet") {
+          navigationObstacles = navigationObstacles.filter(
+            (obstacle) => obstacle !== litterBoxObstacle,
+          );
+        }
+
+        let careAnimation: string | null = null;
+        if (entry.care) {
+          const care = entry.care;
+          const litterUnavailable =
+            care.intent === "toilet" &&
+            litterIsFull() &&
+            (care.phase === "approaching" || care.phase === "waiting");
+          if (litterUnavailable) {
+            const target = careWaitPosition("toilet", entry.catId);
+            const arrived = moveSecondaryTowards(
+              entry,
+              target,
+              navigationObstacles,
+            );
+            careAnimation = arrived ? "sit" : "walk";
+            if (arrived) {
+              leaveCareQueue("toilet", entry.catId);
+              care.insideFacility = false;
+              onCatCareEventRef.current?.({
+                catId: entry.catId,
+                seatId: entry.seatId,
+                outcome: "toilet-blocked",
+              });
+              entry.careRetrySeconds = LITTER_FULL_RETRY_SECONDS;
+              care.phase = "recovering";
+              care.timer = CARE_RECOVERY_SECONDS * 1.8;
+              careAnimation = "sit";
+            }
+          } else if (care.phase === "using") {
+            care.timer -= delta;
+            careAnimation = care.intent === "food" ? "eat" : "sit";
+            if (care.timer <= 0) {
+              releaseCareFacility(care.intent, entry.catId);
+              if (care.intent === "food") {
+                foodAvailableRef.current = false;
+                fullBowlVisual.visible = false;
+                emptyBowlVisual.visible = true;
+                onCatCareEventRef.current?.({
+                  catId: entry.catId,
+                  seatId: entry.seatId,
+                  outcome: "meal-completed",
+                });
+              } else {
+                litterLevelRef.current = addLitterWaste(
+                  litterLevelRef.current,
+                );
+                litterLevelGauge.update(litterLevelRef.current);
+                onCatCareEventRef.current?.({
+                  catId: entry.catId,
+                  seatId: entry.seatId,
+                  outcome: "toilet-completed",
+                });
+              }
+              care.phase = "recovering";
+              care.timer = CARE_RECOVERY_SECONDS;
+            }
+          } else if (care.phase === "recovering") {
+            care.timer -= delta;
+            careAnimation = "idle";
+            if (care.timer <= 0) care.phase = "returning";
+          } else if (care.phase === "returning") {
+            careAnimation = "walk";
+            if (
+              moveSecondaryTowards(
+                entry,
+                homeTarget,
+                navigationObstacles,
+              )
+            ) {
+              entry.care = null;
+              entry.careWaypoints.length = 0;
+              careAnimation = "idle";
+            }
+          } else {
+            const mayClaim = canClaimCareFacility(
+              care.intent,
+              entry.catId,
+            );
+            const target = mayClaim
+              ? careApproachPosition(care.intent)
+              : careWaitPosition(care.intent, entry.catId);
+            care.phase = mayClaim ? "approaching" : "waiting";
+            const arrived = moveSecondaryTowards(
+              entry,
+              target,
+              navigationObstacles,
+            );
+            careAnimation = arrived && !mayClaim ? "sit" : "walk";
+            if (arrived && mayClaim) {
+              if (
+                care.intent === "food" &&
+                !hasFoodAvailable()
+              ) {
+                leaveCareQueue(care.intent, entry.catId);
+                onCatCareEventRef.current?.({
+                  catId: entry.catId,
+                  seatId: entry.seatId,
+                  outcome: "meal-missed",
+                });
+                entry.careRetrySeconds = EMPTY_BOWL_RETRY_SECONDS;
+                care.phase = "recovering";
+                care.timer = CARE_RECOVERY_SECONDS * 1.8;
+                careAnimation = "sit";
+              } else if (claimCareFacility(care.intent, entry.catId)) {
+                care.phase = "using";
+                care.insideFacility = true;
+                care.timer =
+                  care.intent === "food"
+                    ? FOOD_USE_SECONDS
+                    : TOILET_USE_SECONDS;
+                careAnimation = care.intent === "food" ? "eat" : "sit";
+              }
+            }
+          }
+        }
+
+        const insideLitterBox =
+          entry.care?.intent === "toilet" &&
+          entry.care.insideFacility &&
+          (entry.care.phase === "using" ||
+            entry.care.phase === "recovering");
+        entry.model.visible = !insideLitterBox;
+        entry.shadow.visible = !insideLitterBox;
+        if (entry.clickProxy) entry.clickProxy.visible = !insideLitterBox;
+        if (!entry.care) {
+          entry.root.position.copy(homeTarget);
+        }
         entry.marker.update(seat);
         entry.marker.beacon.visible = seat.blocked;
         // 책상에서 일하는 동안에는 머리 위가 아니라 모니터 위쪽에 뜬다.
@@ -3454,28 +4867,26 @@ float shoreOverlayWaterSignal( vec3 color ) {
             seat.seatId,
             seat.status === "working",
             entry.markerAnchorTarget,
+            seatWorkingMarkerWorldPositions,
           ),
           1 - Math.exp(-delta * MARKER_MOVE_EASE),
         );
-        const nextKey = seat.blocked
-          ? "sit"
-          : ["moving", "queued", "briefing", "reporting"].includes(seat.status)
-            ? "walk"
-            : seat.status === "working"
-              ? "work"
-              : "idle";
-        if (nextKey !== entry.currentKey) {
-          const previous = entry.actions.get(entry.currentKey);
-          const next =
-            entry.actions.get(nextKey) ??
-            entry.actions.get("idle") ??
-            entry.actions.values().next().value;
-          previous?.fadeOut(0.3);
-          next?.reset().fadeIn(0.3).play();
-          entry.currentKey = nextKey;
+        const nextKey =
+          careAnimation ??
+          (seat.blocked
+            ? "sit"
+            : ["moving", "queued", "briefing", "reporting"].includes(
+                  seat.status,
+                )
+              ? "walk"
+              : seat.status === "working"
+                ? "work"
+                : "idle");
+        setSecondaryAnimation(entry, nextKey);
+        if (!entry.care) {
+          entry.model.rotation.y =
+            nextKey === "walk" ? DEFAULT_CHARACTER_YAW + index * 0.2 : 0.25;
         }
-        entry.model.rotation.y =
-          nextKey === "walk" ? DEFAULT_CHARACTER_YAW + index * 0.2 : 0.25;
         entry.mixer.update(delta);
       });
     };
@@ -3555,6 +4966,19 @@ float shoreOverlayWaterSignal( vec3 color ) {
                   renderer.capabilities.getMaxAnisotropy(),
                 );
               }
+            }
+            const texturedMaterial = material as THREE.Material & {
+              map?: THREE.Texture | null;
+            };
+            if ("map" in texturedMaterial) {
+              if (!texturedMaterial.map) {
+                texturedMaterial.map = catPaletteTexture;
+              }
+              texturedMaterial.map.colorSpace = THREE.SRGBColorSpace;
+              texturedMaterial.map.anisotropy = Math.min(
+                4,
+                renderer.capabilities.getMaxAnisotropy(),
+              );
             }
             material.userData.outlineParameters = {
               thickness: ILLUSTRATION_OUTLINE_THICKNESS,
@@ -3637,6 +5061,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
     const movementGoal = new THREE.Vector3();
     const movementDirection = new THREE.Vector3();
     const nextPosition = new THREE.Vector3();
+    const frameMovementStart = new THREE.Vector3();
     const lastNavigationTarget = currentPosition.clone();
     const avoidanceWaypoints: THREE.Vector3[] = [];
     const clock = new THREE.Clock();
@@ -3668,6 +5093,27 @@ float shoreOverlayWaterSignal( vec3 color ) {
     const raycaster = new THREE.Raycaster();
     const pointerNdc = new THREE.Vector2();
     let clickStartedAt = 0;
+    const updatePointerRay = (clientX: number, clientY: number) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      pointerNdc.set(
+        ((clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1,
+        -((clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1,
+      );
+      raycaster.setFromCamera(pointerNdc, camera);
+    };
+    const editableEntryAt = (clientX: number, clientY: number) => {
+      updatePointerRay(clientX, clientY);
+      const candidates = Array.from(editableWorldObjects.values())
+        .map((entry) => entry.object)
+        .filter((object) => object.visible && object.parent);
+      const hit = raycaster.intersectObjects(candidates, true)[0];
+      let target: THREE.Object3D | null = hit?.object ?? null;
+      while (target && !target.userData.editableWorldObjectId) {
+        target = target.parent;
+      }
+      const id = String(target?.userData.editableWorldObjectId ?? "");
+      return editableWorldObjects.get(id) ?? null;
+    };
 
     const beginWorldDrag = (
       pointerId: number,
@@ -3696,6 +5142,23 @@ float shoreOverlayWaterSignal( vec3 color ) {
       if (event.pointerType === "mouse" && event.button !== 0) return;
 
       event.preventDefault();
+      if (layoutEditorEnabled) {
+        const entry = editableEntryAt(event.clientX, event.clientY);
+        selectEditableObject(entry);
+        objectDragMoved = false;
+        if (!entry) return;
+
+        updatePointerRay(event.clientX, event.clientY);
+        if (!raycaster.ray.intersectPlane(objectDragPlane, objectDragHit)) return;
+        objectDragPointerId = event.pointerId;
+        objectDragOffset
+          .copy(entry.object.position)
+          .sub(objectDragHit);
+        renderer.domElement.style.cursor = "grabbing";
+        renderer.domElement.setPointerCapture(event.pointerId);
+        return;
+      }
+
       const position = new THREE.Vector2(event.clientX, event.clientY);
       activePointers.set(event.pointerId, position);
       if (activePointers.size === 1) {
@@ -3713,6 +5176,37 @@ float shoreOverlayWaterSignal( vec3 color ) {
     };
 
     const handlePointerMove = (event: PointerEvent) => {
+      if (layoutEditorEnabled) {
+        if (
+          event.pointerId !== objectDragPointerId ||
+          !selectedEditableObject
+        ) {
+          return;
+        }
+
+        event.preventDefault();
+        updatePointerRay(event.clientX, event.clientY);
+        if (!raycaster.ray.intersectPlane(objectDragPlane, objectDragHit)) return;
+        const nextX = THREE.MathUtils.clamp(
+          objectDragHit.x + objectDragOffset.x,
+          WORLD_OBJECT_POSITION_LIMITS.minX,
+          WORLD_OBJECT_POSITION_LIMITS.maxX,
+        );
+        const nextZ = THREE.MathUtils.clamp(
+          objectDragHit.z + objectDragOffset.z,
+          WORLD_OBJECT_POSITION_LIMITS.minZ,
+          WORLD_OBJECT_POSITION_LIMITS.maxZ,
+        );
+        objectDragMoved ||=
+          Math.abs(selectedEditableObject.object.position.x - nextX) > 0.001 ||
+          Math.abs(selectedEditableObject.object.position.z - nextZ) > 0.001;
+        selectedEditableObject.object.position.x = nextX;
+        selectedEditableObject.object.position.z = nextZ;
+        syncEditableObject(selectedEditableObject);
+        updateSelectionRing();
+        return;
+      }
+
       if (!activePointers.has(event.pointerId)) return;
 
       event.preventDefault();
@@ -3754,6 +5248,21 @@ float shoreOverlayWaterSignal( vec3 color ) {
     };
 
     const handlePointerUp = (event: PointerEvent) => {
+      if (layoutEditorEnabled) {
+        if (event.pointerId !== objectDragPointerId) return;
+        event.preventDefault();
+        if (renderer.domElement.hasPointerCapture(event.pointerId)) {
+          renderer.domElement.releasePointerCapture(event.pointerId);
+        }
+        if (selectedEditableObject && objectDragMoved) {
+          persistEditableObject(selectedEditableObject);
+        }
+        objectDragPointerId = null;
+        objectDragMoved = false;
+        renderer.domElement.style.cursor = "crosshair";
+        return;
+      }
+
       if (!activePointers.has(event.pointerId)) return;
 
       event.preventDefault();
@@ -3783,12 +5292,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       }
 
       if (shouldClick) {
-        const rect = renderer.domElement.getBoundingClientRect();
-        pointerNdc.set(
-          ((event.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1,
-          -((event.clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1,
-        );
-        raycaster.setFromCamera(pointerNdc, camera);
+        updatePointerRay(event.clientX, event.clientY);
         const hit = raycaster.intersectObjects(clickableObjects, true)[0];
         let target: THREE.Object3D | null = hit?.object ?? null;
         while (target && !target.userData.clickTargetId) target = target.parent;
@@ -3797,6 +5301,12 @@ float shoreOverlayWaterSignal( vec3 color ) {
           if (activeSeatCountRef.current >= 4) {
             onRadioClickRef.current?.();
           }
+        } else if (targetId === "food-bowl") {
+          onFoodBowlClickRef.current?.();
+        } else if (targetId === "litter-box") {
+          litterLevelRef.current = 0;
+          litterLevelGauge.update(0);
+          onLitterBoxClickRef.current?.();
         } else if (targetId.startsWith("cat-seat-")) {
           const seatId = targetId.slice(4) as SeatId;
           onSeatClickRef.current?.(seatId);
@@ -3809,9 +5319,17 @@ float shoreOverlayWaterSignal( vec3 color ) {
           collectible.group.getWorldPosition(shellBurstOrigin);
           shellBurstElapsed = 0;
           shellBurst.visible = true;
+          shellCollectFlash.position.copy(shellBurstOrigin);
+          shellCollectFlash.position.y += 0.17;
+          shellCollectFlash.scale.setScalar(0.2);
+          shellCollectFlash.visible = true;
+          shellCollectRing.position.copy(shellBurstOrigin);
+          shellCollectRing.position.y += 0.018;
+          shellCollectRing.scale.setScalar(0.42);
+          shellCollectRing.visible = true;
           const projected = shellBurstOrigin.clone().project(camera);
           onShellCollectRef.current?.({
-            amount: 5,
+            amount: 1,
             x: THREE.MathUtils.clamp((projected.x + 1) / 2, 0, 1),
             y: THREE.MathUtils.clamp((1 - projected.y) / 2, 0, 1),
           });
@@ -3852,10 +5370,47 @@ float shoreOverlayWaterSignal( vec3 color ) {
       primaryMarker.beacon.visible = isPrimaryBlocked;
       workstationGroups.forEach((workstation, seatId) => {
         workstation.visible =
+          layoutEditorEnabled ||
           Number(seatId.slice(-1)) <= activeSeatCountRef.current;
       });
-      radioClickProxy.visible = activeSeatCountRef.current >= 4;
-      radioLamp.visible = activeSeatCountRef.current >= 4;
+      fullBowlVisual.visible = hasFoodAvailable();
+      emptyBowlVisual.visible = !hasFoodAvailable();
+      litterLevelGauge.update(litterLevelRef.current);
+      const litterRatio = THREE.MathUtils.clamp(
+        litterLevelRef.current / 100,
+        0,
+        1,
+      );
+      const litterFull = litterIsFull();
+      litterOdorParticles.forEach(
+        ({ sprite, material, phase, drift }, index) => {
+          const progress = (animationTime * 0.16 + phase) % 1;
+          const visible = litterRatio > 0.01;
+          sprite.visible = visible;
+          sprite.position.set(
+            Math.sin(animationTime * 1.15 + phase * 9) *
+              (0.1 + index * 0.008) *
+              drift,
+            0.5 + progress * 0.92,
+            -0.04 +
+              Math.cos(animationTime * 0.9 + phase * 7) * 0.055,
+          );
+          const particleScale =
+            0.09 + progress * 0.17 + litterRatio * 0.055;
+          sprite.scale.setScalar(particleScale);
+          material.opacity = visible
+            ? litterRatio *
+              Math.sin(progress * Math.PI) *
+              (litterFull ? 0.78 : 0.5)
+            : 0;
+          material.rotation =
+            Math.sin(animationTime * 0.75 + phase * 8) * 0.2;
+        },
+      );
+      radioClickProxy.visible =
+        layoutEditorEnabled || activeSeatCountRef.current >= 4;
+      radioLamp.visible =
+        layoutEditorEnabled || activeSeatCountRef.current >= 4;
       syncSecondaryAgents(delta);
       const connectionState = connectionRef.current;
       radioLampMaterial.color.setHex(
@@ -3872,22 +5427,23 @@ float shoreOverlayWaterSignal( vec3 color ) {
       radioLamp.scale.setScalar(lampPulse);
 
       shellSpawnElapsed += delta;
-      if (shellSpawnElapsed >= nextShellSpawnSeconds) {
+      if (
+        shellSpawnElapsed >= nextShellSpawnSeconds &&
+        spawnCollectibleShell()
+      ) {
         shellSpawnElapsed = 0;
         nextShellSpawnSeconds = randomBetween(9, 16);
-        spawnCollectibleShell();
       }
       collectibleShells.forEach((collectible, id) => {
         if (collectible.collecting) {
           collectible.elapsed += delta;
-          const progress = Math.min(1, collectible.elapsed / 0.72);
+          const progress = Math.min(1, collectible.elapsed / 0.58);
+          const popWave = Math.sin(progress * Math.PI);
           collectible.group.position.y =
-            collectible.baseY + progress * 0.82;
+            collectible.baseY + popWave * 0.045;
           collectible.group.scale.setScalar(
-            collectible.baseScale *
-              Math.max(0.02, 1 - progress * 0.86),
+            collectible.baseScale * (1 + popWave * 0.26),
           );
-          collectible.group.rotation.y += delta * 8;
           if (progress >= 1) {
             scene.remove(collectible.group);
             collectibleShells.delete(id);
@@ -3910,19 +5466,42 @@ float shoreOverlayWaterSignal( vec3 color ) {
             0.14;
         collectible.sparkles.forEach((sparkle) => {
           const shimmer =
-            Math.sin(animationTime * 3.4 + sparkle.phase) * 0.5 + 0.5;
-          const sharpShimmer = Math.pow(shimmer, 2.7);
-          sparkle.star.material.opacity = 0.18 + sharpShimmer * 0.82;
+            Math.sin(animationTime * 3.15 + sparkle.phase) * 0.5 + 0.5;
+          const sharpShimmer = Math.pow(shimmer, 3.1);
+          const glowShimmer = Math.pow(shimmer, 1.7);
+          sparkle.star.material.opacity = 0.14 + sharpShimmer * 0.86;
           sparkle.star.scale.setScalar(
-            sparkle.baseScale * (0.55 + sharpShimmer * 0.72),
+            sparkle.baseScale * (0.42 + sharpShimmer * 1.08),
           );
           sparkle.star.position.y =
-            sparkle.baseY + Math.sin(animationTime * 1.9 + sparkle.phase) * 0.03;
+            sparkle.baseY + Math.sin(animationTime * 1.8 + sparkle.phase) * 0.04;
           sparkle.star.quaternion.copy(camera.quaternion);
+          sparkle.star.rotateZ(
+            animationTime * 0.22 * sparkle.spin + sparkle.phase * 0.08,
+          );
+          sparkle.halo.material.opacity = 0.04 + glowShimmer * 0.68;
+          sparkle.halo.scale.setScalar(
+            sparkle.haloBaseScale * (0.54 + glowShimmer * 1.42),
+          );
+          sparkle.halo.position.copy(sparkle.star.position);
         });
       });
       if (shellBurstElapsed <= 0.78) {
         shellBurstElapsed += delta;
+        const flashProgress = Math.min(1, shellBurstElapsed / 0.52);
+        const flashPulse = Math.sin(flashProgress * Math.PI);
+        shellCollectFlash.visible = flashProgress < 1;
+        shellCollectFlash.material.opacity =
+          Math.pow(1 - flashProgress, 1.25) * 0.96;
+        shellCollectFlash.scale.setScalar(0.35 + flashPulse * 1.75);
+        shellCollectFlash.quaternion.copy(camera.quaternion);
+        shellCollectFlash.rotateZ(shellBurstElapsed * 0.42);
+        const ringProgress = Math.min(1, shellBurstElapsed / 0.68);
+        const ringEaseOut = 1 - Math.pow(1 - ringProgress, 3);
+        shellCollectRing.visible = ringProgress < 1;
+        shellCollectRing.material.opacity =
+          Math.pow(1 - ringProgress, 1.7) * 0.82;
+        shellCollectRing.scale.setScalar(0.42 + ringEaseOut * 2.35);
         shellBurstMaterial.opacity = Math.max(
           0,
           0.98 * (1 - shellBurstElapsed / 0.78),
@@ -3945,7 +5524,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
           shellBurst.setMatrixAt(index, shellBurstDummy.matrix);
         });
         shellBurst.instanceMatrix.needsUpdate = true;
-        if (shellBurstElapsed >= 0.78) shellBurst.visible = false;
+        if (shellBurstElapsed >= 0.78) {
+          shellBurst.visible = false;
+          shellCollectFlash.visible = false;
+          shellCollectRing.visible = false;
+        }
       }
 
       if (completionSignalRef.current !== lastCompletionSignal) {
@@ -4011,6 +5594,8 @@ float shoreOverlayWaterSignal( vec3 color ) {
       let isKneading = false;
       let movementSpeed = TASK_MOVE_SPEED;
       let movementForwardFactor = 1;
+      let requestedWalkFadeSeconds: number | null = null;
+      frameMovementStart.copy(currentPosition);
 
       if (isAutonomous && !wasAutonomous) {
         ambientPhase = "resting";
@@ -4031,10 +5616,218 @@ float shoreOverlayWaterSignal( vec3 color ) {
       }
       wasAutonomous = isAutonomous;
 
+      if (primaryCareCatId !== primaryView.catId) {
+        if (primaryCare) {
+          leaveCareQueue(primaryCare.intent, primaryCareCatId);
+        }
+        primaryCare = null;
+        primaryCareCatId = primaryView.catId;
+        primaryCareRetrySeconds = 0;
+      }
+      primaryCareRetrySeconds = Math.max(
+        0,
+        primaryCareRetrySeconds - delta,
+      );
+      if (isPrimaryBlocked && primaryCare) {
+        leaveCareQueue(primaryCare.intent, primaryCareCatId);
+        primaryCare = null;
+      }
+      if (
+        !primaryCare &&
+        !isPrimaryBlocked &&
+        primaryCareRetrySeconds <= 0
+      ) {
+        const intent = selectCatCareIntent({
+          hunger:
+            !carePreviewConsumed &&
+            (carePreviewMode === "food" ||
+              carePreviewMode === "empty-food")
+              ? 100
+              : !carePreviewConsumed && carePreviewMode === "toilet"
+                ? 0
+              : (primaryView.hunger ?? 0),
+          toilet:
+            !carePreviewConsumed && carePreviewMode === "toilet"
+              ? 100
+              : !carePreviewConsumed &&
+                  (carePreviewMode === "food" ||
+                    carePreviewMode === "empty-food")
+                ? 0
+              : (primaryView.toilet ?? 0),
+        });
+        if (intent) {
+          primaryCare = {
+            intent,
+            phase: "approaching",
+            timer: 0,
+            insideFacility: false,
+          };
+          enqueueCare(intent, primaryCareCatId);
+          ambientPhase = "resting";
+          avoidanceWaypoints.length = 0;
+          setAmbientLabel(
+            intent === "food"
+              ? "배가 고파 밥그릇으로 가는 중"
+              : "화장실로 가는 중",
+          );
+        }
+      }
+
       if (isPrimaryBlocked) {
         desiredPosition.copy(currentPosition);
         isMoving = false;
         playAnimation("sit", 0.2);
+      } else if (primaryCare) {
+        movementSpeed = carePreviewMode
+          ? CARE_MOVE_SPEED * 4
+          : CARE_MOVE_SPEED;
+        const care = primaryCare;
+        const primaryCareSeatId =
+          primaryView.seatId === "queue" ? "seat-1" : primaryView.seatId;
+
+        const litterUnavailable =
+          care.intent === "toilet" &&
+          litterIsFull() &&
+          (care.phase === "approaching" || care.phase === "waiting");
+        if (litterUnavailable) {
+          const target = careWaitPosition("toilet", primaryCareCatId);
+          desiredPosition.copy(target);
+          const distance = currentPosition.distanceTo(target);
+          if (distance > CARE_ARRIVAL_DISTANCE) {
+            isMoving = true;
+            requestedWalkFadeSeconds = 0.3;
+            setAmbientLabel("가득 찬 화장실 앞까지 가는 중");
+          } else {
+            currentPosition.copy(target);
+            desiredPosition.copy(currentPosition);
+            carePreviewConsumed = true;
+            leaveCareQueue("toilet", primaryCareCatId);
+            care.insideFacility = false;
+            onCatCareEventRef.current?.({
+              catId: primaryCareCatId,
+              seatId: primaryCareSeatId,
+              outcome: "toilet-blocked",
+            });
+            primaryCareRetrySeconds = LITTER_FULL_RETRY_SECONDS;
+            care.phase = "recovering";
+            care.timer = CARE_RECOVERY_SECONDS * 1.8;
+            playAnimation("sit", 0.24);
+            setAmbientLabel("화장실이 가득 차서 야옹하는 중");
+          }
+        } else if (care.phase === "using") {
+          desiredPosition.copy(currentPosition);
+          care.timer -= delta;
+          if (care.intent === "food") {
+            playAnimation("eat-drink", 0.24);
+            setAmbientLabel("밥을 먹는 중");
+          } else {
+            playAnimation("sit", 0.24);
+            setAmbientLabel("화장실을 사용하는 중");
+          }
+          if (care.timer <= 0) {
+            releaseCareFacility(care.intent, primaryCareCatId);
+            if (care.intent === "food") {
+              carePreviewConsumed = true;
+              foodAvailableRef.current = false;
+              fullBowlVisual.visible = false;
+              emptyBowlVisual.visible = true;
+              onCatCareEventRef.current?.({
+                catId: primaryCareCatId,
+                seatId: primaryCareSeatId,
+                outcome: "meal-completed",
+              });
+              setAmbientLabel("배부르게 먹고 쉬는 중");
+            } else {
+              carePreviewConsumed = true;
+              litterLevelRef.current = addLitterWaste(
+                litterLevelRef.current,
+              );
+              litterLevelGauge.update(litterLevelRef.current);
+              onCatCareEventRef.current?.({
+                catId: primaryCareCatId,
+                seatId: primaryCareSeatId,
+                outcome: "toilet-completed",
+              });
+              setAmbientLabel("화장실을 다녀와 쉬는 중");
+            }
+            care.phase = "recovering";
+            care.timer = CARE_RECOVERY_SECONDS;
+          }
+        } else if (care.phase === "recovering") {
+          desiredPosition.copy(currentPosition);
+          care.timer -= delta;
+          playAnimation("idle-look", 0.3);
+          if (care.timer <= 0) {
+            primaryCare = null;
+            ambientPhase = "prewalking";
+            ambientTimer = randomBetween(0.65, 1);
+            ambientTarget.copy(currentPosition);
+            shouldKneadAtDeskNext = false;
+            setAmbientLabel("다시 해변을 돌아다닐 준비를 하는 중");
+          }
+        } else {
+          const mayClaim = canClaimCareFacility(
+            care.intent,
+            primaryCareCatId,
+          );
+          const target = mayClaim
+            ? careApproachPosition(care.intent)
+            : careWaitPosition(care.intent, primaryCareCatId);
+          care.phase = mayClaim ? "approaching" : "waiting";
+          desiredPosition.copy(target);
+          const distance = currentPosition.distanceTo(target);
+          if (distance > CARE_ARRIVAL_DISTANCE) {
+            isMoving = true;
+            requestedWalkFadeSeconds = 0.3;
+            setAmbientLabel(
+              mayClaim
+                ? care.intent === "food"
+                  ? "밥그릇으로 가는 중"
+                  : "화장실로 가는 중"
+                : care.intent === "food"
+                  ? "다른 고양이가 식사를 마칠 때까지 기다리는 중"
+                  : "다른 고양이가 나오기를 기다리는 중",
+            );
+          } else {
+            currentPosition.copy(target);
+            desiredPosition.copy(currentPosition);
+            if (!mayClaim) {
+              playAnimation("sit", 0.3);
+              setAmbientLabel(
+                care.intent === "food"
+                  ? "밥그릇 앞에서 차례를 기다리는 중"
+                  : "화장실 앞에서 차례를 기다리는 중",
+              );
+            } else if (
+              care.intent === "food" &&
+              !hasFoodAvailable()
+            ) {
+              carePreviewConsumed = true;
+              leaveCareQueue(care.intent, primaryCareCatId);
+              onCatCareEventRef.current?.({
+                catId: primaryCareCatId,
+                seatId: primaryCareSeatId,
+                outcome: "meal-missed",
+              });
+              primaryCareRetrySeconds = EMPTY_BOWL_RETRY_SECONDS;
+              care.phase = "recovering";
+              care.timer = CARE_RECOVERY_SECONDS * 1.8;
+              playAnimation("sit", 0.24);
+              setAmbientLabel("빈 밥그릇을 보고 야옹하는 중");
+            } else if (claimCareFacility(care.intent, primaryCareCatId)) {
+              care.phase = "using";
+              care.insideFacility = true;
+              care.timer =
+                care.intent === "food"
+                  ? FOOD_USE_SECONDS
+                  : TOILET_USE_SECONDS;
+              playAnimation(
+                care.intent === "food" ? "eat-drink" : "sit",
+                0.24,
+              );
+            }
+          }
+        }
       } else if (isAutonomous) {
         movementSpeed = AMBIENT_MOVE_SPEED;
 
@@ -4055,7 +5848,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
           if (ambientTimer <= 0) {
             if (shouldKneadAtDeskNext) {
               ambientDestination = "desk";
-              ambientTarget.copy(CODING_DESK_TARGET);
+              ambientTarget.copy(codingDeskTarget);
               shouldKneadAtDeskNext = false;
               wanderStopsSinceKneading = 0;
               setAmbientLabel("책상으로 꾹꾹이를 하러 가는 중");
@@ -4087,7 +5880,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
             ambientPhase = "walking";
             desiredPosition.copy(ambientTarget);
             isMoving = true;
-            playAnimation("walk", 0.32);
+            requestedWalkFadeSeconds = 0.32;
           }
         } else if (ambientPhase === "kneading") {
           desiredPosition.copy(currentPosition);
@@ -4147,15 +5940,15 @@ float shoreOverlayWaterSignal( vec3 color ) {
             }
           } else {
             isMoving = true;
-            playAnimation("walk", 0.32);
+            requestedWalkFadeSeconds = 0.32;
           }
         }
       } else {
-        desiredPosition.copy(WORLD_TARGETS[motionRef.current.location]);
+        desiredPosition.copy(worldTargets[motionRef.current.location]);
         const taskDistance = currentPosition.distanceTo(desiredPosition);
         isMoving = taskDistance > TASK_ARRIVAL_DISTANCE;
         if (isMoving) {
-          playAnimation("walk", 0.28);
+          requestedWalkFadeSeconds = 0.28;
         } else {
           currentPosition.copy(desiredPosition);
           if (motionRef.current.location === "coding") {
@@ -4170,9 +5963,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
       if (
         !isKneading &&
         wasKneadingLastFrame &&
-        isInsideObstacle(currentPosition, DESK_OBSTACLE)
+        isInsideObstacle(currentPosition, deskObstacle)
       ) {
-        currentPosition.copy(DESK_KNEADING_EXIT_POSITION);
+        currentPosition.copy(deskKneadingExitPosition);
         avoidanceWaypoints.length = 0;
         lastNavigationTarget.copy(currentPosition);
       }
@@ -4181,12 +5974,27 @@ float shoreOverlayWaterSignal( vec3 color ) {
           ambientDestination === "desk" &&
           ambientPhase === "walking") ||
         (!isAutonomous && motionRef.current.location === "coding");
-      const activeSceneObstacles = getActiveSceneObstacles(
+      const wantsLitterInteraction = primaryCare?.intent === "toilet";
+      const activeSceneObstacles = getRuntimeSceneObstacles(
         activeSeatCountRef.current,
       );
-      const navigationObstacles = wantsDeskInteraction
-        ? activeSceneObstacles.filter((obstacle) => obstacle !== DESK_OBSTACLE)
-        : activeSceneObstacles;
+      const ignoredInteractionObstacles = new Set<SceneObstacle>();
+      if (wantsDeskInteraction) ignoredInteractionObstacles.add(deskObstacle);
+      if (wantsLitterInteraction) {
+        ignoredInteractionObstacles.add(litterBoxObstacle);
+      }
+      const navigationObstacles =
+        ignoredInteractionObstacles.size > 0
+          ? activeSceneObstacles.filter(
+              (obstacle) => !ignoredInteractionObstacles.has(obstacle),
+            )
+          : activeSceneObstacles;
+      const collisionResolvedFrom = currentPosition.clone();
+      resolvePositionOutsideObstacles(currentPosition, navigationObstacles);
+      if (currentPosition.distanceToSquared(collisionResolvedFrom) > 1e-8) {
+        avoidanceWaypoints.length = 0;
+        lastNavigationTarget.copy(currentPosition);
+      }
 
       const walkAction = animationActions.get("walk");
 
@@ -4338,11 +6146,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
           wantsDeskInteraction &&
           isTouchingObstacle(
             nextPosition,
-            DESK_OBSTACLE,
+            deskObstacle,
             DESK_CONTACT_MARGIN,
           );
         if (touchesDesk) {
-          currentPosition.copy(CODING_DESK_TARGET);
+          currentPosition.copy(codingDeskTarget);
           desiredPosition.copy(currentPosition);
           movementGoal.copy(currentPosition);
           avoidanceWaypoints.length = 0;
@@ -4356,7 +6164,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
             setAmbientLabel("책상 안쪽에 앉아 키캡 꾹꾹이 중");
           }
         } else {
-          const wouldCollide = activeSceneObstacles.some((obstacle) =>
+          const wouldCollide = navigationObstacles.some((obstacle) =>
             isInsideObstacle(nextPosition, obstacle),
           );
           if (!wouldCollide) {
@@ -4379,14 +6187,41 @@ float shoreOverlayWaterSignal( vec3 color ) {
       }
       if (
         isKneading &&
-        !isInsideObstacle(currentPosition, DESK_OBSTACLE)
+        !isInsideObstacle(currentPosition, deskObstacle)
       ) {
-        currentPosition.copy(CODING_DESK_TARGET);
+        currentPosition.copy(codingDeskTarget);
         avoidanceWaypoints.length = 0;
       }
+      if (requestedWalkFadeSeconds !== null && !isKneading) {
+        if (currentPosition.distanceToSquared(frameMovementStart) > 1e-8) {
+          playAnimation("walk", requestedWalkFadeSeconds);
+        } else {
+          isMoving = false;
+          playAnimation("idle-look", 0.2);
+        }
+      }
+      const primaryInsideLitterBox =
+        primaryCare?.intent === "toilet" &&
+        primaryCare.insideFacility &&
+        (primaryCare.phase === "using" ||
+          primaryCare.phase === "recovering");
+      characterVisual.visible = !primaryInsideLitterBox;
+      blobShadow.visible = !primaryInsideLitterBox;
+      primaryClickProxy.visible = !primaryInsideLitterBox;
       wasKneadingLastFrame = isKneading;
       characterRoot.position.x = currentPosition.x;
       characterRoot.position.z = currentPosition.z;
+      if (carePreviewMode) {
+        host.dataset.carePreviewState = JSON.stringify({
+          phase: primaryCare?.phase ?? "complete",
+          intent: primaryCare?.intent ?? null,
+          timer: Number((primaryCare?.timer ?? 0).toFixed(2)),
+          litterLevel: litterLevelRef.current,
+          insideFacility: primaryCare?.insideFacility ?? false,
+          x: Number(currentPosition.x.toFixed(3)),
+          z: Number(currentPosition.z.toFixed(3)),
+        });
+      }
       // 실제 키캡 애니메이션이 재생되는 동안만 이름표를 모니터 위에 고정한다.
       // 자율 꾹꾹이와 실제 작업 상태 모두 같은 타건 판정을 사용한다.
       primaryMarker.marker.position.lerp(
@@ -4394,6 +6229,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
           characterRoot,
           isKneading,
           primaryMarkerAnchorTarget,
+          lowMonitorWorkingMarkerWorldPosition,
         ),
         1 - Math.exp(-delta * MARKER_MOVE_EASE),
       );
@@ -4464,6 +6300,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
 
     return () => {
       disposed = true;
+      layoutEditorRuntimeRef.current = null;
       worldStage?.classList.remove("monitor-ablation-no-vignette");
       renderer.setAnimationLoop(null);
       resizeObserver.disconnect();
@@ -4511,6 +6348,96 @@ float shoreOverlayWaterSignal( vec3 color ) {
           seats.length - 1,
         )}마리 고양이가 있는 2.5D 해변 사무실`}
       />
+
+      {layoutAdminEnabled && ready && !failed && (
+        <button
+          type="button"
+          className={`world-layout-edit-toggle ${
+            layoutEditMode ? "is-active" : ""
+          }`}
+          aria-pressed={layoutEditMode}
+          aria-label={
+            layoutEditMode ? "객체 배치 편집 완료" : "객체 배치 편집 시작"
+          }
+          onClick={() =>
+            layoutEditorRuntimeRef.current?.setEnabled(!layoutEditMode)
+          }
+        >
+          <span aria-hidden="true">{layoutEditMode ? "✓" : "✥"}</span>
+          {layoutEditMode ? "완료" : "배치"}
+        </button>
+      )}
+
+      {layoutEditMode && (
+        <div
+          className="world-layout-edit-toolbar"
+          role="group"
+          aria-label="선택한 객체 배치 도구"
+        >
+          <div className="world-layout-edit-selection">
+            <span>선택한 객체</span>
+            <strong>
+              {selectedLayoutObjectLabel ?? "월드의 객체를 눌러주세요"}
+            </strong>
+          </div>
+          <div className="world-layout-edit-actions">
+            <button
+              type="button"
+              disabled={!selectedLayoutObjectLabel}
+              aria-label="선택한 객체를 왼쪽으로 15도 회전"
+              title="왼쪽으로 회전"
+              onClick={() =>
+                layoutEditorRuntimeRef.current?.rotateSelected(
+                  -WORLD_OBJECT_ROTATION_STEP,
+                )
+              }
+            >
+              ↶
+            </button>
+            <button
+              type="button"
+              disabled={!selectedLayoutObjectLabel}
+              aria-label="선택한 객체를 오른쪽으로 15도 회전"
+              title="오른쪽으로 회전"
+              onClick={() =>
+                layoutEditorRuntimeRef.current?.rotateSelected(
+                  WORLD_OBJECT_ROTATION_STEP,
+                )
+              }
+            >
+              ↷
+            </button>
+            <button
+              type="button"
+              className="world-layout-edit-reset"
+              disabled={!selectedLayoutObjectLabel}
+              aria-label="선택한 객체를 초기 위치와 방향으로 되돌리기"
+              title="초기 위치"
+              onClick={() =>
+                layoutEditorRuntimeRef.current?.resetSelected()
+              }
+            >
+              초기화
+            </button>
+            <button
+              type="button"
+              className="world-layout-edit-save"
+              aria-label="현재 관리자 배치 저장"
+              title="배치 저장"
+              onClick={() =>
+                layoutEditorRuntimeRef.current?.saveLayout()
+              }
+            >
+              저장
+            </button>
+          </div>
+          <small>
+            {layoutSaveRevision > 0
+              ? "관리자 배치를 저장했습니다. 저에게 알려주시면 공통 기본 배치로 하드코딩합니다."
+              : "모든 객체를 배치한 뒤 저장하세요. 저장 후 저에게 알려주시면 공통 기본 배치로 하드코딩합니다."}
+          </small>
+        </div>
+      )}
 
       {failed && (
         // eslint-disable-next-line @next/next/no-img-element

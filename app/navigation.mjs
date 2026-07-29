@@ -7,6 +7,60 @@ function isInsideObstacle2D(point, obstacle) {
   );
 }
 
+function nearestExitCandidates(point, obstacle, clearance) {
+  return [
+    {
+      x: obstacle.minX - clearance,
+      z: point.z,
+    },
+    {
+      x: obstacle.maxX + clearance,
+      z: point.z,
+    },
+    {
+      x: point.x,
+      z: obstacle.minZ - clearance,
+    },
+    {
+      x: point.x,
+      z: obstacle.maxZ + clearance,
+    },
+  ];
+}
+
+export function resolvePointOutsideObstacles2D(
+  point,
+  obstacles,
+  clearance = 0.06,
+) {
+  let resolved = {
+    x: point.x,
+    z: point.z,
+  };
+  const maximumPasses = Math.max(1, obstacles.length * 4);
+
+  for (let pass = 0; pass < maximumPasses; pass += 1) {
+    const containingObstacle = obstacles.find((obstacle) =>
+      isInsideObstacle2D(resolved, obstacle),
+    );
+    if (!containingObstacle) return resolved;
+
+    const candidates = nearestExitCandidates(
+      resolved,
+      containingObstacle,
+      clearance,
+    ).sort((a, b) => distanceBetween(resolved, a) - distanceBetween(resolved, b));
+    const clearCandidate = candidates.find((candidate) =>
+      obstacles.every(
+        (obstacle) => !isInsideObstacle2D(candidate, obstacle),
+      ),
+    );
+    resolved = clearCandidate ?? candidates[0];
+  }
+
+  return resolved;
+}
+
 export function segmentIntersectsObstacle2D(start, end, obstacle) {
   if (
     isInsideObstacle2D(start, obstacle) ||

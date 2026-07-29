@@ -319,6 +319,220 @@ button {
   user-select: none;
 }
 
+.world-3d-canvas.is-layout-editing {
+  cursor: crosshair;
+}
+
+.world-layout-edit-toggle {
+  position: absolute;
+  top: clamp(10px, 1.6%, 18px);
+  right: clamp(56px, 7.6%, 68px);
+  z-index: 48;
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 7px 12px 7px 9px;
+  border: 2px solid rgba(105, 76, 58, 0.7);
+  border-radius: 14px;
+  color: #664837;
+  background:
+    linear-gradient(180deg, rgba(255, 252, 233, 0.98), rgba(241, 221, 177, 0.96)),
+    #f8edce;
+  box-shadow:
+    0 4px 0 rgba(111, 77, 54, 0.35),
+    0 8px 18px rgba(72, 53, 40, 0.2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+  cursor: pointer;
+  transition:
+    transform 150ms ease,
+    box-shadow 150ms ease,
+    background 150ms ease;
+}
+
+.world-layout-edit-toggle span {
+  display: grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  margin-right: 5px;
+  border-radius: 8px;
+  color: #fff9df;
+  background: #8aa66d;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.world-layout-edit-toggle:hover {
+  background:
+    linear-gradient(180deg, #fffdf0, #f4dfaf),
+    #f8edce;
+  transform: translateY(-1px);
+}
+
+.world-layout-edit-toggle:active,
+.world-layout-edit-toggle.is-active {
+  box-shadow:
+    0 2px 0 rgba(111, 77, 54, 0.35),
+    0 5px 12px rgba(72, 53, 40, 0.18);
+  transform: translateY(2px);
+}
+
+.world-layout-edit-toggle.is-active span {
+  background: #db8f68;
+}
+
+.world-layout-edit-toolbar {
+  position: absolute;
+  bottom: clamp(122px, 16.5%, 158px);
+  left: 50%;
+  z-index: 48;
+  display: grid;
+  width: min(410px, calc(100% - 26px));
+  padding: 11px 12px 9px;
+  border: 2px solid rgba(105, 76, 58, 0.72);
+  border-radius: 18px;
+  color: #64493a;
+  background:
+    linear-gradient(180deg, rgba(255, 251, 229, 0.98), rgba(243, 225, 188, 0.97)),
+    #f8edce;
+  box-shadow:
+    0 5px 0 rgba(103, 73, 53, 0.34),
+    0 13px 25px rgba(60, 44, 34, 0.25);
+  transform: translateX(-50%);
+  animation: worldLayoutToolbarIn 180ms ease-out both;
+  gap: 7px;
+}
+
+.world-layout-edit-selection {
+  min-width: 0;
+  text-align: center;
+}
+
+.world-layout-edit-selection span,
+.world-layout-edit-selection strong {
+  display: block;
+}
+
+.world-layout-edit-selection span {
+  color: #98745c;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.world-layout-edit-selection strong {
+  overflow: hidden;
+  margin-top: 1px;
+  font-size: 14px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.world-layout-edit-actions {
+  display: grid;
+  grid-template-columns: 46px 46px minmax(72px, 1fr) minmax(72px, 1fr);
+  justify-content: center;
+  gap: 7px;
+}
+
+.world-layout-edit-actions button {
+  min-height: 39px;
+  padding: 5px 10px;
+  border: 2px solid rgba(102, 72, 53, 0.62);
+  border-radius: 12px;
+  color: #694a38;
+  background: linear-gradient(180deg, #fff9e3, #edcfa3);
+  box-shadow: 0 3px 0 rgba(111, 75, 51, 0.34);
+  font: inherit;
+  font-size: 23px;
+  font-weight: 950;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.world-layout-edit-actions button:active:not(:disabled) {
+  box-shadow: 0 1px 0 rgba(111, 75, 51, 0.34);
+  transform: translateY(2px);
+}
+
+.world-layout-edit-actions button:disabled {
+  filter: saturate(0.25);
+  opacity: 0.45;
+  cursor: default;
+}
+
+.world-layout-edit-actions .world-layout-edit-reset,
+.world-layout-edit-actions .world-layout-edit-save {
+  font-size: 12px;
+}
+
+.world-layout-edit-actions .world-layout-edit-save {
+  color: #fff8e5;
+  background: linear-gradient(180deg, #8fb47d, #6e9464);
+}
+
+.world-layout-edit-toolbar small {
+  color: #856653;
+  font-size: 9px;
+  font-weight: 750;
+  text-align: center;
+}
+
+@keyframes worldLayoutToolbarIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 8px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@media (max-width: 540px) {
+  .world-layout-edit-toggle {
+    right: 54px;
+    min-height: 36px;
+    padding: 6px 9px 6px 7px;
+    font-size: 11px;
+  }
+
+  .world-layout-edit-toggle span {
+    width: 20px;
+    height: 20px;
+    margin-right: 4px;
+  }
+
+  .world-layout-edit-toolbar {
+    bottom: 15.5%;
+    width: calc(100% - 20px);
+    padding: 10px 10px 8px;
+  }
+
+  .world-layout-edit-selection strong {
+    font-size: 13px;
+  }
+
+  .world-layout-edit-actions {
+    grid-template-columns: 46px 46px minmax(68px, 1fr) minmax(68px, 1fr);
+  }
+
+  .world-layout-edit-actions button {
+    min-height: 42px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .world-layout-edit-toggle,
+  .world-layout-edit-toolbar {
+    transition: none;
+    animation: none;
+  }
+}
+
 .world-3d-fallback {
   z-index: 1;
   width: 100%;
@@ -1113,7 +1327,7 @@ button {
     0 36px 100px rgba(0, 0, 0, 0.36),
     inset 0 0 0 5px rgba(255, 255, 255, 0.56);
   gap: 24px;
-  animation: modalIn 0.3s cubic-bezier(0.34, 1.25, 0.64, 1);
+  animation: modalIn 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .manager-cat {
@@ -1315,7 +1529,16 @@ button {
 @keyframes modalIn {
   from {
     opacity: 0;
-    transform: translateY(20px) scale(0.96);
+    transform: translateY(min(52vh, 420px)) scale(0.97);
+  }
+
+  72% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -2972,7 +3195,7 @@ button {
   box-shadow: 0 24px 54px rgba(72, 50, 39, 0.3);
   overflow: visible;
   transform: translateX(-50%);
-  animation: gamePopupIn 190ms ease-out;
+  animation: gamePopupIn 420ms cubic-bezier(0.22, 1, 0.36, 1);
   isolation: isolate;
 }
 
@@ -3520,6 +3743,7 @@ button {
   background: transparent;
   box-shadow: 0 22px 50px rgba(70, 48, 38, 0.32);
   isolation: isolate;
+  animation: modalIn 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .style-purchase-title,
@@ -3632,7 +3856,24 @@ button {
 @keyframes gamePopupIn {
   from {
     opacity: 0;
-    transform: translate(-50%, 10px) scale(0.98);
+    transform: translate(-50%, min(58vh, 460px)) scale(0.97);
+  }
+
+  72% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .radio-panel.game-popup,
+  .style-purchase-modal,
+  .approval-modal {
+    animation: none;
   }
 }
 
@@ -3798,7 +4039,7 @@ button {
   outline-offset: 2px;
 }
 
-.shell-fly-token {
+.shell-collect-token {
   --shell-from-x: 50%;
   --shell-from-y: 50%;
   position: absolute;
@@ -3811,17 +4052,37 @@ button {
   place-items: center;
   pointer-events: none;
   transform: translate(-50%, -50%);
-  animation: shellFlyToHud 820ms cubic-bezier(0.2, 0.76, 0.26, 1) forwards;
+  animation: shellCollectPop 680ms cubic-bezier(0.18, 0.82, 0.24, 1) forwards;
 }
 
-.shell-fly-token img {
+.shell-collect-token::before,
+.shell-collect-token::after {
+  position: absolute;
+  z-index: -1;
+  width: 78px;
+  height: 5px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 245, 190, 0),
+    rgba(255, 255, 239, 0.96),
+    rgba(255, 221, 132, 0)
+  );
+  content: "";
+}
+
+.shell-collect-token::after {
+  transform: rotate(90deg);
+}
+
+.shell-collect-token img {
   width: 100%;
   height: 100%;
   object-fit: contain;
   filter: drop-shadow(0 3px 2px rgba(83, 54, 42, 0.28));
 }
 
-.shell-fly-token b {
+.shell-collect-token b {
   position: absolute;
   top: -13px;
   left: 50%;
@@ -3844,22 +4105,22 @@ button {
   opacity: 1;
 }
 
-@keyframes shellFlyToHud {
+@keyframes shellCollectPop {
   0% {
-    top: var(--shell-from-y);
-    left: var(--shell-from-x);
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.55) rotate(-12deg);
+    transform: translate(-50%, -50%) scale(0.46);
   }
-  14% {
+  22% {
     opacity: 1;
-    transform: translate(-50%, -78%) scale(1.18) rotate(4deg);
+    transform: translate(-50%, -50%) scale(1.28);
+  }
+  48% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
   }
   100% {
-    top: 4%;
-    left: 5.3%;
-    opacity: 0.2;
-    transform: translate(-50%, -50%) scale(0.48) rotate(22deg);
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.42);
   }
 }
 

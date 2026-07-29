@@ -1,21 +1,21 @@
 export const CAT_STYLE_OWNERSHIP_KEY = "agent-forest-owned-cat-styles-v1";
 
 export const CAT_STYLE_PRICES: Record<string, number> = {
-  Abyssian: 30,
-  Black: 15,
-  BlackWhite: 25,
-  Blue: 25,
-  Bobtail: 20,
-  British: 30,
-  Cream: 15,
-  Maine: 40,
-  Persian: 35,
-  Red: 25,
-  RedWhite: 30,
-  Siamese: 30,
-  Simple: 20,
-  Sphynx: 40,
-  White: 15,
+  Abyssian: 150,
+  Black: 75,
+  BlackWhite: 125,
+  Blue: 125,
+  Bobtail: 100,
+  British: 150,
+  Cream: 75,
+  Maine: 200,
+  Persian: 175,
+  Red: 125,
+  RedWhite: 150,
+  Siamese: 150,
+  Simple: 100,
+  Sphynx: 200,
+  White: 75,
 };
 
 export function parseOwnedCatStyles(

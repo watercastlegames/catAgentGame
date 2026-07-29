@@ -32,7 +32,7 @@ export const WORKSTATION_SLOTS: WorkstationSlot[] = [
     seatId: "seat-2",
     title: "텐트 업무 자리",
     description: "텐트 · 노트북 · 랜턴",
-    price: 50,
+    price: 250,
     preview: "/art/ui/workstations/workstation-seat-2-v1.png",
     modelUrl:
       "/models/camping-style-hybrid-v1/tent-workstation-smooth-cartoon-v1.glb",
@@ -41,7 +41,7 @@ export const WORKSTATION_SLOTS: WorkstationSlot[] = [
     seatId: "seat-3",
     title: "둥근 피크닉 자리",
     description: "낮은 원형 책상 · 노트북 · 방석",
-    price: 120,
+    price: 600,
     preview: "/art/ui/workstations/workstation-seat-3-v1.png",
     modelUrl:
       "/models/camping-style-hybrid-v1/round-laptop-workstation-smooth-cartoon-v1.glb",
@@ -50,7 +50,7 @@ export const WORKSTATION_SLOTS: WorkstationSlot[] = [
     seatId: "seat-4",
     title: "라디오 업무 자리",
     description: "접이식 책상 · 노트북 · 라디오",
-    price: 250,
+    price: 1250,
     preview: "/art/ui/workstations/workstation-seat-4-v1.png",
     modelUrl:
       "/models/camping-style-hybrid-v1/folding-laptop-radio-workstation-smooth-cartoon-v1.glb",

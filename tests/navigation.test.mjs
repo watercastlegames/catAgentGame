@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   findAvoidancePath2D,
+  resolvePointOutsideObstacles2D,
   segmentIntersectsObstacle2D,
 } from "../app/navigation.mjs";
 
@@ -107,4 +108,51 @@ test("replans past consecutive obstacles without entering them", () => {
   }
 
   assert.ok(distance(position, destination) <= 0.04);
+});
+
+test("moves a trapped point to the nearest clear side of an obstacle", () => {
+  const obstacle = {
+    id: "moved-workstation",
+    minX: -1,
+    maxX: 1,
+    minZ: -0.8,
+    maxZ: 0.8,
+  };
+  const resolved = resolvePointOutsideObstacles2D(
+    { x: 0.82, z: 0 },
+    [obstacle],
+    0.06,
+  );
+
+  assert.equal(isInside(resolved, obstacle), false);
+  assert.deepEqual(resolved, { x: 1.06, z: 0 });
+});
+
+test("escapes overlapping placement obstacles without remaining trapped", () => {
+  const obstacles = [
+    {
+      id: "desk",
+      minX: -1,
+      maxX: 1,
+      minZ: -1,
+      maxZ: 1,
+    },
+    {
+      id: "palm",
+      minX: 0.4,
+      maxX: 1.5,
+      minZ: -0.5,
+      maxZ: 0.5,
+    },
+  ];
+  const resolved = resolvePointOutsideObstacles2D(
+    { x: 0.7, z: 0 },
+    obstacles,
+    0.06,
+  );
+
+  assert.equal(
+    obstacles.some((obstacle) => isInside(resolved, obstacle)),
+    false,
+  );
 });

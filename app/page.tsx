@@ -26,7 +26,9 @@ import { CAT_STYLES } from "./cat-styles";
 import type { CatShape } from "./cat-body";
 import {
   NEEDS_KEY,
+  type CatCareOutcome,
   type CatNeedsStore,
+  applyCatCareOutcome,
   computeCatNeedState,
   createDefaultCatNeedState,
   ensureCatNeedState,
@@ -35,6 +37,13 @@ import {
   parseCatNeedsStore,
   updateCatNeedState,
 } from "./cat-needs";
+import {
+  LITTER_BOX_STORAGE_KEY,
+  addLitterWaste,
+  cleanLitterBox as resetLitterBoxState,
+  isLitterBoxFull,
+  parseLitterLevel,
+} from "./litter-box-state.mjs";
 import {
   CAT_STYLE_OWNERSHIP_KEY,
   CAT_STYLE_PRICES,
@@ -49,6 +58,7 @@ import {
   nextWorkstationSlot,
   parseActiveSeatCount,
 } from "./seat-progression";
+import { preloadPopupAssets } from "./popup-assets.mjs";
 
 type Department = "general" | "coding" | "design" | "music";
 type AgentStatus =
@@ -169,6 +179,7 @@ const SELECTED_SESSION_KEY = "agent-forest-selected-session";
 const SEAT_ASSIGNMENTS_KEY = "agent-forest-seat-assignments-v1";
 const LEGACY_ACORN_KEY = "agent-forest-acorns-v1";
 const SHELL_KEY = "agent-forest-shell-v1";
+const FOOD_BOWL_KEY = "agent-forest-food-bowl-v1";
 const DECOR_KEY = "agent-forest-decor-v1";
 const DEMO_SEEN_KEY = "agent-forest-demo-seen-v1";
 const EVENT_HISTORY_KEY = "agent-forest-event-history-v1";
@@ -360,6 +371,7 @@ export default function Home() {
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
   const [radioOpen, setRadioOpen] = useState(false);
+  const [popupAssetsReady, setPopupAssetsReady] = useState(false);
   const [radioPage, setRadioPage] = useState<RadioPage>("cats");
   const [catPage, setCatPage] = useState<CatPage>("list");
   const [workTab, setWorkTab] = useState<WorkTab>("connect");
@@ -368,7 +380,7 @@ export default function Home() {
   const [completionSignal, setCompletionSignal] = useState(0);
   const [shells, setShells] = useState(0);
   const [activeSeatCount, setActiveSeatCount] = useState(1);
-  const [shellFlyTokens, setShellFlyTokens] = useState<
+  const [shellCollectTokens, setShellCollectTokens] = useState<
     Array<{ id: number; x: number; y: number; amount: number }>
   >([]);
   const [shellHudPulse, setShellHudPulse] = useState(0);
@@ -389,6 +401,8 @@ export default function Home() {
   const [pendingCatStyle, setPendingCatStyle] = useState<string | null>(null);
   const catShapeId = "slim";
   const [catNeeds, setCatNeeds] = useState<CatNeedsStore>({});
+  const [foodAvailable, setFoodAvailable] = useState(true);
+  const [litterLevel, setLitterLevel] = useState(0);
 
   const relayEventCursor = useRef(0);
   const taskToThreadRef = useRef(new Map<string, string>());
@@ -410,6 +424,7 @@ export default function Home() {
   const keycapPressTimerRef = useRef<number | null>(null);
   const keycapFeedbackPrimedRef = useRef(false);
   const catNeedsRef = useRef<CatNeedsStore>({});
+  const litterLevelRef = useRef(0);
   const purchaseLockedRef = useRef(false);
   const activeSeatCountRef = useRef(1);
   const shellFlyIdRef = useRef(0);
@@ -482,6 +497,23 @@ export default function Home() {
     runtimesRef.current = runtimes;
   }, [runtimes]);
   useEffect(() => {
+    let disposed = false;
+
+    void preloadPopupAssets().then(({ failed }) => {
+      if (disposed) return;
+      if (failed.length > 0) {
+        console.warn("[popup-assets] preload failed", failed);
+      }
+      // 실패한 자산 하나가 팝업 전체를 영구적으로 막지는 않게 한다.
+      // 정상 자산은 이 시점에 모두 로드·디코딩되어 첫 표시 때 깜빡이지 않는다.
+      setPopupAssetsReady(true);
+    });
+
+    return () => {
+      disposed = true;
+    };
+  }, []);
+  useEffect(() => {
     catNeedsRef.current = catNeeds;
   }, [catNeeds]);
   useEffect(() => {
@@ -506,6 +538,7 @@ export default function Home() {
         };
       })(),
       seatId: runtime.seatId,
+      catId: runtime.threadId,
       agentName: runtime.agentName,
       location: runtime.location,
       status: runtime.status,
@@ -517,6 +550,7 @@ export default function Home() {
       : [
           {
             seatId: "seat-1",
+            catId: DEMO_CAT_ID,
             agentName: "코치 모모",
             location: "general",
             status: "idle",
@@ -857,6 +891,13 @@ export default function Home() {
         window.localStorage.setItem(SHELL_KEY, String(migratedShells));
       }
       setShells(migratedShells);
+      const savedFoodBowl = window.localStorage.getItem(FOOD_BOWL_KEY);
+      setFoodAvailable(savedFoodBowl !== "empty");
+      const restoredLitterLevel = parseLitterLevel(
+        window.localStorage.getItem(LITTER_BOX_STORAGE_KEY),
+      );
+      litterLevelRef.current = restoredLitterLevel;
+      setLitterLevel(restoredLitterLevel);
       const restoredSeatCount = parseActiveSeatCount(
         window.localStorage.getItem(ACTIVE_SEAT_KEY),
       );
@@ -1102,6 +1143,74 @@ export default function Home() {
       setToast(kind === "meal" ? "밥그릇을 채웠어요." : "간식을 건넸어요.");
     },
     [focusedCatId],
+  );
+
+  const refillFoodBowl = useCallback(() => {
+    if (foodAvailable) {
+      setToast("밥그릇에 사료가 가득 차 있어요.");
+      return;
+    }
+    setFoodAvailable(true);
+    window.localStorage.setItem(FOOD_BOWL_KEY, "full");
+    setToast("밥그릇에 사료를 가득 채웠어요.");
+  }, [foodAvailable]);
+
+  const cleanLitterFacility = useCallback(() => {
+    if (litterLevelRef.current <= 0) {
+      setToast("화장실이 이미 깨끗해요.");
+      return;
+    }
+    const nextLevel = resetLitterBoxState();
+    litterLevelRef.current = nextLevel;
+    setLitterLevel(nextLevel);
+    window.localStorage.setItem(
+      LITTER_BOX_STORAGE_KEY,
+      String(nextLevel),
+    );
+    setToast("화장실의 배변을 깨끗하게 치웠어요.");
+  }, []);
+
+  const handleCatCareEvent = useCallback(
+    (event: {
+      catId: string;
+      seatId: SeatId;
+      outcome: CatCareOutcome;
+    }) => {
+      const now = Date.now();
+      setCatNeeds((current) => {
+        const before = ensureCatNeedState(current, event.catId, now);
+        const nextState = applyCatCareOutcome(before, event.outcome, now);
+        const next = { ...current, [event.catId]: nextState };
+        catNeedsRef.current = next;
+        window.localStorage.setItem(NEEDS_KEY, JSON.stringify(next));
+        return next;
+      });
+
+      if (event.outcome === "meal-completed") {
+        setFoodAvailable(false);
+        window.localStorage.setItem(FOOD_BOWL_KEY, "empty");
+      } else if (event.outcome === "meal-missed") {
+        worldAudioRef.current?.playCat("demand");
+        setToast("밥그릇이 비어서 고양이의 행복도가 줄었어요.");
+      } else if (event.outcome === "toilet-completed") {
+        const nextLevel = addLitterWaste(litterLevelRef.current);
+        litterLevelRef.current = nextLevel;
+        setLitterLevel(nextLevel);
+        window.localStorage.setItem(
+          LITTER_BOX_STORAGE_KEY,
+          String(nextLevel),
+        );
+        setToast(
+          isLitterBoxFull(nextLevel)
+            ? "화장실이 가득 찼어요. 눌러서 배변을 치워주세요."
+            : "화장실에 배변이 쌓였어요.",
+        );
+      } else if (event.outcome === "toilet-blocked") {
+        worldAudioRef.current?.playCat("demand");
+        setToast("화장실이 가득 차서 사용할 수 없어요. 행복도가 줄었어요.");
+      }
+    },
+    [],
   );
 
   useEffect(() => {
@@ -1549,16 +1658,16 @@ export default function Home() {
         window.localStorage.setItem(SHELL_KEY, String(next));
         return next;
       });
-      setShellFlyTokens((current) => [
+      setShellCollectTokens((current) => [
         ...current,
         { id, x, y, amount },
       ]);
       window.setTimeout(() => {
-        setShellFlyTokens((current) =>
+        setShellCollectTokens((current) =>
           current.filter((token) => token.id !== id),
         );
         setShellHudPulse((current) => current + 1);
-      }, 820);
+      }, 680);
     },
     [],
   );
@@ -1721,6 +1830,7 @@ export default function Home() {
       className={`app-shell decor-${decorChoice} ${
         hudDormant ? "hud-dormant" : ""
       }`}
+      data-popup-assets={popupAssetsReady ? "ready" : "loading"}
     >
       {SHOW_LEGACY_OVERLAYS && (
         <header className={`app-header hud-fade ${hudDormant ? "is-dormant" : ""}`}>
@@ -1781,6 +1891,11 @@ export default function Home() {
                   : "offline"
             }
             completionSignal={completionSignal}
+            foodAvailable={foodAvailable}
+            litterLevel={litterLevel}
+            onFoodBowlClick={refillFoodBowl}
+            onLitterBoxClick={cleanLitterFacility}
+            onCatCareEvent={handleCatCareEvent}
             onShellCollect={collectBeachShell}
             onSeatClick={(seatId) => {
               // 쓰다듬는 반응 — 짧게 인사하고 잠깐 골골거린다.
@@ -1803,9 +1918,9 @@ export default function Home() {
             <strong>{shells.toLocaleString("ko-KR")}</strong>
           </div>
 
-          {shellFlyTokens.map((token) => (
+          {shellCollectTokens.map((token) => (
             <span
-              className="shell-fly-token"
+              className="shell-collect-token"
               key={token.id}
               style={{
                 "--shell-from-x": `${token.x * 100}%`,
@@ -1925,7 +2040,7 @@ export default function Home() {
         </div>
       </section>
 
-      {radioOpen && (
+      {radioOpen && popupAssetsReady && (
         <aside
           className="control-panel radio-panel game-popup"
           aria-label={RADIO_TITLES[radioPage]}
@@ -2129,9 +2244,9 @@ export default function Home() {
                     <button
                       type="button"
                       className="game-button secondary"
-                      onClick={() => feedFocusedCat("meal")}
+                      onClick={refillFoodBowl}
                     >
-                      밥 주기
+                      사료 주기
                     </button>
                     <button
                       type="button"
@@ -2660,7 +2775,7 @@ export default function Home() {
         </aside>
       )}
 
-      {pendingCatStyle && (
+      {pendingCatStyle && popupAssetsReady && (
         <div
           className="style-purchase-backdrop"
           role="presentation"
@@ -2719,7 +2834,7 @@ export default function Home() {
         </div>
       )}
 
-      {onboardingOpen && (
+      {onboardingOpen && popupAssetsReady && (
         <div
           className="style-purchase-backdrop onboarding-backdrop"
           role="presentation"
@@ -2778,7 +2893,7 @@ export default function Home() {
         </div>
       )}
 
-      {pendingSeatSlot && (
+      {pendingSeatSlot && popupAssetsReady && (
         <div
           className="style-purchase-backdrop"
           role="presentation"
@@ -2842,7 +2957,7 @@ export default function Home() {
         </div>
       )}
 
-      {confirmDialog?.kind === "disconnect" && (
+      {confirmDialog?.kind === "disconnect" && popupAssetsReady && (
         <div
           className="style-purchase-backdrop"
           role="presentation"
@@ -2898,7 +3013,7 @@ export default function Home() {
         </div>
       )}
 
-      {visibleApprovalEvent && (
+      {visibleApprovalEvent && popupAssetsReady && (
         <div
           className="approval-backdrop"
           role="presentation"

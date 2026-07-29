@@ -17,16 +17,20 @@ const catNeeds = await import(
   `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`
 );
 const {
+  CAT_CARE_SEEK_THRESHOLD,
+  EMPTY_BOWL_HAPPINESS_LOSS,
   HUNGER_FILL_MS,
   NEEDS_KEY,
   NEEDS_OFFLINE_CAP_MS,
   TOILET_FILL_MS,
+  applyCatCareOutcome,
   computeCatNeedState,
   computeCurrentValue,
   createDefaultCatNeedState,
   getHappinessBand,
   getNeedTone,
   parseCatNeedsStore,
+  selectCatCareIntent,
   updateCatNeedState,
 } = catNeeds;
 
@@ -77,4 +81,35 @@ test("event updates clamp values and malformed storage fails closed", () => {
   assert.equal(fed.hunger, 0);
   assert.equal(fed.happiness, 100);
   assert.deepEqual(parseCatNeedsStore("{bad json", 2_000), {});
+});
+
+test("care intent prioritizes the most urgent danger need", () => {
+  assert.equal(CAT_CARE_SEEK_THRESHOLD, 85);
+  assert.equal(selectCatCareIntent({ hunger: 84, toilet: 84 }), null);
+  assert.equal(selectCatCareIntent({ hunger: 90, toilet: 86 }), "food");
+  assert.equal(selectCatCareIntent({ hunger: 88, toilet: 96 }), "toilet");
+});
+
+test("care outcomes consume needs and empty bowls reduce happiness", () => {
+  const state = {
+    hunger: 92,
+    toilet: 91,
+    happiness: 50,
+    lastComputedAt: 1_000,
+  };
+  const fed = applyCatCareOutcome(state, "meal-completed", 1_000);
+  assert.equal(fed.hunger, 0);
+  assert.equal(fed.happiness, 54);
+
+  const missed = applyCatCareOutcome(state, "meal-missed", 1_000);
+  assert.equal(missed.hunger, 92);
+  assert.equal(missed.happiness, 50 - EMPTY_BOWL_HAPPINESS_LOSS);
+
+  const relieved = applyCatCareOutcome(state, "toilet-completed", 1_000);
+  assert.equal(relieved.toilet, 0);
+  assert.equal(relieved.happiness, 52);
+
+  const blocked = applyCatCareOutcome(state, "toilet-blocked", 1_000);
+  assert.equal(blocked.toilet, 91);
+  assert.equal(blocked.happiness, 42);
 });

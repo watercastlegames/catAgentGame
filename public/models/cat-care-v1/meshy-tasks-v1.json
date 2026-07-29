@@ -1,0 +1,38 @@
+{
+  "generator": "Meshy Image-to-3D",
+  "aiModel": "latest (Meshy 6)",
+  "format": "glb",
+  "settings": {
+    "modelType": "standard",
+    "topology": "triangle",
+    "shouldRemesh": false,
+    "shouldTexture": true,
+    "enablePbr": false,
+    "hdTexture": true,
+    "imageEnhancement": true,
+    "removeLighting": true
+  },
+  "credits": {
+    "emptyBowl": 30,
+    "fullBowl": 30,
+    "total": 60
+  },
+  "models": {
+    "emptyBowl": {
+      "taskId": "019fac75-1d52-7066-894c-c6c046b3411e",
+      "sourceImage": "assets/concepts/cat-care-v1/cat-food-bowl-empty-concept-v2.png",
+      "originalGlb": "public/models/cat-care-v1/cat-food-bowl-empty-meshy6-v1.glb",
+      "webGlb": "public/models/cat-care-v1/cat-food-bowl-empty-meshy6-web-v1.glb",
+      "vertices": 126193,
+      "triangles": 243092
+    },
+    "fullBowl": {
+      "taskId": "019fac75-28e4-7ac2-8133-792da95b3ae8",
+      "sourceImage": "assets/concepts/cat-care-v1/cat-food-bowl-full-concept-v2.png",
+      "originalGlb": "public/models/cat-care-v1/cat-food-bowl-full-meshy6-v1.glb",
+      "webGlb": "public/models/cat-care-v1/cat-food-bowl-full-meshy6-web-v1.glb",
+      "vertices": 607064,
+      "triangles": 1150662
+    }
+  }
+}
