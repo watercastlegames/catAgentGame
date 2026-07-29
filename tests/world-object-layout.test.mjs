@@ -14,7 +14,17 @@ test("only local administrator hosts can open the placement editor", () => {
   assert.equal(isWorldLayoutAdminHost("localhost"), true);
   assert.equal(isWorldLayoutAdminHost("127.0.0.1"), true);
   assert.equal(isWorldLayoutAdminHost("agent-forest.example.com"), false);
-  assert.deepEqual(HARD_CODED_WORLD_OBJECT_LAYOUT, {});
+  assert.equal(Object.keys(HARD_CODED_WORLD_OBJECT_LAYOUT).length, 20);
+  assert.deepEqual(HARD_CODED_WORLD_OBJECT_LAYOUT["cat-food-bowl"], {
+    x: 1.757932934460328,
+    z: -4.1583111078875685,
+    rotationY: -0.18,
+  });
+  assert.deepEqual(HARD_CODED_WORLD_OBJECT_LAYOUT["tent-workstation"], {
+    x: -1.3283313098701015,
+    z: -4.226114884521053,
+    rotationY: 0.08000000000000002,
+  });
 });
 
 test("saved world layout accepts only finite transforms", () => {
