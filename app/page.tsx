@@ -22,7 +22,7 @@ import {
   resolveRuntimeKey,
 } from "./runtime-state.mjs";
 import { type CatCue, type WorldAudio, createWorldAudio } from "./world-audio";
-import { CAT_STYLES } from "./cat-styles";
+import { CAT_STYLES, catStylePreviewUrl } from "./cat-styles";
 import type { CatShape } from "./cat-body";
 import {
   NEEDS_KEY,
@@ -2246,6 +2246,13 @@ export default function Home() {
                           onClick={() => requestCatLook(style.id)}
                           title={style.ko}
                         >
+                          <img
+                            className="cat-style-preview"
+                            src={catStylePreviewUrl(style.id)}
+                            alt=""
+                            aria-hidden="true"
+                            draggable={false}
+                          />
                           <span>{style.id}</span>
                           <small>
                             {selected

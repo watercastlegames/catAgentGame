@@ -40,3 +40,33 @@ test("popup waits for preloaded images and slides up from below", async () => {
     /@keyframes modalIn[\s\S]*?translateY\(min\(52vh, 420px\)\)/,
   );
 });
+
+test("popup quality pass uses clean slices and real cat appearance captures", async () => {
+  const [page, css] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.ok(
+    POPUP_UI_ASSETS.includes("/art/ui/slices/close-button-round-v3.png"),
+  );
+  assert.ok(
+    POPUP_UI_ASSETS.includes(
+      "/art/ui/slices/cat-list-card-selected-v3.png",
+    ),
+  );
+  assert.equal(
+    POPUP_UI_ASSETS.filter((source) =>
+      source.startsWith("/art/ui/cat-styles/cat-style-"),
+    ).length,
+    15,
+  );
+  assert.match(page, /className="cat-style-preview"/);
+  assert.match(page, /catStylePreviewUrl\(style\.id\)/);
+  assert.match(
+    css,
+    /border-image:\s*url\("\/art\/ui\/popup-frame-v1\.png"\)\s*58 fill/,
+  );
+  assert.match(css, /close-button-round-v3\.png/);
+  assert.match(css, /\.need-track b\s*\{[\s\S]*?position:\s*absolute/);
+});

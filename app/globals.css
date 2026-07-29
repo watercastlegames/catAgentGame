@@ -5329,6 +5329,265 @@ button {
   }
 }
 
+/*
+ * Popup quality pass v3
+ * Keep the hand-painted corners and borders at their native proportions.
+ * The previous 100% 100% backgrounds stretched every brush stroke.
+ */
+.radio-panel.game-popup::before,
+.style-purchase-modal::before,
+.approval-modal::before {
+  box-sizing: border-box;
+  border: 26px solid transparent;
+  background: none;
+  border-image: url("/art/ui/popup-frame-v1.png") 58 fill / 26px stretch;
+}
+
+.radio-panel.game-popup {
+  border-radius: 24px;
+}
+
+.radio-hardware {
+  top: 2.6%;
+  height: clamp(54px, 8.8%, 68px);
+}
+
+.radio-hardware::before {
+  top: 0;
+  left: 50%;
+  width: min(58%, 254px);
+  height: auto;
+  aspect-ratio: 4 / 1;
+  background-size: 100% 100%;
+  transform: translateX(-50%);
+}
+
+.radio-hardware strong {
+  top: 8%;
+  left: 50%;
+  width: min(49%, 214px);
+  height: 66%;
+  font-size: clamp(20px, 3.1cqw, 25px);
+  transform: translateX(-50%);
+}
+
+.game-popup-close,
+.radio-hardware .game-popup-close,
+.style-purchase-modal > .game-popup-close,
+.approval-modal > .game-popup-close {
+  width: 52px;
+  height: 52px;
+  background: url("/art/ui/slices/close-button-round-v3.png") center / 100% 100%
+    no-repeat;
+  filter: drop-shadow(0 2px 0 rgba(91, 65, 54, 0.16));
+}
+
+.radio-hardware .game-popup-close {
+  top: 0;
+  right: 4.8%;
+}
+
+.radio-screen:not(.has-tabs) {
+  top: 12%;
+  height: 81%;
+}
+
+.cat-roster,
+.install-letter,
+.empty-task,
+.result-preview,
+.selected-session-line,
+.approval-command,
+.approval-detail {
+  box-sizing: border-box;
+  border: 14px solid transparent;
+  background: none;
+  border-image: url("/art/ui/slices/panel-card-v2.png") 42 fill / 14px stretch;
+}
+
+.cat-roster {
+  padding: 8px 10px 12px;
+}
+
+.cat-list-card {
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border: 0;
+  background: url("/art/ui/slices/cat-list-card-default-v3.png") center / 100%
+    100% no-repeat;
+}
+
+.cat-list-card.selected {
+  background-image: url("/art/ui/slices/cat-list-card-selected-v3.png");
+}
+
+.cat-list-card.empty {
+  background: url("/art/ui/slices/card-thumbnail-v2.png") center / 100% 100%
+    no-repeat;
+  border: 0;
+}
+
+.cat-needs-summary {
+  box-sizing: border-box;
+  margin: 12px 0 15px;
+  padding: 11px 14px 12px;
+  border: 11px solid transparent;
+  background: none;
+  border-image: url("/art/ui/slices/panel-strip-v2.png") 32 46 fill / 11px
+    15px stretch;
+  gap: 10px;
+}
+
+.cat-need-row {
+  min-height: 20px;
+  gap: 10px;
+}
+
+.need-track {
+  box-sizing: border-box;
+  display: block;
+  border: 4px solid transparent;
+  border-radius: 999px;
+  background: rgba(240, 228, 204, 0.82);
+  border-image: url("/art/ui/slices/progress-track-v2.png") 14 20 / 4px
+    7px stretch;
+  overflow: hidden;
+}
+
+.need-track b {
+  position: absolute;
+  z-index: 2;
+  top: 1px;
+  bottom: 1px;
+  left: 1px;
+  max-width: calc(100% - 2px);
+  height: auto;
+}
+
+.cat-happiness-line {
+  margin-top: 1px;
+  padding-top: 5px;
+  border-top: 1px dashed rgba(119, 92, 77, 0.25);
+}
+
+.cat-field-label {
+  display: block;
+  margin: 11px 0 7px;
+}
+
+.cat-style-grid {
+  gap: 9px;
+}
+
+.cat-style-grid button {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 124px;
+  padding: 8px 7px 10px;
+  place-content: initial;
+  grid-template-rows: minmax(70px, 1fr) auto auto;
+  border: 0;
+  border-radius: 13px;
+  background: url("/art/ui/slices/card-thumbnail-v2.png") center / 100% 100%
+    no-repeat;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.cat-style-grid button.selected,
+.cat-style-grid button.owned {
+  background:
+    linear-gradient(rgba(214, 236, 213, 0.33), rgba(214, 236, 213, 0.33)),
+    url("/art/ui/slices/card-thumbnail-v2.png") center / 100% 100% no-repeat;
+}
+
+.cat-style-grid button.selected {
+  box-shadow:
+    inset 0 0 0 3px rgba(92, 126, 103, 0.72),
+    0 2px 0 rgba(95, 72, 60, 0.12);
+  filter: none;
+}
+
+.cat-style-preview {
+  display: block;
+  width: 100%;
+  height: 74px;
+  margin: 0 auto 3px;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  transform: scale(1.12);
+  transform-origin: 50% 58%;
+}
+
+.cat-style-grid button > span {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cat-style-grid button small {
+  position: relative;
+  z-index: 1;
+  min-height: 15px;
+  margin-top: 4px;
+  font-size: 10px;
+  line-height: 1.1;
+}
+
+@media (max-width: 420px) {
+  .radio-panel.game-popup::before,
+  .style-purchase-modal::before,
+  .approval-modal::before {
+    border-width: 22px;
+    border-image-width: 22px;
+  }
+
+  .radio-hardware::before {
+    width: min(59%, 230px);
+  }
+
+  .radio-hardware strong {
+    left: 50%;
+    width: min(50%, 194px);
+    font-size: 20px;
+  }
+
+  .game-popup-close,
+  .radio-hardware .game-popup-close,
+  .style-purchase-modal > .game-popup-close,
+  .approval-modal > .game-popup-close {
+    width: 48px;
+    height: 48px;
+  }
+
+  .cat-needs-summary {
+    margin-block: 10px 13px;
+    padding: 9px 11px 10px;
+    gap: 8px;
+  }
+
+  .cat-style-grid {
+    gap: 7px;
+  }
+
+  .cat-style-grid button {
+    min-height: 122px;
+    padding: 7px 5px 9px;
+    grid-template-rows: 74px auto auto;
+  }
+
+  .cat-style-preview {
+    height: 76px;
+    transform: scale(1.16);
+  }
+}
+
 /* Final workstation picker overrides must win over shared popup/card sizing. */
 .world-3d-location {
   display: none;

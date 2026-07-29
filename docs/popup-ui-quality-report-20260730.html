@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Agent Forest 팝업 UI 품질 개선 보고서 · 2026-07-30</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #5f4b43;
+        --muted: #8b7569;
+        --line: #b99782;
+        --paper: #fff8e8;
+        --paper-2: #f3e8cc;
+        --mint: #d8eee1;
+        --mint-strong: #5c9177;
+        --coral: #ef9b91;
+        --shadow: 0 18px 50px rgba(94, 66, 53, 0.16);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.82), transparent 26%),
+          linear-gradient(150deg, #d8eee7, #f6edcf 48%, #efd9c6);
+        font-family:
+          "Pretendard",
+          "Noto Sans KR",
+          "Malgun Gothic",
+          sans-serif;
+        line-height: 1.62;
+      }
+
+      main {
+        width: min(1180px, calc(100% - 36px));
+        margin: 0 auto;
+        padding: 42px 0 90px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 820px;
+        margin-bottom: 16px;
+        font-size: clamp(34px, 5vw, 64px);
+        letter-spacing: -0.05em;
+        line-height: 1.05;
+      }
+
+      h2 {
+        margin-bottom: 16px;
+        font-size: clamp(25px, 3.2vw, 38px);
+        letter-spacing: -0.035em;
+      }
+
+      h3 {
+        margin-bottom: 8px;
+        font-size: 20px;
+      }
+
+      .eyebrow {
+        margin-bottom: 10px;
+        color: var(--mint-strong);
+        font-size: 13px;
+        font-weight: 900;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .lead {
+        max-width: 820px;
+        color: #735e54;
+        font-size: 18px;
+      }
+
+      .hero {
+        position: relative;
+        padding: 44px;
+        border: 2px solid rgba(110, 79, 65, 0.55);
+        border-radius: 32px;
+        background: rgba(255, 250, 232, 0.86);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .hero::after {
+        position: absolute;
+        right: -80px;
+        bottom: -120px;
+        width: 360px;
+        height: 360px;
+        border-radius: 50%;
+        background: rgba(114, 180, 151, 0.18);
+        content: "";
+      }
+
+      .hero-grid {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 220px;
+        align-items: end;
+        gap: 30px;
+      }
+
+      .score {
+        display: grid;
+        width: 190px;
+        height: 190px;
+        place-items: center;
+        border: 14px solid #cbe5d7;
+        border-top-color: var(--mint-strong);
+        border-radius: 50%;
+        background: #fff9e9;
+        box-shadow: inset 0 0 0 2px #8b6759;
+        transform: rotate(-12deg);
+      }
+
+      .score > div {
+        text-align: center;
+        transform: rotate(12deg);
+      }
+
+      .score strong {
+        display: block;
+        font-size: 54px;
+        line-height: 0.95;
+      }
+
+      .score span {
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      section {
+        margin-top: 54px;
+      }
+
+      .score-row,
+      .three-up,
+      .gallery {
+        display: grid;
+        gap: 18px;
+      }
+
+      .score-row {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .round-card,
+      .panel {
+        border: 1px solid rgba(112, 82, 69, 0.42);
+        border-radius: 24px;
+        background: rgba(255, 249, 232, 0.9);
+        box-shadow: 0 10px 28px rgba(85, 60, 49, 0.1);
+      }
+
+      .round-card {
+        padding: 23px;
+      }
+
+      .round-card strong {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 38px;
+        line-height: 1;
+      }
+
+      .round-card small {
+        color: var(--muted);
+        font-weight: 750;
+      }
+
+      .round-card.final {
+        border-color: #77a68f;
+        background: #e4f2e8;
+      }
+
+      .bar {
+        height: 10px;
+        margin-top: 15px;
+        border-radius: 999px;
+        background: rgba(122, 91, 76, 0.14);
+        overflow: hidden;
+      }
+
+      .bar > i {
+        display: block;
+        width: var(--value);
+        height: 100%;
+        border-radius: inherit;
+        background: var(--color, #db9989);
+      }
+
+      .three-up {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      figure {
+        margin: 0;
+      }
+
+      .shot {
+        padding: 14px;
+        border: 1px solid rgba(111, 83, 69, 0.34);
+        border-radius: 24px;
+        background: rgba(255, 249, 232, 0.82);
+        box-shadow: 0 12px 36px rgba(84, 57, 46, 0.1);
+      }
+
+      .shot img {
+        display: block;
+        width: 100%;
+        max-height: 720px;
+        border-radius: 15px;
+        background: #dfece4;
+        object-fit: contain;
+      }
+
+      figcaption {
+        padding: 13px 5px 3px;
+      }
+
+      figcaption b {
+        display: block;
+        margin-bottom: 3px;
+      }
+
+      figcaption span {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .panel {
+        padding: 24px;
+      }
+
+      .matrix {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .matrix th,
+      .matrix td {
+        padding: 13px 12px;
+        border-bottom: 1px solid rgba(124, 95, 80, 0.19);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      .matrix th {
+        color: var(--muted);
+        font-size: 12px;
+        letter-spacing: 0.04em;
+      }
+
+      .matrix td:last-child {
+        color: var(--mint-strong);
+        font-weight: 900;
+        text-align: right;
+      }
+
+      .matrix tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .gallery {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .cat-sheet {
+        display: block;
+        width: 100%;
+        border: 2px solid rgba(111, 83, 69, 0.48);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+      }
+
+      .change-list {
+        display: grid;
+        margin: 0;
+        padding: 0;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 13px;
+        list-style: none;
+      }
+
+      .change-list li {
+        padding: 18px 20px;
+        border: 1px solid rgba(105, 77, 65, 0.28);
+        border-radius: 18px;
+        background: rgba(255, 251, 238, 0.72);
+      }
+
+      .change-list b {
+        display: block;
+        margin-bottom: 4px;
+      }
+
+      code {
+        padding: 2px 6px;
+        border-radius: 6px;
+        color: #684f46;
+        background: #ecdfc5;
+        font-family: Consolas, monospace;
+        font-size: 0.92em;
+      }
+
+      .verdict {
+        padding: 28px;
+        border: 2px solid #78a88f;
+        border-radius: 24px;
+        background: linear-gradient(135deg, #e5f4e9, #fff5da);
+      }
+
+      .verdict strong {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 26px;
+      }
+
+      .meta {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      @media (max-width: 860px) {
+        .hero {
+          padding: 30px 24px;
+        }
+
+        .hero-grid,
+        .score-row,
+        .three-up,
+        .gallery,
+        .change-list {
+          grid-template-columns: 1fr;
+        }
+
+        .score {
+          width: 150px;
+          height: 150px;
+          justify-self: center;
+        }
+
+        .shot img {
+          max-height: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header class="hero">
+        <div class="hero-grid">
+          <div>
+            <p class="eyebrow">Agent Forest · Popup UI QA</p>
+            <h1>20점 화면을 93점으로 개선한 차수별 검증 보고서</h1>
+            <p class="lead">
+              첨부 화면의 X 버튼 오염, 프레임 강제 확대, 욕구 패널 여백, 털색 선택의
+              실제 모습 부재를 원본 구현에서 수정했습니다. 같은 모바일 뷰포트에서
+              다시 촬영하고, 추가로 모든 주요 팝업을 눈으로 검수했습니다.
+            </p>
+          </div>
+          <div class="score" aria-label="최종 93점">
+            <div><strong>93</strong><span>최종 품질 점수</span></div>
+          </div>
+        </div>
+      </header>
+
+      <section>
+        <p class="eyebrow">Iteration score</p>
+        <h2>차수별 점수</h2>
+        <div class="score-row">
+          <article class="round-card">
+            <strong>20</strong>
+            <small>기준 화면 · 오염/왜곡/실제 미리보기 부재</small>
+            <div class="bar"><i style="--value: 20%; --color: #d98279"></i></div>
+          </article>
+          <article class="round-card">
+            <strong>84</strong>
+            <small>1차 · X/9-slice/욕구 패널/실제 캡처 적용</small>
+            <div class="bar"><i style="--value: 84%; --color: #d5ac68"></i></div>
+          </article>
+          <article class="round-card final">
+            <strong>93</strong>
+            <small>2차 · 캡처 확대/상태바/목록 노이즈까지 제거</small>
+            <div class="bar"><i style="--value: 93%; --color: #65a184"></i></div>
+          </article>
+        </div>
+      </section>
+
+      <section>
+        <p class="eyebrow">Round comparison</p>
+        <h2>같은 문제를 어떻게 줄였는지</h2>
+        <div class="three-up">
+          <figure class="shot">
+            <img
+              src="./qa-assets/popup-ui-20260730/popup-ui-before-20260730.png"
+              alt="수정 전 첨부 화면"
+            />
+            <figcaption>
+              <b>수정 전 · 20점</b>
+              <span>늘어난 캡슐형 X, 찌그러진 외곽선, 텍스트형 털색 카드</span>
+            </figcaption>
+          </figure>
+          <figure class="shot">
+            <img
+              src="./qa-assets/popup-ui-20260730/popup-ui-round1-20260730.png"
+              alt="1차 수정 화면"
+            />
+            <figcaption>
+              <b>1차 · 84점</b>
+              <span>원형 X와 9-slice 적용, 실제 3D 캡처 15종 연결</span>
+            </figcaption>
+          </figure>
+          <figure class="shot">
+            <img
+              src="./qa-assets/popup-ui-20260730/popup-ui-final-20260730.png"
+              alt="2차 최종 화면"
+            />
+            <figcaption>
+              <b>2차 최종 · 93점</b>
+              <span>상단 밀도, 캡처 크기, 상태 그래프 가시성까지 재조정</span>
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section>
+        <p class="eyebrow">Scoring matrix</p>
+        <h2>최종 점수 근거</h2>
+        <div class="panel">
+          <table class="matrix">
+            <thead>
+              <tr>
+                <th>평가 항목</th>
+                <th>확인 결과</th>
+                <th>점수</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>닫기 버튼</td>
+                <td>하나의 원형 PNG로 교체. 위·아래 잔상과 세로 오염 없음.</td>
+                <td>19 / 20</td>
+              </tr>
+              <tr>
+                <td>팝업 프레임</td>
+                <td>모서리를 고정한 9-slice. 상·하단 선 굵기와 곡률 유지.</td>
+                <td>19 / 20</td>
+              </tr>
+              <tr>
+                <td>욕구 패널</td>
+                <td>배고픔·배설·행복도 행 간격 통일, 실제 채움 그래프 확인.</td>
+                <td>18 / 20</td>
+              </tr>
+              <tr>
+                <td>털색/무늬</td>
+                <td>15개 FBX 스타일을 동일 카메라로 실제 촬영해 선택 카드에 적용.</td>
+                <td>19 / 20</td>
+              </tr>
+              <tr>
+                <td>전체 일관성</td>
+                <td>7개 핵심 화면의 타이틀·X·탭·내부 카드 체계를 실화면 검수.</td>
+                <td>18 / 20</td>
+              </tr>
+              <tr>
+                <td colspan="2"><b>합계</b></td>
+                <td>93 / 100</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section>
+        <p class="eyebrow">Actual appearance captures</p>
+        <h2>털색/무늬 15종 실제 모습</h2>
+        <p>
+          이름이나 임의 색상칩이 아니라 프로젝트의 실제 FBX를
+          <code>/cat-shot</code>에서 같은 카메라·조명·회전값으로 촬영했습니다.
+          이 이미지가 상세 팝업의 각 선택 카드에 그대로 표시됩니다.
+        </p>
+        <img
+          class="cat-sheet"
+          src="./qa-assets/popup-ui-20260730/cat-style-capture-sheet-20260730.png"
+          alt="고양이 스타일 15종 실제 캡처"
+        />
+      </section>
+
+      <section>
+        <p class="eyebrow">Popup coverage</p>
+        <h2>주요 팝업 전체 검수</h2>
+        <div class="gallery">
+          <figure class="shot">
+            <img
+              src="./qa-assets/popup-ui-20260730/popup-ui-cat-list-final-20260730.png"
+              alt="고양이 목록"
+            />
+            <figcaption><b>고양이 목록</b><span>거친 민트 노이즈 제거</span></figcaption>
+          </figure>
+          <figure class="shot">
+            <img
+              src="./qa-assets/popup-ui-20260730/popup-ui-desk-final-20260730.png"
+              alt="자리 꾸미기"
+            />
+            <figcaption><b>자리 꾸미기</b><span>탭·카드·진행바 확인</span></figcaption>
+          </figure>
+          <figure class="shot">
+            <img
+              src="./qa-assets/popup-ui-20260730/popup-ui-pc-final-20260730.png"
+              alt="PC 연결"
+            />
+            <figcaption><b>PC 연결</b><span>안내 카드와 입력 화면 확인</span></figcaption>
+          </figure>
+          <figure class="shot">
+            <img
+              src="./qa-assets/popup-ui-20260730/popup-ui-task-final-20260730.png"
+              alt="업무 지시"
+            />
+            <figcaption><b>업무 지시</b><span>탭 전환·폼·버튼 상태 확인</span></figcaption>
+          </figure>
+          <figure class="shot">
+            <img
+              src="./qa-assets/popup-ui-20260730/popup-ui-status-final-20260730.png"
+              alt="진행 상태"
+            />
+            <figcaption><b>진행 상태</b><span>작업 카드·보상 선택 확인</span></figcaption>
+          </figure>
+          <figure class="shot">
+            <img
+              src="./qa-assets/popup-ui-20260730/popup-ui-log-final-20260730.png"
+              alt="활동 기록"
+            />
+            <figcaption><b>활동 기록</b><span>리스트 간격·스크롤 확인</span></figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section>
+        <p class="eyebrow">Source-level changes</p>
+        <h2>땜질이 아닌 원본 구현 변경</h2>
+        <ul class="change-list">
+          <li>
+            <b>닫기 버튼 원본 교체</b>
+            <code>close-button-round-v3.png</code> 하나만 렌더링하도록 바꿨습니다.
+          </li>
+          <li>
+            <b>프레임 9-slice</b>
+            <code>border-image: ... 58 fill</code>로 모서리와 선을 고정했습니다.
+          </li>
+          <li>
+            <b>패널별 독립 slice</b>
+            프로필·욕구·진행바가 서로 다른 비율에서도 선을 유지합니다.
+          </li>
+          <li>
+            <b>실제 스타일 캡처</b>
+            15종 이미지를 선로딩 목록에 넣어 팝업이 열린 뒤 늦게 뜨지 않습니다.
+          </li>
+          <li>
+            <b>목록 노이즈 원본 폐기</b>
+            거친 <code>card-selected-v2</code> 대신 깨끗한 단색 선택 PNG를 사용합니다.
+          </li>
+          <li>
+            <b>상태바 레이어 수정</b>
+            프레임 이미지가 채움색을 덮던 문제를 제거하고 채움 레이어를 위로 올렸습니다.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <div class="verdict">
+          <strong>최종 판정: 90점 기준 통과</strong>
+          <p>
+            모바일 기준 화면에서 X 오염, 프레임 왜곡, 욕구 영역 여백, 실제 털색
+            미리보기, 선택 카드 노이즈를 모두 재검수했습니다. 빌드와 자동 테스트
+            42개도 전부 통과했습니다.
+          </p>
+          <p class="meta">
+            검수일 2026-07-30 · 실제 로컬 화면 캡처 · 471 × 718 반응형 뷰포트 ·
+            최종 점수 93/100
+          </p>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

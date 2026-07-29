@@ -34,3 +34,7 @@ export const CAT_STYLE_MODEL_DIR = "/models/PolyArt/Animals/Cats/FBX";
 export function catStyleModelUrl(styleId: string) {
   return `${CAT_STYLE_MODEL_DIR}/Lowpoly_Cat_${styleId}.fbx`;
 }
+
+export function catStylePreviewUrl(styleId: string) {
+  return `/art/ui/cat-styles/cat-style-${styleId.toLowerCase()}-v1.png`;
+}
