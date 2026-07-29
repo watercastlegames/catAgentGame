@@ -57,8 +57,16 @@ type CollectibleShell = {
   id: string;
   group: THREE.Group;
   proxy: THREE.Object3D;
+  ripple: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>;
+  sparkles: Array<{
+    star: THREE.Mesh<THREE.ShapeGeometry, THREE.MeshBasicMaterial>;
+    baseScale: number;
+    phase: number;
+    baseY: number;
+  }>;
   baseY: number;
   baseScale: number;
+  baseRotationY: number;
   phase: number;
   collecting: boolean;
   elapsed: number;
@@ -2920,27 +2928,63 @@ float shoreOverlayWaterSignal( vec3 color ) {
     let lastCompletionSignal = completionSignalRef.current;
     let completionElapsed = 2;
 
-    const shellSpawnPoints = [
-      new THREE.Vector3(-3.42, 0.16, 1.5),
-      new THREE.Vector3(3.34, 0.16, -2.18),
-      new THREE.Vector3(-0.52, 0.16, 5.46),
-      new THREE.Vector3(0.76, 0.16, -5.08),
-      new THREE.Vector3(3.46, 0.16, 1.72),
-      new THREE.Vector3(-3.2, 0.16, -2.54),
+    // 조개는 섬 안쪽에 놓지 않는다. 각 좌표는 해변 텍스처의 모래/물
+    // 경계선 위이며, 회전값은 부채꼴이 육지 쪽을 향하도록 고정한다.
+    const shorelineShellSpawnPoints = [
+      {
+        position: new THREE.Vector3(0, 0.065, -5.55),
+        rotationY: Math.PI,
+      },
+      {
+        position: new THREE.Vector3(2.12, 0.065, -5.5),
+        rotationY: Math.PI,
+      },
+      {
+        position: new THREE.Vector3(-2.15, 0.065, -5.52),
+        rotationY: Math.PI,
+      },
+      {
+        position: new THREE.Vector3(-1.92, 0.065, 5.5),
+        rotationY: 0,
+      },
+      {
+        position: new THREE.Vector3(0, 0.065, 5.54),
+        rotationY: 0,
+      },
+      {
+        position: new THREE.Vector3(1.9, 0.065, 5.48),
+        rotationY: 0,
+      },
     ];
     const collectibleShells = new Map<string, CollectibleShell>();
     let shellSpawnSequence = 0;
     let shellSpawnElapsed = 0;
     let nextShellSpawnSeconds = 3.5;
 
-    const shellBurstCount = 10;
-    const shellBurstGeometry = new THREE.DodecahedronGeometry(0.04, 0);
+    const createFourPointStarGeometry = (outer: number, inner: number) => {
+      const shape = new THREE.Shape();
+      for (let index = 0; index < 8; index += 1) {
+        const radius = index % 2 === 0 ? outer : inner;
+        const angle = -Math.PI / 2 + (index / 8) * Math.PI * 2;
+        const x = Math.cos(angle) * radius;
+        const y = Math.sin(angle) * radius;
+        if (index === 0) shape.moveTo(x, y);
+        else shape.lineTo(x, y);
+      }
+      shape.closePath();
+      return new THREE.ShapeGeometry(shape);
+    };
+    const shorelineSparkleGeometry = createFourPointStarGeometry(0.08, 0.019);
+
+    const shellBurstCount = 14;
+    const shellBurstGeometry = createFourPointStarGeometry(0.09, 0.022);
     const shellBurstMaterial = new THREE.MeshBasicMaterial({
-      color: 0xffd58f,
+      color: 0xffffd6,
       transparent: true,
       opacity: 0.95,
       toneMapped: false,
       depthWrite: false,
+      side: THREE.DoubleSide,
     });
     disableOutline(shellBurstMaterial);
     const shellBurst = new THREE.InstancedMesh(
@@ -2959,78 +3003,197 @@ float shoreOverlayWaterSignal( vec3 color ) {
       (_, index) =>
         new THREE.Vector3(
           Math.cos((index / shellBurstCount) * Math.PI * 2) *
-            (0.32 + (index % 3) * 0.08),
-          0.32 + (index % 4) * 0.07,
+            (0.4 + (index % 3) * 0.1),
+          0.38 + (index % 4) * 0.09,
           Math.sin((index / shellBurstCount) * Math.PI * 2) *
-            (0.32 + ((index + 1) % 3) * 0.08),
+            (0.4 + ((index + 1) % 3) * 0.1),
         ),
     );
     let shellBurstElapsed = 2;
 
+    const createScallopSurfaceGeometry = () => {
+      const fanSegments = 14;
+      const ringSegments = 5;
+      const vertices: number[] = [];
+      const uvs: number[] = [];
+      const indices: number[] = [];
+
+      for (let ring = 0; ring <= ringSegments; ring += 1) {
+        const progress = ring / ringSegments;
+        for (let fan = 0; fan <= fanSegments; fan += 1) {
+          const fanProgress = fan / fanSegments;
+          const angle = -1.08 + fanProgress * 2.16;
+          const edgeScallop =
+            ring === ringSegments
+              ? 1 + Math.cos(fanProgress * Math.PI * 14) * 0.025
+              : 1;
+          const radius = (0.055 + progress * 0.315) * edgeScallop;
+          const ridgeLift =
+            Math.pow(Math.max(0, Math.cos(angle * 3.35)), 8) *
+            progress *
+            0.012;
+          vertices.push(
+            Math.sin(angle) * radius * (0.9 + progress * 0.1),
+            0.038 + Math.sin(progress * Math.PI) * 0.072 + ridgeLift,
+            0.12 - Math.cos(angle) * radius,
+          );
+          uvs.push(fanProgress, progress);
+        }
+      }
+
+      const row = fanSegments + 1;
+      for (let ring = 0; ring < ringSegments; ring += 1) {
+        for (let fan = 0; fan < fanSegments; fan += 1) {
+          const topLeft = ring * row + fan;
+          const bottomLeft = (ring + 1) * row + fan;
+          indices.push(
+            topLeft,
+            bottomLeft,
+            topLeft + 1,
+            topLeft + 1,
+            bottomLeft,
+            bottomLeft + 1,
+          );
+        }
+      }
+
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(vertices, 3),
+      );
+      geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+      geometry.setIndex(indices);
+      geometry.computeVertexNormals();
+      return geometry;
+    };
+
     const createCollectibleShell = (
       id: string,
       position: THREE.Vector3,
+      baseRotationY: number,
     ) => {
       const group = new THREE.Group();
       group.name = id;
       group.position.copy(position);
-      const baseScale = 0.58;
+      group.rotation.y = baseRotationY;
+      group.userData.shorelineOnly = true;
+      const baseScale = 0.82;
       group.scale.setScalar(baseScale);
 
-      const shellShape = new THREE.Shape();
-      shellShape.moveTo(-0.29, -0.12);
-      shellShape.bezierCurveTo(-0.32, 0.07, -0.25, 0.28, 0, 0.34);
-      shellShape.bezierCurveTo(0.25, 0.28, 0.32, 0.07, 0.29, -0.12);
-      shellShape.quadraticCurveTo(0, -0.24, -0.29, -0.12);
-      const shellMaterial = new THREE.MeshStandardMaterial({
-        color: 0xffd8aa,
-        roughness: 0.94,
-        metalness: 0,
+      const shellGeometry = createScallopSurfaceGeometry();
+      const shellBackMaterial = new THREE.MeshToonMaterial({
+        color: 0xffb985,
+        emissive: 0xffb46f,
+        emissiveIntensity: 0.08,
+        side: THREE.DoubleSide,
       });
-      const shellBody = new THREE.Mesh(
-        new THREE.ExtrudeGeometry(shellShape, {
-          depth: 0.055,
-          bevelEnabled: true,
-          bevelSize: 0.018,
-          bevelThickness: 0.015,
-          bevelSegments: 2,
-        }),
-        shellMaterial,
-      );
-      shellBody.rotation.x = -Math.PI / 2;
-      shellBody.position.y = 0.04;
+      const shellBack = new THREE.Mesh(shellGeometry.clone(), shellBackMaterial);
+      shellBack.position.y = -0.025;
+      shellBack.scale.set(1.035, 1, 1.035);
+      group.add(shellBack);
+
+      const shellMaterial = new THREE.MeshToonMaterial({
+        color: 0xfff0c2,
+        emissive: 0xffd78a,
+        emissiveIntensity: 0.2,
+        side: THREE.DoubleSide,
+      });
+      const shellBody = new THREE.Mesh(shellGeometry, shellMaterial);
       shellBody.castShadow = true;
       group.add(shellBody);
 
-      const ridgeMaterial = new THREE.MeshStandardMaterial({
-        color: 0xe8a67c,
-        roughness: 0.95,
+      const ridgeMaterial = new THREE.MeshToonMaterial({
+        color: 0xffd18e,
+        emissive: 0xffc86f,
+        emissiveIntensity: 0.14,
       });
-      for (let index = -2; index <= 2; index += 1) {
-        const angle = index * 0.2;
+      for (const angle of [-0.9, -0.6, -0.3, 0, 0.3, 0.6, 0.9]) {
+        const ribPoints = Array.from({ length: 6 }, (_, index) => {
+          const progress = 0.11 + (index / 5) * 0.84;
+          const radius = 0.055 + progress * 0.315;
+          return new THREE.Vector3(
+            Math.sin(angle) * radius * (0.9 + progress * 0.1),
+            0.058 + Math.sin(progress * Math.PI) * 0.073,
+            0.12 - Math.cos(angle) * radius,
+          );
+        });
         const ridge = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.009, 0.014, 0.38, 8),
+          new THREE.TubeGeometry(
+            new THREE.CatmullRomCurve3(ribPoints),
+            14,
+            0.009,
+            6,
+            false,
+          ),
           ridgeMaterial,
         );
-        const direction = new THREE.Vector3(
-          Math.sin(angle),
-          0,
-          -Math.cos(angle),
-        ).normalize();
-        ridge.quaternion.setFromUnitVectors(
-          new THREE.Vector3(0, 1, 0),
-          direction,
-        );
-        ridge.position
-          .copy(direction)
-          .multiplyScalar(0.11)
-          .add(new THREE.Vector3(0, 0.105, 0.025));
         group.add(ridge);
       }
 
-      group.add(createMeshyPropShadow(id, 0.29, 0.09));
-      const proxy = createInteractionProxy(id, 0.78);
-      proxy.position.y = 0.18;
+      const hingeMaterial = new THREE.MeshToonMaterial({
+        color: 0xffffdf,
+        emissive: 0xffdda0,
+        emissiveIntensity: 0.2,
+      });
+      const hinge = new THREE.Mesh(
+        new THREE.SphereGeometry(0.075, 18, 12),
+        hingeMaterial,
+      );
+      hinge.position.set(0, 0.066, 0.115);
+      hinge.scale.set(1.05, 0.55, 0.68);
+      group.add(hinge);
+
+      const rippleMaterial = new THREE.MeshBasicMaterial({
+        color: 0xe9fff5,
+        transparent: true,
+        opacity: 0.28,
+        depthWrite: false,
+        toneMapped: false,
+        side: THREE.DoubleSide,
+      });
+      disableOutline(rippleMaterial);
+      const ripple = new THREE.Mesh(
+        new THREE.RingGeometry(0.35, 0.39, 48),
+        rippleMaterial,
+      );
+      ripple.name = `${id}-water-ripple`;
+      ripple.rotation.x = -Math.PI / 2;
+      ripple.position.y = -0.06;
+      ripple.scale.set(1.18, 0.76, 1);
+      group.add(ripple);
+
+      const sparkleSpecs = [
+        { x: -0.34, y: 0.24, z: -0.04, scale: 1.05, phase: 0.1 },
+        { x: 0.29, y: 0.31, z: 0.02, scale: 0.82, phase: 2.2 },
+        { x: 0.06, y: 0.4, z: -0.22, scale: 0.68, phase: 4.1 },
+      ];
+      const sparkles = sparkleSpecs.map((spec, index) => {
+        const material = new THREE.MeshBasicMaterial({
+          color: index === 1 ? 0xfff0aa : 0xffffff,
+          transparent: true,
+          opacity: 0.75,
+          depthWrite: false,
+          toneMapped: false,
+          side: THREE.DoubleSide,
+          blending: THREE.AdditiveBlending,
+        });
+        disableOutline(material);
+        const star = new THREE.Mesh(shorelineSparkleGeometry, material);
+        star.name = `${id}-shoreline-shimmer-${index + 1}`;
+        star.position.set(spec.x, spec.y, spec.z);
+        star.scale.setScalar(spec.scale);
+        group.add(star);
+        return {
+          star,
+          baseScale: spec.scale,
+          phase: spec.phase,
+          baseY: spec.y,
+        };
+      });
+
+      const proxy = createInteractionProxy(id, 0.58);
+      proxy.position.y = 0.12;
       group.add(proxy);
       scene.add(group);
       clickableObjects.push(proxy);
@@ -3038,8 +3201,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
         id,
         group,
         proxy,
+        ripple,
+        sparkles,
         baseY: position.y,
         baseScale,
+        baseRotationY,
         phase: Math.random() * Math.PI * 2,
         collecting: false,
         elapsed: 0,
@@ -3053,13 +3219,17 @@ float shoreOverlayWaterSignal( vec3 color ) {
           (entry) => entry.group.userData.spawnPointId as number,
         ),
       );
-      const available = shellSpawnPoints
+      const available = shorelineShellSpawnPoints
         .map((point, index) => ({ point, index }))
         .filter(({ index }) => !occupiedPointIds.has(index));
       if (!available.length) return;
-      const selected = available[Math.floor(Math.random() * available.length)];
+      const selected = available[shellSpawnSequence % available.length];
       const id = `beach-shell-${++shellSpawnSequence}`;
-      const collectible = createCollectibleShell(id, selected.point);
+      const collectible = createCollectibleShell(
+        id,
+        selected.point.position,
+        selected.point.rotationY,
+      );
       collectible.group.userData.spawnPointId = selected.index;
       collectibleShells.set(id, collectible);
     };
@@ -3699,22 +3869,52 @@ float shoreOverlayWaterSignal( vec3 color ) {
           }
           return;
         }
+        const bob =
+          Math.sin(animationTime * 1.65 + collectible.phase) * 0.018;
         collectible.group.position.y =
-          collectible.baseY +
-          Math.sin(animationTime * 1.8 + collectible.phase) * 0.045;
+          collectible.baseY + bob;
         collectible.group.rotation.y =
-          Math.sin(animationTime * 0.72 + collectible.phase) * 0.18;
+          collectible.baseRotationY +
+          Math.sin(animationTime * 0.72 + collectible.phase) * 0.065;
+        const ripplePulse =
+          1 + Math.sin(animationTime * 1.35 + collectible.phase) * 0.055;
+        collectible.ripple.scale.set(1.18 * ripplePulse, 0.76 * ripplePulse, 1);
+        collectible.ripple.material.opacity =
+          0.2 +
+          (Math.sin(animationTime * 1.35 + collectible.phase) * 0.5 + 0.5) *
+            0.14;
+        collectible.sparkles.forEach((sparkle) => {
+          const shimmer =
+            Math.sin(animationTime * 3.4 + sparkle.phase) * 0.5 + 0.5;
+          const sharpShimmer = Math.pow(shimmer, 2.7);
+          sparkle.star.material.opacity = 0.18 + sharpShimmer * 0.82;
+          sparkle.star.scale.setScalar(
+            sparkle.baseScale * (0.55 + sharpShimmer * 0.72),
+          );
+          sparkle.star.position.y =
+            sparkle.baseY + Math.sin(animationTime * 1.9 + sparkle.phase) * 0.03;
+          sparkle.star.quaternion.copy(camera.quaternion);
+        });
       });
       if (shellBurstElapsed <= 0.78) {
         shellBurstElapsed += delta;
+        shellBurstMaterial.opacity = Math.max(
+          0,
+          0.98 * (1 - shellBurstElapsed / 0.78),
+        );
         shellBurstVelocities.forEach((velocity, index) => {
           shellBurstDummy.position
             .copy(shellBurstOrigin)
             .addScaledVector(velocity, shellBurstElapsed);
           shellBurstDummy.position.y -=
             0.52 * shellBurstElapsed * shellBurstElapsed;
+          shellBurstDummy.quaternion.copy(camera.quaternion);
+          shellBurstDummy.rotateZ(
+            index * 0.73 + shellBurstElapsed * (index % 2 ? 5 : -5),
+          );
           shellBurstDummy.scale.setScalar(
-            Math.max(0, 1 - shellBurstElapsed / 0.78),
+            Math.max(0, 1 - shellBurstElapsed / 0.78) *
+              (0.72 + (index % 3) * 0.18),
           );
           shellBurstDummy.updateMatrix();
           shellBurst.setMatrixAt(index, shellBurstDummy.matrix);

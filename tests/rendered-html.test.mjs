@@ -158,6 +158,10 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /WORKSTATION_PLACEMENT_SEATS/);
   assert.match(world3d, /spawnCollectibleShell/);
   assert.match(world3d, /beach-shell-collection-particles/);
+  assert.match(world3d, /shorelineShellSpawnPoints/);
+  assert.match(world3d, /shorelineOnly = true/);
+  assert.match(world3d, /shoreline-shimmer/);
+  assert.match(world3d, /water-ripple/);
   assert.match(page, /catStyle=\{catStyle\}/);
   assert.match(page, /catShape=\{catShape\}/);
   assert.doesNotMatch(page, /radioPage === "mission"/);
