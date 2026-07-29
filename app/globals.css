@@ -2710,6 +2710,22 @@ button {
   background: #ce765f;
 }
 
+.happiness-track b {
+  background: #d58c94;
+}
+
+.happiness-track.band-neutral b {
+  background: #dfa477;
+}
+
+.happiness-track.band-good b {
+  background: #86b59c;
+}
+
+.happiness-track.band-best b {
+  background: #64aa87;
+}
+
 .cat-happiness-line {
   display: flex;
   align-items: center;
@@ -2732,6 +2748,10 @@ button {
   font-size: 8px;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.cat-happiness-row + .cat-happiness-line {
+  padding-top: 0;
 }
 
 .cat-field-label {

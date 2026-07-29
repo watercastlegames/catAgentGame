@@ -2200,9 +2200,28 @@ export default function Home() {
                         <em>{Math.round(value)}</em>
                       </div>
                     ))}
-                    <div className="cat-happiness-line">
+                    <div className="cat-need-row cat-happiness-row">
                       <span>행복도</span>
-                      <strong>{Math.round(focusedCatNeeds.happiness)}</strong>
+                      <i
+                        className={`need-track happiness-track band-${getHappinessBand(
+                          focusedCatNeeds.happiness,
+                        )}`}
+                        role="progressbar"
+                        aria-label="고양이 행복도"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={Math.round(focusedCatNeeds.happiness)}
+                      >
+                        <b
+                          style={{
+                            width: `${Math.round(focusedCatNeeds.happiness)}%`,
+                          }}
+                        />
+                      </i>
+                      <em>{Math.round(focusedCatNeeds.happiness)}</em>
+                    </div>
+                    <div className="cat-happiness-line">
+                      <span>행복 상태</span>
                       <small>{getHappinessBand(focusedCatNeeds.happiness)}</small>
                     </div>
                   </div>

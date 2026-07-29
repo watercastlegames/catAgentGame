@@ -564,6 +564,10 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /seat\.hunger/);
   assert.match(world3d, /seat\.toilet/);
   assert.match(world3d, /seat\.happiness/);
+  assert.match(page, /className="cat-need-row cat-happiness-row"/);
+  assert.match(page, /className=\{`need-track happiness-track band-\$\{/);
+  assert.match(page, /aria-label="고양이 행복도"/);
+  assert.match(page, /aria-valuenow=\{Math\.round\(focusedCatNeeds\.happiness\)\}/);
   assert.match(page, />\s*사료 주기\s*</);
   assert.match(page, /litterLevel=\{litterLevel\}/);
   assert.match(page, /onLitterBoxClick=\{cleanLitterFacility\}/);
