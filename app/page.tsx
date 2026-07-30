@@ -53,6 +53,14 @@ import {
   serializeFoodBowlState,
 } from "./food-bowl-state";
 import {
+  FOOD_BOWL_2_PRICE,
+  FOOD_BOWL_COUNT_STORAGE_KEY,
+  MAX_OWNED_FOOD_BOWL_COUNT,
+  type OwnedFoodBowlCount,
+  parseOwnedFoodBowlCount,
+  purchaseSecondFoodBowl,
+} from "./care-facility-economy";
+import {
   LITTER_BOX_STORAGE_KEY,
   LITTER_TIER_PRICE,
   LITTER_TIER_STORAGE_KEY,
@@ -507,6 +515,8 @@ export default function Home() {
   const [foodBowlState, setFoodBowlState] = useState<FoodBowlState>(
     createDefaultFoodBowlState,
   );
+  const [foodBowlCount, setFoodBowlCount] =
+    useState<OwnedFoodBowlCount>(1);
   const [litterLevel, setLitterLevel] = useState(0);
   const [litterTier, setLitterTier] = useState(1);
   const [worldShellDaily, setWorldShellDaily] = useState<DailyCounter>(
@@ -620,6 +630,7 @@ export default function Home() {
     catNeeds[focusedCatId] ?? createDefaultCatNeedState();
   const foodAvailable = foodBowlState.portionsRemaining > 0;
   const litterMaxLevel = litterCapacityForTier(litterTier);
+  const litterBoxCount = Math.min(2, litterTier) as 1 | 2;
   const pendingSeatSlot =
     confirmDialog?.kind === "seat-unlock"
       ? (WORKSTATION_SLOTS.find(
@@ -1117,6 +1128,11 @@ export default function Home() {
       window.localStorage.setItem(
         FOOD_BOWL_KEY,
         serializeFoodBowlState(restoredFoodBowl),
+      );
+      setFoodBowlCount(
+        parseOwnedFoodBowlCount(
+          window.localStorage.getItem(FOOD_BOWL_COUNT_STORAGE_KEY),
+        ),
       );
       const restoredLitterTier = parseLitterTier(
         window.localStorage.getItem(LITTER_TIER_STORAGE_KEY),
@@ -1750,6 +1766,31 @@ export default function Home() {
       `${profile.label} 4인분을 조개 ${profile.price}개로 채웠어요. 포만감 ${profile.satiationMinutes}분`,
     );
   }, [shells]);
+
+  const buySecondFoodBowl = useCallback(() => {
+    const purchase = purchaseSecondFoodBowl(shells, foodBowlCount);
+    if (!purchase.ok) {
+      worldAudioRef.current?.playUi("purchaseFail");
+      setToast(
+        `두 번째 밥그릇을 구매하려면 조개 ${purchase.required}개가 필요해요.`,
+      );
+      return;
+    }
+    if (purchase.charged === 0) {
+      setToast("밥그릇을 이미 2개 보유하고 있어요.");
+      return;
+    }
+
+    setShells(purchase.balance);
+    setFoodBowlCount(purchase.count);
+    window.localStorage.setItem(SHELL_KEY, String(purchase.balance));
+    window.localStorage.setItem(
+      FOOD_BOWL_COUNT_STORAGE_KEY,
+      String(purchase.count),
+    );
+    worldAudioRef.current?.playUi("purchaseSuccess");
+    setToast("두 번째 밥그릇을 배치했어요.");
+  }, [foodBowlCount, shells]);
 
   const upgradeLitterFacility = useCallback(() => {
     if (litterTier >= 3) {
@@ -2692,7 +2733,7 @@ export default function Home() {
         >
           <AgentWorld3D
             // 외형이 바뀌면 씬을 통째로 다시 만든다 — FBX가 달라지고 정점도 새로 부풀려야 한다.
-            key={`${catStyle}-${catShapeId}`}
+            key={`${catStyle}-${catShapeId}-${foodBowlCount}-${litterBoxCount}`}
             catStyle={catStyle}
             catShape={catShape}
             seats={seatViews}
@@ -2707,8 +2748,10 @@ export default function Home() {
             completionSignal={completionSignal}
             foodAvailable={foodAvailable}
             foodGrade={foodBowlState.grade}
+            foodBowlCount={foodBowlCount}
             litterLevel={litterLevel}
             litterMaxLevel={litterMaxLevel}
+            litterBoxCount={litterBoxCount}
             workstationDecor={workstationDecorBySeat}
             onFoodBowlClick={refillFoodBowl}
             onLitterBoxClick={cleanLitterFacility}
@@ -3249,7 +3292,9 @@ export default function Home() {
                     <>
                   <div className="care-facility-summary">
                     <span>
-                      <strong>밥그릇</strong>
+                      <strong>
+                        밥그릇 {foodBowlCount}/{MAX_OWNED_FOOD_BOWL_COUNT}
+                      </strong>
                       <small>
                         {foodBowlState.grade
                           ? `${FOOD_PROFILES[foodBowlState.grade].label} · ${foodBowlState.portionsRemaining}/${FOOD_PORTIONS_PER_FILL}인분`
@@ -3257,9 +3302,10 @@ export default function Home() {
                       </small>
                     </span>
                     <span>
-                      <strong>화장실 {litterTier}단계</strong>
+                      <strong>화장실 {litterBoxCount}/2</strong>
                       <small>
-                        오염도 {Math.round(litterLevel)}/{litterMaxLevel}
+                        용량 {litterTier}단계 · 오염도{" "}
+                        {Math.round(litterLevel)}/{litterMaxLevel}
                       </small>
                     </span>
                   </div>
@@ -3312,14 +3358,26 @@ export default function Home() {
                     <button
                       type="button"
                       className="game-button secondary"
+                      disabled={
+                        foodBowlCount >= MAX_OWNED_FOOD_BOWL_COUNT
+                      }
+                      onClick={buySecondFoodBowl}
+                    >
+                      {foodBowlCount >= MAX_OWNED_FOOD_BOWL_COUNT
+                        ? "밥그릇 2개 보유"
+                        : `밥그릇 2호기 구매 · ${FOOD_BOWL_2_PRICE} 조개`}
+                    </button>
+                    <button
+                      type="button"
+                      className="game-button secondary"
                       disabled={litterTier >= 3}
                       onClick={upgradeLitterFacility}
                     >
                       {litterTier >= 3
                         ? "화장실 최대 확장"
-                        : `화장실 ${litterTier + 1}호기 확장 · ${
-                            LITTER_TIER_PRICE[(litterTier + 1) as 2 | 3]
-                          } 조개`}
+                        : litterTier === 1
+                          ? `화장실 2호기 구매 · ${LITTER_TIER_PRICE[2]} 조개`
+                          : `화장실 용량 3단계 확장 · ${LITTER_TIER_PRICE[3]} 조개`}
                     </button>
                   </div>
                     </>

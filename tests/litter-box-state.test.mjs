@@ -27,7 +27,7 @@ test("cleaning resets the litter box and malformed storage fails clean", () => {
   assert.equal(cleanLitterBox(), 0);
 });
 
-test("litter tiers extend one physical facility without breaking tier one", () => {
+test("litter upgrades preserve tier one and extend shared capacity", () => {
   assert.equal(LITTER_TIER_STORAGE_KEY, "agent-forest-litter-tier-v1");
   assert.equal(parseLitterTier(null), 1);
   assert.equal(parseLitterTier("2"), 2);

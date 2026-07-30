@@ -15,6 +15,7 @@ export type WorldObjectBounds = {
 
 export const WORLD_OBJECT_LAYOUT_STORAGE_KEY: string;
 export const HARD_CODED_WORLD_OBJECT_LAYOUT: Readonly<WorldObjectLayout>;
+export const EXTRA_CARE_FACILITY_DEFAULT_POSES: Readonly<WorldObjectLayout>;
 export const MAX_CARE_FACILITY_COUNT: 2;
 export const CARE_FACILITY_LAYOUT_IDS: Readonly<{
   food: readonly ["cat-food-bowl", "cat-food-bowl-2"];

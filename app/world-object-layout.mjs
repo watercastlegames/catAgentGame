@@ -21,20 +21,10 @@ export const HARD_CODED_WORLD_OBJECT_LAYOUT = Object.freeze({
     z: -4.880297227790361,
     rotationY: -0.18,
   },
-  "cat-food-bowl-2": {
-    x: 0.2919061318912837,
-    z: -4.921080985354045,
-    rotationY: 0.12,
-  },
   "covered-cat-litter-box": {
     x: 1.909461366243032,
     z: -4.51832047983328,
     rotationY: -0.4217993877991494,
-  },
-  "covered-cat-litter-box-2": {
-    x: 2.816903381150222,
-    z: -3.7428912544515436,
-    rotationY: -0.6053981633974482,
   },
   "folding-laptop-radio-workstation": {
     x: 2.4082644104533757,
@@ -120,6 +110,21 @@ export const HARD_CODED_WORLD_OBJECT_LAYOUT = Object.freeze({
     x: -1.3283313098701015,
     z: -4.226114884521053,
     rotationY: 0.08000000000000002,
+  },
+});
+
+// Purchased facilities keep the administrator-approved pose without becoming
+// part of the free default layout. Ownership decides whether these are spawned.
+export const EXTRA_CARE_FACILITY_DEFAULT_POSES = Object.freeze({
+  "cat-food-bowl-2": {
+    x: 0.2919061318912837,
+    z: -4.921080985354045,
+    rotationY: 0.12,
+  },
+  "covered-cat-litter-box-2": {
+    x: 2.816903381150222,
+    z: -3.7428912544515436,
+    rotationY: -0.6053981633974482,
   },
 });
 

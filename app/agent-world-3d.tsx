@@ -26,10 +26,10 @@ import {
 import { SketchOutlineEffect } from "./sketch-outline-effect";
 import {
   CARE_FACILITY_LAYOUT_IDS,
+  EXTRA_CARE_FACILITY_DEFAULT_POSES,
   HARD_CODED_WORLD_OBJECT_LAYOUT,
   MAX_CARE_FACILITY_COUNT,
   WORLD_OBJECT_LAYOUT_STORAGE_KEY,
-  countCareFacilities,
   isWorldLayoutAdminHost,
   parseWorldObjectLayout,
   transformObstacleBounds,
@@ -105,8 +105,10 @@ type AgentWorld3DProps = {
   }) => void;
   foodAvailable: boolean;
   foodGrade: FoodGrade | null;
+  foodBowlCount?: 1 | 2;
   litterLevel: number;
   litterMaxLevel: number;
+  litterBoxCount?: 1 | 2;
   workstationDecor?: Partial<Record<SeatId, string[]>>;
   onFoodBowlClick?: () => void;
   onLitterBoxClick?: () => void;
@@ -2876,8 +2878,10 @@ export default function AgentWorld3D({
   onToyResolved,
   foodAvailable,
   foodGrade,
+  foodBowlCount = 1,
   litterLevel,
   litterMaxLevel,
+  litterBoxCount = 1,
   workstationDecor = {},
   onFoodBowlClick,
   onLitterBoxClick,
@@ -3201,10 +3205,8 @@ export default function AgentWorld3D({
         // Storage can be unavailable in privacy mode. Editing still works in-memory.
       }
     }
-    const initialWorldLayout: WorldObjectLayout = {
-      ...HARD_CODED_WORLD_OBJECT_LAYOUT,
-      ...savedWorldLayout,
-    };
+    const initialFoodBowlCount = foodBowlCount;
+    const initialLitterBoxCount = litterBoxCount;
 
     const editableWorldObjects = new Map<string, EditableWorldObject>();
     let addCareFacilityInScene: (intent: CatCareIntent) => boolean =
@@ -3447,7 +3449,9 @@ export default function AgentWorld3D({
     }) => {
       const initialPose = objectPoseFor(object);
       const defaultPose =
-        HARD_CODED_WORLD_OBJECT_LAYOUT[id] ?? initialPose;
+        HARD_CODED_WORLD_OBJECT_LAYOUT[id] ??
+        EXTRA_CARE_FACILITY_DEFAULT_POSES[id] ??
+        initialPose;
       const entry: EditableWorldObject = {
         id,
         label,
@@ -4531,13 +4535,13 @@ float shoreOverlayWaterSignal( vec3 color ) {
         ? addSecondFoodBowl(true)
         : addSecondLitterBox(true);
     if (
-      countCareFacilities(initialWorldLayout, "food") ===
+      initialFoodBowlCount ===
       MAX_CARE_FACILITY_COUNT
     ) {
       addSecondFoodBowl(false);
     }
     if (
-      countCareFacilities(initialWorldLayout, "toilet") ===
+      initialLitterBoxCount ===
       MAX_CARE_FACILITY_COUNT
     ) {
       addSecondLitterBox(false);

@@ -584,6 +584,12 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /aria-label="고양이 행복도"/);
   assert.match(page, /aria-valuenow=\{Math\.round\(focusedCatNeeds\.happiness\)\}/);
   assert.match(page, /\{profile\.buttonLabel\}/);
+  assert.match(page, /FOOD_BOWL_COUNT_STORAGE_KEY/);
+  assert.match(page, /purchaseSecondFoodBowl/);
+  assert.match(page, /foodBowlCount=\{foodBowlCount\}/);
+  assert.match(page, /litterBoxCount=\{litterBoxCount\}/);
+  assert.match(page, /밥그릇 2호기 구매/);
+  assert.match(page, /화장실 2호기 구매/);
   assert.match(page, /litterLevel=\{litterLevel\}/);
   assert.match(page, /onLitterBoxClick=\{cleanLitterFacility\}/);
   assert.match(world3d, /outcome: "toilet-blocked"/);
