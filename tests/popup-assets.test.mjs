@@ -122,3 +122,31 @@ test("popup scrolling stays inside a clipped viewport and tabs use nine-slice ar
     /\.style-purchase-copy,\s*\.onboarding-copy,\s*\.approval-copy\s*\{[\s\S]*?overflow-y:\s*auto;[\s\S]*?touch-action:\s*pan-y;/,
   );
 });
+
+test("buttons provide persistent pointer, keyboard, and reduced-motion feedback", async () => {
+  const [page, css] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(page, /function triggerUiButtonPress\(target: EventTarget \| null\)/);
+  assert.match(page, /button\.classList\.add\("ui-button-pressed"\)/);
+  assert.match(
+    page,
+    /onPointerDownCapture=\{\(event\) => triggerUiButtonPress\(event\.target\)\}/,
+  );
+  assert.match(
+    page,
+    /onKeyDownCapture=\{\(event\) => \{[\s\S]*?event\.key === "Enter"[\s\S]*?event\.key === " "/,
+  );
+  assert.match(
+    css,
+    /\.app-shell button:not\(:disabled\):not\(\.keycap-menu-button\):active\s*\{[\s\S]*?translateY\(3px\) scale\(0\.975\)/,
+  );
+  assert.match(
+    css,
+    /\.app-shell button\.ui-button-pressed:not\(:disabled\):not\(\.keycap-menu-button\)\s*\{[\s\S]*?ui-button-press 190ms/,
+  );
+  assert.match(css, /@keyframes ui-close-button-press/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
+});

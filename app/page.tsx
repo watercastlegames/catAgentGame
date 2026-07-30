@@ -246,6 +246,29 @@ const RADIO_TITLES: Record<RadioPage, string> = {
 const SHOW_LEGACY_OVERLAYS = false;
 const AUDIO_ENABLED_KEY = "agent-forest-audio-v1";
 const CAT_LOOK_KEY = "agent-forest-cat-look-v1";
+const uiButtonPressTimers = new WeakMap<HTMLButtonElement, number>();
+
+function triggerUiButtonPress(target: EventTarget | null) {
+  if (!(target instanceof Element)) return;
+
+  const button = target.closest<HTMLButtonElement>("button");
+  if (!button || button.disabled || button.classList.contains("keycap-menu-button")) {
+    return;
+  }
+
+  const previousTimer = uiButtonPressTimers.get(button);
+  if (previousTimer) window.clearTimeout(previousTimer);
+
+  button.classList.remove("ui-button-pressed");
+  void button.offsetWidth;
+  button.classList.add("ui-button-pressed");
+
+  const timer = window.setTimeout(() => {
+    button.classList.remove("ui-button-pressed");
+    uiButtonPressTimers.delete(button);
+  }, 190);
+  uiButtonPressTimers.set(button, timer);
+}
 const DEMO_CAT_ID = "agent-forest-demo-cat";
 // 체형은 프리셋으로만 고른다. 숫자 세 개를 그대로 노출하면 사장님이 만질 물건이 아니게 된다.
 const CAT_SHAPE_PRESETS: Array<{
@@ -1955,6 +1978,12 @@ export default function Home() {
         hudDormant ? "hud-dormant" : ""
       }`}
       data-popup-assets={popupAssetsReady ? "ready" : "loading"}
+      onPointerDownCapture={(event) => triggerUiButtonPress(event.target)}
+      onKeyDownCapture={(event) => {
+        if (!event.repeat && (event.key === "Enter" || event.key === " ")) {
+          triggerUiButtonPress(event.target);
+        }
+      }}
     >
       {SHOW_LEGACY_OVERLAYS && (
         <header className={`app-header hud-fade ${hudDormant ? "is-dormant" : ""}`}>
