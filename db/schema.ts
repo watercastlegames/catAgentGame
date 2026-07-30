@@ -94,3 +94,83 @@ export const relayPairAttempts = sqliteTable(
     attemptCount: integer("attempt_count").notNull().default(0),
   },
 );
+
+export const users = sqliteTable(
+  "users",
+  {
+    id: text("id").primaryKey(),
+    googleSub: text("google_sub"),
+    oaiUserEmail: text("oai_user_email"),
+    email: text("email").notNull(),
+    createdAt: integer("created_at").notNull(),
+    lastLoginAt: integer("last_login_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("users_google_sub_idx").on(table.googleSub),
+    uniqueIndex("users_oai_email_idx").on(table.oaiUserEmail),
+  ],
+);
+
+export const userSessions = sqliteTable(
+  "user_sessions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: integer("expires_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("user_sessions_token_idx").on(table.tokenHash),
+    index("user_sessions_user_idx").on(table.userId),
+  ],
+);
+
+export const playerShellDeltaLog = sqliteTable(
+  "player_shell_delta_log",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    amount: integer("amount").notNull(),
+    reason: text("reason").notNull(),
+    appliedAt: integer("applied_at").notNull(),
+  },
+  (table) => [
+    index("shell_delta_user_idx").on(table.userId, table.appliedAt),
+  ],
+);
+
+export const catNeedState = sqliteTable(
+  "cat_need_state",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    catThreadId: text("cat_thread_id").notNull(),
+    hunger: integer("hunger").notNull().default(0),
+    toilet: integer("toilet").notNull().default(0),
+    happiness: integer("happiness").notNull().default(30),
+    lastComputedAt: integer("last_computed_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("cat_need_state_user_thread_idx").on(
+      table.userId,
+      table.catThreadId,
+    ),
+  ],
+);
+
+export const workstationDecorState = sqliteTable(
+  "workstation_decor_state",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    ownedItemIdsJson: text("owned_item_ids_json").notNull().default("[]"),
+    seatsJson: text("seats_json").notNull().default("{}"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+);

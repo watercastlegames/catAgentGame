@@ -8,6 +8,13 @@
       "when": 1784979296624,
       "tag": "0000_safe_pyro",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1785381287917,
+      "tag": "0001_curved_korg",
+      "breakpoints": true
     }
   ]
 }

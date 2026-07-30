@@ -59,6 +59,10 @@ import {
   parseActiveSeatCount,
 } from "./seat-progression";
 import { preloadPopupAssets } from "./popup-assets.mjs";
+import {
+  type PlayerCloudSync,
+  createPlayerCloudSync,
+} from "./storage";
 
 type Department = "general" | "coding" | "design" | "music";
 type AgentStatus =
@@ -239,10 +243,6 @@ const RADIO_TITLES: Record<RadioPage, string> = {
   work: "PC 연결 · 업무",
   "status-log": "진행 상황 · 기록",
 };
-const KEYCAP_CLICK_SOUNDS = [
-  "/audio/keycap-click-1.mp3",
-  "/audio/keycap-click-2.mp3",
-];
 const SHOW_LEGACY_OVERLAYS = false;
 const AUDIO_ENABLED_KEY = "agent-forest-audio-v1";
 const CAT_LOOK_KEY = "agent-forest-cat-look-v1";
@@ -419,15 +419,20 @@ export default function Home() {
   const hudTimerRef = useRef<number | null>(null);
   const demoStartedRef = useRef(false);
   const completedTaskIdsRef = useRef(new Set<string>());
-  const keycapAudioPoolRef = useRef<HTMLAudioElement[]>([]);
-  const keycapAudioIndexRef = useRef(0);
   const keycapPressTimerRef = useRef<number | null>(null);
   const keycapFeedbackPrimedRef = useRef(false);
+  const radioAudioPrimedRef = useRef(false);
+  const previousRadioOpenRef = useRef(false);
+  const modalAudioPrimedRef = useRef(false);
+  const previousModalOpenRef = useRef(false);
   const catNeedsRef = useRef<CatNeedsStore>({});
   const litterLevelRef = useRef(0);
   const purchaseLockedRef = useRef(false);
   const activeSeatCountRef = useRef(1);
   const shellFlyIdRef = useRef(0);
+  const playerCloudSyncRef = useRef<PlayerCloudSync | null>(null);
+  const cloudSyncHydratedRef = useRef(false);
+  const shellSyncPreviousRef = useRef(0);
 
   const approvalEvent = approvalQueue[0] ?? null;
   const visibleApprovalEvent =
@@ -484,6 +489,13 @@ export default function Home() {
           (slot) => slot.seatId === confirmDialog.seatId,
         ) ?? null)
       : null;
+  const modalOpen = Boolean(
+    pendingCatStyle ||
+      onboardingOpen ||
+      pendingSeatSlot ||
+      confirmDialog?.kind === "disconnect" ||
+      visibleApprovalEvent,
+  );
   const nextSeatSlot = nextWorkstationSlot(activeSeatCount);
   const unlockedSeatIds = useMemo(
     () => activeSeatIds(activeSeatCount),
@@ -880,6 +892,8 @@ export default function Home() {
 
   useEffect(() => {
     let disposed = false;
+    const cloudSync = createPlayerCloudSync();
+    playerCloudSyncRef.current = cloudSync;
     queueMicrotask(() => {
       if (disposed) return;
       const savedShells = window.localStorage.getItem(SHELL_KEY);
@@ -903,7 +917,9 @@ export default function Home() {
       );
       activeSeatCountRef.current = restoredSeatCount;
       setActiveSeatCount(restoredSeatCount);
-      setDecorChoice(window.localStorage.getItem(DECOR_KEY) ?? "coral");
+      const restoredDecorChoice =
+        window.localStorage.getItem(DECOR_KEY) ?? "coral";
+      setDecorChoice(restoredDecorChoice);
       const restoredNeeds = parseCatNeedsStore(
         window.localStorage.getItem(NEEDS_KEY),
       );
@@ -940,11 +956,95 @@ export default function Home() {
       ) {
         setOnboardingOpen(true);
       }
+
+      void cloudSync
+        .bootstrap({
+          shellBalance: migratedShells,
+          catNeeds: nextNeeds,
+          decor: {
+            ownedItemIds: [],
+            seats: {
+              theme: restoredDecorChoice,
+              activeSeatCount: restoredSeatCount,
+            },
+            updatedAt: Date.now(),
+          },
+        })
+        .then((remoteState) => {
+          if (disposed) return;
+          const mergedState = remoteState ?? {
+            shellBalance: migratedShells,
+            catNeeds: nextNeeds,
+            decor: {
+              ownedItemIds: [],
+              seats: {
+                theme: restoredDecorChoice,
+                activeSeatCount: restoredSeatCount,
+              },
+              updatedAt: Date.now(),
+            },
+          };
+          shellSyncPreviousRef.current = mergedState.shellBalance;
+          setShells(mergedState.shellBalance);
+          window.localStorage.setItem(
+            SHELL_KEY,
+            String(mergedState.shellBalance),
+          );
+          catNeedsRef.current = mergedState.catNeeds;
+          setCatNeeds(mergedState.catNeeds);
+          window.localStorage.setItem(
+            NEEDS_KEY,
+            JSON.stringify(mergedState.catNeeds),
+          );
+          const mergedTheme = mergedState.decor?.seats?.theme;
+          if (typeof mergedTheme === "string") {
+            setDecorChoice(mergedTheme);
+            window.localStorage.setItem(DECOR_KEY, mergedTheme);
+          }
+          const mergedSeatCount = parseActiveSeatCount(
+            String(
+              mergedState.decor?.seats?.activeSeatCount ??
+                restoredSeatCount,
+            ),
+          );
+          activeSeatCountRef.current = mergedSeatCount;
+          setActiveSeatCount(mergedSeatCount);
+          window.localStorage.setItem(
+            ACTIVE_SEAT_KEY,
+            String(mergedSeatCount),
+          );
+          cloudSyncHydratedRef.current = true;
+        });
     });
     return () => {
       disposed = true;
+      cloudSync.dispose();
+      if (playerCloudSyncRef.current === cloudSync) {
+        playerCloudSyncRef.current = null;
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!cloudSyncHydratedRef.current) return;
+    const delta = shells - shellSyncPreviousRef.current;
+    shellSyncPreviousRef.current = shells;
+    playerCloudSyncRef.current?.recordShellDelta(delta);
+  }, [shells]);
+
+  useEffect(() => {
+    if (!cloudSyncHydratedRef.current) return;
+    playerCloudSyncRef.current?.recordCatNeeds(catNeeds);
+  }, [catNeeds]);
+
+  useEffect(() => {
+    if (!cloudSyncHydratedRef.current) return;
+    playerCloudSyncRef.current?.recordDecor({
+      ownedItemIds: [],
+      seats: { theme: decorChoice, activeSeatCount },
+      updatedAt: Date.now(),
+    });
+  }, [activeSeatCount, decorChoice]);
 
   useEffect(() => {
     const syncNeeds = () => {
@@ -1032,6 +1132,28 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!radioAudioPrimedRef.current) {
+      radioAudioPrimedRef.current = true;
+      previousRadioOpenRef.current = radioOpen;
+      return;
+    }
+    if (previousRadioOpenRef.current === radioOpen) return;
+    previousRadioOpenRef.current = radioOpen;
+    worldAudioRef.current?.playUi(radioOpen ? "panelOpen" : "panelClose");
+  }, [radioOpen]);
+
+  useEffect(() => {
+    if (!modalAudioPrimedRef.current) {
+      modalAudioPrimedRef.current = true;
+      previousModalOpenRef.current = modalOpen;
+      return;
+    }
+    if (previousModalOpenRef.current === modalOpen) return;
+    previousModalOpenRef.current = modalOpen;
+    worldAudioRef.current?.playUi(modalOpen ? "panelOpen" : "panelClose");
+  }, [modalOpen]);
+
   // 고양이 외형 복원 — 저장돼 있으면 그 모습으로 섬을 연다.
   useEffect(() => {
     queueMicrotask(() => {
@@ -1096,6 +1218,7 @@ export default function Home() {
       ownedCatStyles,
     );
     if (!purchase.ok) {
+      worldAudioRef.current?.playUi("purchaseFail");
       if (purchase.reason === "insufficient-shells") {
         setToast(
           `${pendingCatStyle} 스타일을 구매하려면 조개 ${purchase.required}개가 필요해요.`,
@@ -1111,6 +1234,9 @@ export default function Home() {
       JSON.stringify([...purchase.ownedStyles]),
     );
     applyCatLook(pendingCatStyle);
+    worldAudioRef.current?.playUi(
+      purchase.charged ? "purchaseSuccess" : "itemEquip",
+    );
     setToast(
       purchase.charged
         ? `${pendingCatStyle} 스타일을 조개 ${purchase.charged}개로 구매했어요.`
@@ -1140,6 +1266,7 @@ export default function Home() {
         return next;
       });
       worldAudioRef.current?.playCat(kind === "meal" ? "greet" : "purr");
+      worldAudioRef.current?.playUi(kind === "meal" ? "feedBowl" : "itemEquip");
       setToast(kind === "meal" ? "밥그릇을 채웠어요." : "간식을 건넸어요.");
     },
     [focusedCatId],
@@ -1152,6 +1279,7 @@ export default function Home() {
     }
     setFoodAvailable(true);
     window.localStorage.setItem(FOOD_BOWL_KEY, "full");
+    worldAudioRef.current?.playUi("feedBowl");
     setToast("밥그릇에 사료를 가득 채웠어요.");
   }, [foodAvailable]);
 
@@ -1167,6 +1295,7 @@ export default function Home() {
       LITTER_BOX_STORAGE_KEY,
       String(nextLevel),
     );
+    worldAudioRef.current?.playUi("toiletDone");
     setToast("화장실의 배변을 깨끗하게 치웠어요.");
   }, []);
 
@@ -1187,12 +1316,14 @@ export default function Home() {
       });
 
       if (event.outcome === "meal-completed") {
+        worldAudioRef.current?.playUi("catEat");
         setFoodAvailable(false);
         window.localStorage.setItem(FOOD_BOWL_KEY, "empty");
       } else if (event.outcome === "meal-missed") {
         worldAudioRef.current?.playCat("demand");
         setToast("밥그릇이 비어서 고양이의 행복도가 줄었어요.");
       } else if (event.outcome === "toilet-completed") {
+        worldAudioRef.current?.playUi("toiletDone");
         const nextLevel = addLitterWaste(litterLevelRef.current);
         litterLevelRef.current = nextLevel;
         setLitterLevel(nextLevel);
@@ -1321,22 +1452,11 @@ export default function Home() {
   }, [confirmDialog, onboardingOpen, pendingCatStyle, uiPreview]);
 
   useEffect(() => {
-    keycapAudioPoolRef.current = KEYCAP_CLICK_SOUNDS.map((source) => {
-      const audio = new Audio(source);
-      audio.preload = "auto";
-      audio.volume = 0.58;
-      audio.load();
-      return audio;
-    });
     return () => {
       demoTimersRef.current.forEach((timer) => window.clearTimeout(timer));
       if (keycapPressTimerRef.current) {
         window.clearTimeout(keycapPressTimerRef.current);
       }
-      keycapAudioPoolRef.current.forEach((audio) => {
-        audio.pause();
-        audio.removeAttribute("src");
-      });
     };
   }, []);
 
@@ -1624,6 +1744,7 @@ export default function Home() {
     purchaseLockedRef.current = true;
     try {
       if (shells < pendingSeatSlot.price) {
+        worldAudioRef.current?.playUi("purchaseFail");
         setToast(`조개 ${pendingSeatSlot.price - shells}개가 더 필요해요.`);
         return;
       }
@@ -1635,6 +1756,9 @@ export default function Home() {
       setSelectedSeat(pendingSeatSlot.seatId);
       window.localStorage.setItem(ACTIVE_SEAT_KEY, String(nextCount));
       window.localStorage.setItem(SHELL_KEY, String(nextShells));
+      worldAudioRef.current?.playUi(
+        nextCount === MAX_SEAT_COUNT ? "milestone" : "tierUpgrade",
+      );
       setConfirmDialog(null);
       setToast(
         `자리 ${pendingSeatSlot.seatId.slice(-1)}과 ${pendingSeatSlot.title}을 열었어요.`,
@@ -1666,6 +1790,7 @@ export default function Home() {
         ...current,
         { id, x, y, amount },
       ]);
+      worldAudioRef.current?.playUi("shellPickup");
       window.setTimeout(() => {
         setShellCollectTokens((current) =>
           current.filter((token) => token.id !== id),
@@ -1795,17 +1920,12 @@ export default function Home() {
   function chooseDecor(value: string) {
     setDecorChoice(value);
     window.localStorage.setItem(DECOR_KEY, value);
+    worldAudioRef.current?.playUi("itemEquip");
   }
 
   function pressRadioMenuKey(page: RadioPage) {
     keycapFeedbackPrimedRef.current = true;
-    const audioPool = keycapAudioPoolRef.current;
-    const sound = audioPool[keycapAudioIndexRef.current % audioPool.length];
-    keycapAudioIndexRef.current += 1;
-    if (sound) {
-      sound.currentTime = 0;
-      void sound.play().catch(() => undefined);
-    }
+    worldAudioRef.current?.playUi("keycapClick");
 
     if (keycapPressTimerRef.current) {
       window.clearTimeout(keycapPressTimerRef.current);
@@ -1944,8 +2064,17 @@ export default function Home() {
             aria-label={audioEnabled ? "소리 끄기" : "소리 켜기"}
             title={audioEnabled ? "소리 끄기" : "소리 켜기"}
             onClick={() => {
-              worldAudioRef.current?.unlock();
-              setAudioEnabled((current) => !current);
+              const audio = worldAudioRef.current;
+              const next = !audioEnabled;
+              audio?.unlock();
+              if (next) {
+                audio?.setEnabled(true);
+                audio?.playUi("toggleOn");
+              } else {
+                audio?.playUi("toggleOff");
+                audio?.setEnabled(false);
+              }
+              setAudioEnabled(next);
             }}
           >
             <img
@@ -2168,7 +2297,10 @@ export default function Home() {
                 <button
                   type="button"
                   className="game-back-button"
-                  onClick={() => setCatPage("list")}
+                  onClick={() => {
+                    worldAudioRef.current?.playUi("tabSwitch");
+                    setCatPage("list");
+                  }}
                 >
                   고양이 목록
                 </button>
@@ -2398,7 +2530,10 @@ export default function Home() {
                   role="tab"
                   aria-selected={workTab === "connect"}
                   className={workTab === "connect" ? "selected" : ""}
-                  onClick={() => setWorkTab("connect")}
+                  onClick={() => {
+                    worldAudioRef.current?.playUi("tabSwitch");
+                    setWorkTab("connect");
+                  }}
                 >
                   세션 연결
                 </button>
@@ -2407,7 +2542,10 @@ export default function Home() {
                   role="tab"
                   aria-selected={workTab === "task"}
                   className={workTab === "task" ? "selected" : ""}
-                  onClick={() => setWorkTab("task")}
+                  onClick={() => {
+                    worldAudioRef.current?.playUi("tabSwitch");
+                    setWorkTab("task");
+                  }}
                 >
                   업무 지시
                 </button>
@@ -2609,7 +2747,10 @@ export default function Home() {
                   role="tab"
                   aria-selected={statusLogTab === "status"}
                   className={statusLogTab === "status" ? "selected" : ""}
-                  onClick={() => setStatusLogTab("status")}
+                  onClick={() => {
+                    worldAudioRef.current?.playUi("tabSwitch");
+                    setStatusLogTab("status");
+                  }}
                 >
                   진행 상태
                 </button>
@@ -2618,7 +2759,10 @@ export default function Home() {
                   role="tab"
                   aria-selected={statusLogTab === "log"}
                   className={statusLogTab === "log" ? "selected" : ""}
-                  onClick={() => setStatusLogTab("log")}
+                  onClick={() => {
+                    worldAudioRef.current?.playUi("tabSwitch");
+                    setStatusLogTab("log");
+                  }}
                 >
                   활동 기록
                 </button>

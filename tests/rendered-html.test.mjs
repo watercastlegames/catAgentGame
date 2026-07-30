@@ -294,8 +294,12 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(css, /\.hud-dormant \.keycap-menu/);
   assert.match(css, /\.hud-dormant \.world-currency-hud/);
   assert.match(css, /\.hud-dormant \.sound-toggle/);
-  assert.match(page, /KEYCAP_CLICK_SOUNDS/);
-  assert.match(page, /keycapAudioPoolRef/);
+  assert.match(worldAudio, /export type UiCue/);
+  assert.match(worldAudio, /playUi\(cue: UiCue\)/);
+  assert.match(worldAudio, /UI_RETRIGGER_FLOOR = 0\.04/);
+  assert.match(worldAudio, /keycapClick: WORLD_AUDIO_SOURCES\.keycapClicks/);
+  assert.match(page, /playUi\("keycapClick"\)/);
+  assert.doesNotMatch(page, /keycapAudioPoolRef/);
   assert.match(page, /pressRadioMenuKey/);
   assert.match(page, /activateRadioMenu/);
   assert.match(page, /keycap-menu-button/);

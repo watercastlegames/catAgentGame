@@ -25,6 +25,10 @@ export const WORLD_AUDIO_SOURCES = {
   catReport: "/audio/CAT_Meow_Normal_01.mp3",
   catDemand: "/audio/CAT_Meow_Demand_01.mp3",
   catPurr: "/audio/CAT_Purr_Loop_01.mp3",
+  keycapClicks: [
+    "/audio/keycap-click-1.mp3",
+    "/audio/keycap-click-2.mp3",
+  ],
 } as const;
 
 // 해변 3종은 동시에 겹쳐 깔되, 서로 다른 지점에서 시작해야 갈매기가 한꺼번에 울지 않는다.
@@ -48,12 +52,57 @@ const MASTER_VOLUME = 0.9;
 const MASTER_FADE = 0.35;
 
 export type CatCue = "greet" | "report" | "demand" | "purr";
+export type UiCue =
+  | "panelOpen"
+  | "panelClose"
+  | "tabSwitch"
+  | "purchaseSuccess"
+  | "purchaseFail"
+  | "shellPickup"
+  | "feedBowl"
+  | "catEat"
+  | "toiletDone"
+  | "itemEquip"
+  | "tierUpgrade"
+  | "milestone"
+  | "toggleOn"
+  | "toggleOff"
+  | "keycapClick";
 
 const CAT_CUE_SOURCE: Record<Exclude<CatCue, "purr">, string> = {
   greet: WORLD_AUDIO_SOURCES.catGreet,
   report: WORLD_AUDIO_SOURCES.catReport,
   demand: WORLD_AUDIO_SOURCES.catDemand,
 };
+
+/**
+ * UI 음원은 실제 녹음 후보 검수 후 한 곳에서만 연결한다.
+ * 키캡 2종은 이미 검수된 CC0 음원이라 즉시 이관한다.
+ * 나머지는 소스가 비어 있어도 playUi 호출이 안전하게 무음 처리된다.
+ */
+const UI_AUDIO_SOURCE: Partial<
+  Record<UiCue, string | readonly string[]>
+> = {
+  keycapClick: WORLD_AUDIO_SOURCES.keycapClicks,
+};
+const UI_CUE_VOLUME: Record<UiCue, number> = {
+  panelOpen: 0.4,
+  panelClose: 0.4,
+  tabSwitch: 0.4,
+  purchaseSuccess: 0.55,
+  purchaseFail: 0.48,
+  shellPickup: 0.55,
+  feedBowl: 0.48,
+  catEat: 0.48,
+  toiletDone: 0.48,
+  itemEquip: 0.48,
+  tierUpgrade: 0.55,
+  milestone: 0.55,
+  toggleOn: 0.4,
+  toggleOff: 0.4,
+  keycapClick: 0.58,
+};
+const UI_RETRIGGER_FLOOR = 0.04;
 
 type LoopHandle = {
   source: AudioBufferSourceNode;
@@ -75,6 +124,8 @@ export function createWorldAudio() {
   let purrStopTimer: number | null = null;
   const buffers = new Map<string, AudioBuffer>();
   const pending = new Map<string, Promise<AudioBuffer | null>>();
+  const lastUiPlay = new Map<UiCue, number>();
+  const uiRoundRobin = new Map<UiCue, number>();
 
   function ensureContext() {
     if (disposed) return null;
@@ -281,6 +332,50 @@ export function createWorldAudio() {
         source.start();
       });
     },
+    /**
+     * UI 큐는 AudioBufferSourceNode를 매번 새로 만들어 겹쳐 재생한다.
+     * 따라서 HTMLAudioElement 풀이 필요 없고, 음소거와 마스터 볼륨도
+     * 월드 오디오와 같은 경로를 탄다.
+     */
+    playUi(cue: UiCue) {
+      if (!enabled || !unlocked) return;
+      const ctx = context;
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      if (
+        now - (lastUiPlay.get(cue) ?? Number.NEGATIVE_INFINITY) <
+        UI_RETRIGGER_FLOOR
+      ) {
+        return;
+      }
+      const configured = UI_AUDIO_SOURCE[cue];
+      if (!configured) return;
+      const sources =
+        typeof configured === "string" ? [configured] : [...configured];
+      if (!sources.length) return;
+      const roundRobinIndex = uiRoundRobin.get(cue) ?? 0;
+      uiRoundRobin.set(cue, roundRobinIndex + 1);
+      const url = sources[roundRobinIndex % sources.length];
+      lastUiPlay.set(cue, now);
+      void loadBuffer(url).then((buffer) => {
+        const activeContext = context;
+        if (
+          !buffer ||
+          !activeContext ||
+          !master ||
+          !enabled ||
+          !unlocked
+        ) {
+          return;
+        }
+        const gain = activeContext.createGain();
+        gain.gain.value = UI_CUE_VOLUME[cue];
+        const source = activeContext.createBufferSource();
+        source.buffer = buffer;
+        source.connect(gain).connect(master);
+        source.start();
+      });
+    },
     /** 탭이 가려지면 배경음까지 멎게 한다. */
     setSuspended(suspended: boolean) {
       const ctx = context;
@@ -303,6 +398,8 @@ export function createWorldAudio() {
       purrLoop = null;
       buffers.clear();
       pending.clear();
+      lastUiPlay.clear();
+      uiRoundRobin.clear();
       void context?.close().catch(() => undefined);
       context = null;
       master = null;

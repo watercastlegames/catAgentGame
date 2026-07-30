@@ -136,7 +136,7 @@ const DEFAULT_SEAT_VIEW: SeatView = {
   blocked: false,
   hunger: 0,
   toilet: 0,
-  happiness: 50,
+  happiness: 30,
 };
 
 const TENT_WORKSTATION_POSITION = new THREE.Vector3(-2.05, 0, -3.65);
@@ -2419,7 +2419,7 @@ function createAgentMarker(initialSeat: SeatView) {
       seat.agentName,
       Math.round(seat.hunger ?? 0),
       Math.round(seat.toilet ?? 0),
-      Math.round(seat.happiness ?? 50),
+      Math.round(seat.happiness ?? 30),
     ].join(":");
     if (!context || nextSignature === signature) return;
     signature = nextSignature;
@@ -2440,7 +2440,7 @@ function createAgentMarker(initialSeat: SeatView) {
     const gauges = [
       { value: seat.hunger ?? 0, color: "#dfa56d" },
       { value: seat.toilet ?? 0, color: "#7eb7aa" },
-      { value: seat.happiness ?? 50, color: "#e99a9a" },
+      { value: seat.happiness ?? 30, color: "#e99a9a" },
     ];
     gauges.forEach(({ value, color }, index) => {
       const x = 38 + index * 110;
