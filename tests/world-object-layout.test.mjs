@@ -17,11 +17,26 @@ test("only local administrator hosts can open the placement editor", () => {
   assert.equal(isWorldLayoutAdminHost("localhost"), true);
   assert.equal(isWorldLayoutAdminHost("127.0.0.1"), true);
   assert.equal(isWorldLayoutAdminHost("agent-forest.example.com"), false);
-  assert.equal(Object.keys(HARD_CODED_WORLD_OBJECT_LAYOUT).length, 20);
+  assert.equal(Object.keys(HARD_CODED_WORLD_OBJECT_LAYOUT).length, 22);
   assert.deepEqual(HARD_CODED_WORLD_OBJECT_LAYOUT["cat-food-bowl"], {
-    x: 1.757932934460328,
-    z: -4.1583111078875685,
+    x: 0.9489761437078331,
+    z: -4.880297227790361,
     rotationY: -0.18,
+  });
+  assert.deepEqual(HARD_CODED_WORLD_OBJECT_LAYOUT["cat-food-bowl-2"], {
+    x: 0.2919061318912837,
+    z: -4.921080985354045,
+    rotationY: 0.12,
+  });
+  assert.deepEqual(HARD_CODED_WORLD_OBJECT_LAYOUT["covered-cat-litter-box"], {
+    x: 1.909461366243032,
+    z: -4.51832047983328,
+    rotationY: -0.4217993877991494,
+  });
+  assert.deepEqual(HARD_CODED_WORLD_OBJECT_LAYOUT["covered-cat-litter-box-2"], {
+    x: 2.816903381150222,
+    z: -3.7428912544515436,
+    rotationY: -0.6053981633974482,
   });
   assert.deepEqual(HARD_CODED_WORLD_OBJECT_LAYOUT["tent-workstation"], {
     x: -1.3283313098701015,
@@ -52,6 +67,11 @@ test("care facilities restore one or two placed instances with a hard cap", () =
     "cat-food-bowl-2",
   ]);
   assert.equal(countCareFacilities({}, "food"), 1);
+  assert.equal(countCareFacilities(HARD_CODED_WORLD_OBJECT_LAYOUT, "food"), 2);
+  assert.equal(
+    countCareFacilities(HARD_CODED_WORLD_OBJECT_LAYOUT, "toilet"),
+    2,
+  );
   assert.equal(
     countCareFacilities(
       {
@@ -117,6 +137,10 @@ test("administrator placement mode reveals and exports every object", async () =
   assert.match(source, /host\.dataset\.savedWorldLayout/);
   assert.match(source, /saveLayout: saveCurrentWorldLayout/);
   assert.match(source, /addCareFacility: \(intent\)/);
+  assert.match(
+    source,
+    /initialWorldLayout[\s\S]*HARD_CODED_WORLD_OBJECT_LAYOUT[\s\S]*savedWorldLayout/,
+  );
   assert.match(source, /밥그릇 추가/);
   assert.match(source, /화장실 추가/);
   assert.match(source, /claimableCareFacilityIndex/);

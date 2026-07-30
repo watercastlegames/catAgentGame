@@ -3201,6 +3201,10 @@ export default function AgentWorld3D({
         // Storage can be unavailable in privacy mode. Editing still works in-memory.
       }
     }
+    const initialWorldLayout: WorldObjectLayout = {
+      ...HARD_CODED_WORLD_OBJECT_LAYOUT,
+      ...savedWorldLayout,
+    };
 
     const editableWorldObjects = new Map<string, EditableWorldObject>();
     let addCareFacilityInScene: (intent: CatCareIntent) => boolean =
@@ -4527,13 +4531,13 @@ float shoreOverlayWaterSignal( vec3 color ) {
         ? addSecondFoodBowl(true)
         : addSecondLitterBox(true);
     if (
-      countCareFacilities(savedWorldLayout, "food") ===
+      countCareFacilities(initialWorldLayout, "food") ===
       MAX_CARE_FACILITY_COUNT
     ) {
       addSecondFoodBowl(false);
     }
     if (
-      countCareFacilities(savedWorldLayout, "toilet") ===
+      countCareFacilities(initialWorldLayout, "toilet") ===
       MAX_CARE_FACILITY_COUNT
     ) {
       addSecondLitterBox(false);

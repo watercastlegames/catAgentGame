@@ -12,19 +12,29 @@ export const CARE_FACILITY_LAYOUT_IDS = Object.freeze({
 // 일반 사용자는 브라우저별 localStorage 대신 이 값을 공통 기본 배치로 사용한다.
 export const HARD_CODED_WORLD_OBJECT_LAYOUT = Object.freeze({
   "camping-supply-cluster": {
-    x: -2.5727459607749195,
-    z: 3.2052419683207756,
+    x: -2.3353347287062527,
+    z: 3.4971086976431813,
     rotationY: 0.12,
   },
   "cat-food-bowl": {
-    x: 1.757932934460328,
-    z: -4.1583111078875685,
+    x: 0.9489761437078331,
+    z: -4.880297227790361,
     rotationY: -0.18,
   },
+  "cat-food-bowl-2": {
+    x: 0.2919061318912837,
+    z: -4.921080985354045,
+    rotationY: 0.12,
+  },
   "covered-cat-litter-box": {
-    x: 2.6832461226149835,
-    z: -3.811695766736923,
+    x: 1.909461366243032,
+    z: -4.51832047983328,
     rotationY: -0.4217993877991494,
+  },
+  "covered-cat-litter-box-2": {
+    x: 2.816903381150222,
+    z: -3.7428912544515436,
+    rotationY: -0.6053981633974482,
   },
   "folding-laptop-radio-workstation": {
     x: 2.4082644104533757,
