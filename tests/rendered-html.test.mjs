@@ -160,6 +160,12 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(seatProgression, /workstation-seat-1-v1\.png/);
   assert.match(seatProgression, /workstation-seat-4-v1\.png/);
   assert.match(world3d, /WORKSTATION_PLACEMENT_SEATS/);
+  assert.match(
+    world3d,
+    /ambientPhase: "resting" \| "prewalking" \| "walking" \| "settling"/,
+  );
+  assert.match(world3d, /const isSecondaryAutonomous =/);
+  assert.match(world3d, /if \(!entry\.care && ambientAnimation !== "walk"\)/);
   assert.match(world3d, /spawnCollectibleShell/);
   assert.match(world3d, /amount: 1/);
   assert.doesNotMatch(world3d, /amount: 5/);

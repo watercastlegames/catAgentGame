@@ -4482,6 +4482,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
       careWaypoints: THREE.Vector3[];
       careLastTarget: THREE.Vector3;
       yaw: number;
+      ambientInitialized: boolean;
+      ambientPhase: "resting" | "prewalking" | "walking" | "settling";
+      ambientTimer: number;
+      ambientPointIndex: number;
+      ambientTarget: THREE.Vector3;
     };
     const secondaryAgents = new Map<string, SecondaryAgent>();
     let characterYaw = DEFAULT_CHARACTER_YAW;
@@ -4592,6 +4597,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
         careWaypoints: [],
         careLastTarget: root.position.clone(),
         yaw: DEFAULT_CHARACTER_YAW,
+        ambientInitialized: false,
+        ambientPhase: "resting",
+        ambientTimer: randomBetween(3.5, 7.5),
+        ambientPointIndex: -1,
+        ambientTarget: root.position.clone(),
       };
       scene.add(root);
       secondaryAgents.set(String(seat.seatId), entry);
@@ -4684,6 +4694,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
           entry.care = null;
           entry.careRetrySeconds = 0;
           entry.careWaypoints.length = 0;
+          entry.ambientInitialized = false;
         }
         if (seat.seatId !== "queue") entry.seatId = seat.seatId;
         entry.careRetrySeconds = Math.max(
@@ -4708,6 +4719,8 @@ float shoreOverlayWaterSignal( vec3 color ) {
               timer: 0,
               insideFacility: false,
             };
+            entry.ambientInitialized = false;
+            entry.careWaypoints.length = 0;
             enqueueCare(intent, entry.catId);
           }
         }
@@ -4802,6 +4815,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
             ) {
               entry.care = null;
               entry.careWaypoints.length = 0;
+              entry.ambientInitialized = false;
               careAnimation = "idle";
             }
           } else {
@@ -4855,8 +4869,102 @@ float shoreOverlayWaterSignal( vec3 color ) {
         entry.model.visible = !insideLitterBox;
         entry.shadow.visible = !insideLitterBox;
         if (entry.clickProxy) entry.clickProxy.visible = !insideLitterBox;
+        let ambientAnimation: string | null = null;
         if (!entry.care) {
-          entry.root.position.copy(homeTarget);
+          const isSecondaryAutonomous =
+            seat.seatId !== "queue" &&
+            !seat.blocked &&
+            AUTONOMOUS_STATUSES.has(seat.status);
+          if (!entry.ambientInitialized) {
+            entry.root.position.copy(homeTarget);
+            entry.ambientTarget.copy(homeTarget);
+            entry.careLastTarget.copy(homeTarget);
+            entry.careWaypoints.length = 0;
+            entry.ambientPhase = "resting";
+            entry.ambientTimer = randomBetween(3.5, 7.5) + index * 0.8;
+            entry.ambientInitialized = true;
+          }
+
+          if (!isSecondaryAutonomous) {
+            entry.root.position.copy(homeTarget);
+            entry.ambientTarget.copy(homeTarget);
+            entry.careLastTarget.copy(homeTarget);
+            entry.careWaypoints.length = 0;
+            entry.ambientPhase = "resting";
+            entry.ambientTimer = randomBetween(3.5, 7.5);
+            ambientAnimation = seat.status === "working" ? "work" : "idle";
+          } else if (entry.ambientPhase === "resting") {
+            entry.ambientTimer -= delta;
+            ambientAnimation =
+              (entry.ambientPointIndex + index) % 2 === 0 ? "idle" : "sit";
+            if (entry.ambientTimer <= 0) {
+              entry.ambientPhase = "prewalking";
+              entry.ambientTimer = randomBetween(0.65, 1.1);
+              ambientAnimation = "idle";
+            }
+          } else if (entry.ambientPhase === "prewalking") {
+            entry.ambientTimer -= delta;
+            ambientAnimation = "idle";
+            if (entry.ambientTimer <= 0) {
+              let nextPointIndex = entry.ambientPointIndex;
+              for (let attempt = 0; attempt < 8; attempt += 1) {
+                const candidateIndex = Math.floor(
+                  Math.random() * AMBIENT_WANDER_POINTS.length,
+                );
+                const candidate = AMBIENT_WANDER_POINTS[candidateIndex];
+                if (
+                  candidateIndex !== entry.ambientPointIndex &&
+                  entry.root.position.distanceTo(candidate) > 0.9
+                ) {
+                  nextPointIndex = candidateIndex;
+                  break;
+                }
+              }
+              if (nextPointIndex < 0) {
+                nextPointIndex =
+                  (index + 1) % AMBIENT_WANDER_POINTS.length;
+              }
+              entry.ambientPointIndex = nextPointIndex;
+              const spreadAngle =
+                (index / Math.max(1, desiredSeats.length)) * Math.PI * 2;
+              entry.ambientTarget
+                .copy(AMBIENT_WANDER_POINTS[nextPointIndex])
+                .add(
+                  new THREE.Vector3(
+                    Math.sin(spreadAngle) * 0.22,
+                    0,
+                    Math.cos(spreadAngle) * 0.22,
+                  ),
+                );
+              entry.careWaypoints.length = 0;
+              entry.careLastTarget.copy(entry.root.position);
+              entry.ambientPhase = "walking";
+              ambientAnimation = "walk";
+            }
+          } else if (entry.ambientPhase === "walking") {
+            ambientAnimation = "walk";
+            if (
+              moveSecondaryTowards(
+                entry,
+                entry.ambientTarget,
+                navigationObstacles,
+              )
+            ) {
+              entry.careWaypoints.length = 0;
+              entry.ambientPhase = "settling";
+              entry.ambientTimer = randomBetween(0.8, 1.4);
+              ambientAnimation = "idle";
+            }
+          } else {
+            entry.ambientTimer -= delta;
+            ambientAnimation = "idle";
+            if (entry.ambientTimer <= 0) {
+              entry.ambientPhase = "resting";
+              entry.ambientTimer = randomBetween(4.5, 9.5);
+              ambientAnimation =
+                (entry.ambientPointIndex + index) % 2 === 0 ? "sit" : "idle";
+            }
+          }
         }
         entry.marker.update(seat);
         entry.marker.beacon.visible = seat.blocked;
@@ -4873,19 +4981,16 @@ float shoreOverlayWaterSignal( vec3 color ) {
         );
         const nextKey =
           careAnimation ??
+          ambientAnimation ??
           (seat.blocked
             ? "sit"
-            : ["moving", "queued", "briefing", "reporting"].includes(
-                  seat.status,
-                )
-              ? "walk"
-              : seat.status === "working"
+            : seat.status === "working"
                 ? "work"
                 : "idle");
         setSecondaryAnimation(entry, nextKey);
-        if (!entry.care) {
+        if (!entry.care && ambientAnimation !== "walk") {
           entry.model.rotation.y =
-            nextKey === "walk" ? DEFAULT_CHARACTER_YAW + index * 0.2 : 0.25;
+            nextKey === "work" ? DEFAULT_CHARACTER_YAW + index * 0.2 : 0.25;
         }
         entry.mixer.update(delta);
       });
