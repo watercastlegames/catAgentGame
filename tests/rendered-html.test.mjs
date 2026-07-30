@@ -155,7 +155,10 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /hud-shell-v2\.png/);
   assert.match(page, /hud-sound-on-v2\.png/);
   assert.match(page, /hud-sound-off-v2\.png/);
-  assert.match(page, /className="world-currency-hud"/);
+  assert.match(page, /className=\{`world-currency-hud \$\{/);
+  assert.match(page, /grantAdministratorShells/);
+  assert.match(page, /current \+ 5/);
+  assert.match(page, /disabled=\{!layoutAdminEnabled\}/);
   assert.match(seatProgression, /agent-forest-active-seat-count-v1/);
   assert.match(seatProgression, /MAX_SEAT_COUNT = 4/);
   assert.match(seatProgression, /workstation-seat-1-v1\.png/);

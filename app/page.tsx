@@ -9,6 +9,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import AgentWorld3D, {
   type AgentWorldLocation,
@@ -128,6 +129,7 @@ import {
   type CompanionBackendId,
 } from "./companion-backends";
 import { submitPuterTask } from "./puter-companion";
+import { isWorldLayoutAdminHost } from "./world-object-layout.mjs";
 
 type Department = "general" | "coding" | "design" | "music";
 type AgentStatus =
@@ -474,6 +476,11 @@ export default function Home() {
   const [hudDormant, setHudDormant] = useState(false);
   const [completionSignal, setCompletionSignal] = useState(0);
   const [shells, setShells] = useState(0);
+  const layoutAdminEnabled = useSyncExternalStore(
+    () => () => {},
+    () => isWorldLayoutAdminHost(window.location.hostname),
+    () => false,
+  );
   const [activeSeatCount, setActiveSeatCount] = useState(1);
   const [shellCollectTokens, setShellCollectTokens] = useState<
     Array<{ id: number; x: number; y: number; amount: number }>
@@ -2344,6 +2351,18 @@ export default function Home() {
     [],
   );
 
+  const grantAdministratorShells = useCallback(() => {
+    if (!layoutAdminEnabled) return;
+    setShells((current) => {
+      const next = current + 5;
+      window.localStorage.setItem(SHELL_KEY, String(next));
+      return next;
+    });
+    setShellHudPulse((current) => current + 1);
+    worldAudioRef.current?.playUi("shellPickup");
+    setToast("관리자 조개 5개를 추가했어요.");
+  }, [layoutAdminEnabled]);
+
   async function selectSession(threadId: string) {
     setSelectedThreadId(threadId);
     window.localStorage.setItem(SELECTED_SESSION_KEY, threadId);
@@ -2771,14 +2790,28 @@ export default function Home() {
             onRadioClick={() => setRadioOpen(true)}
           />
 
-          <div
+          <button
+            type="button"
             key={`shell-hud-${shellHudPulse}`}
-            className="world-currency-hud"
-            aria-label={`조개 ${shells}개`}
+            className={`world-currency-hud ${
+              layoutAdminEnabled ? "is-admin" : ""
+            }`}
+            aria-label={
+              layoutAdminEnabled
+                ? `조개 ${shells}개, 관리자 조개 5개 추가`
+                : `조개 ${shells}개`
+            }
+            title={
+              layoutAdminEnabled
+                ? "관리자: 누를 때마다 조개 5개 추가"
+                : undefined
+            }
+            disabled={!layoutAdminEnabled}
+            onClick={grantAdministratorShells}
           >
             <img src="/art/ui/hud-shell-v2.png" alt="" aria-hidden="true" />
             <strong>{shells.toLocaleString("ko-KR")}</strong>
-          </div>
+          </button>
 
           {shellCollectTokens.map((token) => (
             <span

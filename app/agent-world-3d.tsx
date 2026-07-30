@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
@@ -25,8 +25,11 @@ import {
 } from "./litter-box-state.mjs";
 import { SketchOutlineEffect } from "./sketch-outline-effect";
 import {
+  CARE_FACILITY_LAYOUT_IDS,
   HARD_CODED_WORLD_OBJECT_LAYOUT,
+  MAX_CARE_FACILITY_COUNT,
   WORLD_OBJECT_LAYOUT_STORAGE_KEY,
+  countCareFacilities,
   isWorldLayoutAdminHost,
   parseWorldObjectLayout,
   transformObstacleBounds,
@@ -130,10 +133,11 @@ type CatCareRuntime = {
   phase: CatCarePhase;
   timer: number;
   insideFacility: boolean;
+  facilityIndex: number | null;
 };
 
 type CareFacilityState = {
-  occupant: string | null;
+  occupants: Array<string | null>;
   queue: string[];
 };
 
@@ -483,6 +487,7 @@ type WorldLayoutEditorRuntime = {
   rotateSelected: (radians: number) => void;
   resetSelected: () => void;
   saveLayout: () => void;
+  addCareFacility: (intent: CatCareIntent) => boolean;
 };
 
 const WORLD_OBJECT_ROTATION_STEP = THREE.MathUtils.degToRad(15);
@@ -2915,12 +2920,18 @@ export default function AgentWorld3D({
   const [ready, setReady] = useState(false);
   const [ambientLabel, setAmbientLabel] = useState("주변을 구경하는 중");
   const [layoutEditMode, setLayoutEditMode] = useState(false);
-  const [layoutAdminEnabled] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      isWorldLayoutAdminHost(window.location.hostname),
+  const layoutAdminEnabled = useSyncExternalStore(
+    () => () => {},
+    () => isWorldLayoutAdminHost(window.location.hostname),
+    () => false,
   );
   const [layoutSaveRevision, setLayoutSaveRevision] = useState(0);
+  const [careFacilityCounts, setCareFacilityCounts] = useState<
+    Record<CatCareIntent, number>
+  >({
+    food: 1,
+    toilet: 1,
+  });
   const [selectedLayoutObjectLabel, setSelectedLayoutObjectLabel] = useState<
     string | null
   >(null);
@@ -3122,10 +3133,21 @@ export default function AgentWorld3D({
         { ...obstacle } satisfies SceneObstacle,
       ]),
     );
+    const dynamicCareObstacleIds = new Set<string>();
     const runtimeObstacleFor = (obstacle: SceneObstacle) =>
       runtimeObstacleById.get(obstacle.id) ?? { ...obstacle };
-    const getRuntimeSceneObstacles = (seatCount: number) =>
-      getActiveSceneObstacles(seatCount).map(runtimeObstacleFor);
+    const getRuntimeSceneObstacles = (seatCount: number) => {
+      const obstacles = getActiveSceneObstacles(seatCount).map(
+        runtimeObstacleFor,
+      );
+      dynamicCareObstacleIds.forEach((id) => {
+        const obstacle = runtimeObstacleById.get(id);
+        if (obstacle && !obstacles.includes(obstacle)) {
+          obstacles.push(obstacle);
+        }
+      });
+      return obstacles;
+    };
     const deskObstacle = runtimeObstacleFor(DESK_OBSTACLE);
     const foodBowlObstacle = runtimeObstacleFor(FOOD_BOWL_OBSTACLE);
     const litterBoxObstacle = runtimeObstacleFor(LITTER_BOX_OBSTACLE);
@@ -3181,6 +3203,8 @@ export default function AgentWorld3D({
     }
 
     const editableWorldObjects = new Map<string, EditableWorldObject>();
+    let addCareFacilityInScene: (intent: CatCareIntent) => boolean =
+      () => false;
     let selectedEditableObject: EditableWorldObject | null = null;
     let layoutEditorEnabled = false;
     let objectDragPointerId: number | null = null;
@@ -3497,6 +3521,7 @@ export default function AgentWorld3D({
       rotateSelected: rotateSelectedEditableObject,
       resetSelected: resetSelectedEditableObject,
       saveLayout: saveCurrentWorldLayout,
+      addCareFacility: (intent) => addCareFacilityInScene(intent),
     };
 
     scene.add(new THREE.HemisphereLight(0xfff6dd, 0x536c49, 1.7));
@@ -3812,6 +3837,37 @@ float shoreOverlayWaterSignal( vec3 color ) {
     const meshyPropLoader = new GLTFLoader();
     meshyPropLoader.setMeshoptDecoder(MeshoptDecoder);
     let collectibleShellTemplate: THREE.Group | null = null;
+    type FoodBowlInstance = {
+      id: string;
+      group: THREE.Group;
+      obstacle: SceneObstacle;
+      approachPosition: THREE.Vector3;
+      waitPosition: THREE.Vector3;
+      emptyVisual: THREE.Object3D;
+      fullVisual: THREE.Object3D;
+      sparkles: Array<{
+        sprite: THREE.Sprite;
+        material: THREE.SpriteMaterial;
+        phase: number;
+      }>;
+    };
+    type LitterBoxInstance = {
+      id: string;
+      group: THREE.Group;
+      obstacle: SceneObstacle;
+      approachPosition: THREE.Vector3;
+      usePosition: THREE.Vector3;
+      waitPosition: THREE.Vector3;
+      gauge: ReturnType<typeof createLitterLevelGauge>;
+      odorParticles: Array<{
+        sprite: THREE.Sprite;
+        material: THREE.SpriteMaterial;
+        phase: number;
+        drift: number;
+      }>;
+    };
+    const foodBowlInstances: FoodBowlInstance[] = [];
+    const litterBoxInstances: LitterBoxInstance[] = [];
 
     const foodBowlGroup = new THREE.Group();
     foodBowlGroup.name = "cat-food-bowl-facility";
@@ -3885,34 +3941,35 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const tint = new THREE.Color(
         FOOD_PROFILES[nextGrade ?? "Basic"].tint,
       );
-      fullBowlVisual.traverse((object) => {
-        if (!(object instanceof THREE.Mesh)) return;
-        const materials = Array.isArray(object.material)
-          ? object.material
-          : [object.material];
-        materials.forEach((material) => {
-          if (
-            !(
-              material instanceof THREE.MeshStandardMaterial ||
-              material instanceof THREE.MeshPhysicalMaterial ||
-              material instanceof THREE.MeshBasicMaterial ||
-              material instanceof THREE.MeshToonMaterial
-            )
-          ) {
-            return;
-          }
-          const storedBase = material.userData.foodBaseColor;
-          if (typeof storedBase !== "number") {
-            material.userData.foodBaseColor = material.color.getHex();
-          }
-          material.color
-            .setHex(material.userData.foodBaseColor as number)
-            .multiply(tint);
-          material.needsUpdate = true;
+      foodBowlInstances.forEach((instance) => {
+        instance.fullVisual.traverse((object) => {
+          if (!(object instanceof THREE.Mesh)) return;
+          const materials = Array.isArray(object.material)
+            ? object.material
+            : [object.material];
+          materials.forEach((material) => {
+            if (
+              !(
+                material instanceof THREE.MeshStandardMaterial ||
+                material instanceof THREE.MeshPhysicalMaterial ||
+                material instanceof THREE.MeshBasicMaterial ||
+                material instanceof THREE.MeshToonMaterial
+              )
+            ) {
+              return;
+            }
+            const storedBase = material.userData.foodBaseColor;
+            if (typeof storedBase !== "number") {
+              material.userData.foodBaseColor = material.color.getHex();
+            }
+            material.color
+              .setHex(material.userData.foodBaseColor as number)
+              .multiply(tint);
+            material.needsUpdate = true;
+          });
         });
       });
     };
-    applyFoodGradeAppearance();
     scene.add(foodBowlGroup);
     clickableObjects.push(foodBowlProxy);
     registerEditableWorldObject({
@@ -3933,6 +3990,17 @@ float shoreOverlayWaterSignal( vec3 color ) {
         );
       },
     });
+    foodBowlInstances.push({
+      id: FOOD_BOWL_OBSTACLE.id,
+      group: foodBowlGroup,
+      obstacle: foodBowlObstacle,
+      approachPosition: foodBowlApproachPosition,
+      waitPosition: foodBowlWaitPosition,
+      emptyVisual: emptyBowlVisual,
+      fullVisual: fullBowlVisual,
+      sparkles: premiumFoodSparkles,
+    });
+    applyFoodGradeAppearance();
 
     const snackGroup = new THREE.Group();
     snackGroup.name = "placed-cat-snack";
@@ -4125,14 +4193,22 @@ float shoreOverlayWaterSignal( vec3 color ) {
         nextFull.name = "cat-food-bowl-full-meshy6";
         nextEmpty.scale.setScalar(FOOD_BOWL_RENDER_HEIGHT);
         nextFull.scale.setScalar(FOOD_BOWL_RENDER_HEIGHT);
-        foodBowlGroup.remove(emptyBowlVisual, fullBowlVisual);
-        emptyBowlVisual = nextEmpty;
-        fullBowlVisual = nextFull;
+        foodBowlInstances.forEach((instance, index) => {
+          const replacementEmpty =
+            index === 0 ? nextEmpty : nextEmpty.clone(true);
+          const replacementFull =
+            index === 0 ? nextFull : nextFull.clone(true);
+          instance.group.remove(instance.emptyVisual, instance.fullVisual);
+          instance.emptyVisual = replacementEmpty;
+          instance.fullVisual = replacementFull;
+          replacementEmpty.visible = !hasFoodAvailable();
+          replacementFull.visible = hasFoodAvailable();
+          instance.group.add(replacementEmpty, replacementFull);
+        });
+        emptyBowlVisual = foodBowlInstances[0].emptyVisual;
+        fullBowlVisual = foodBowlInstances[0].fullVisual;
         appliedFoodGrade = undefined;
         applyFoodGradeAppearance();
-        emptyBowlVisual.visible = !hasFoodAvailable();
-        fullBowlVisual.visible = hasFoodAvailable();
-        foodBowlGroup.add(emptyBowlVisual, fullBowlVisual);
       })
       .catch((error) => {
         console.warn("Cat food bowl models failed to load.", error);
@@ -4226,6 +4302,243 @@ float shoreOverlayWaterSignal( vec3 color ) {
         );
       },
     });
+    litterBoxInstances.push({
+      id: LITTER_BOX_OBSTACLE.id,
+      group: litterBoxGroup,
+      obstacle: litterBoxObstacle,
+      approachPosition: litterBoxApproachPosition,
+      usePosition: litterBoxUsePosition,
+      waitPosition: litterBoxWaitPosition,
+      gauge: litterLevelGauge,
+      odorParticles: litterOdorParticles,
+    });
+
+    const syncFoodBowlVisuals = () => {
+      const available = hasFoodAvailable();
+      foodBowlInstances.forEach((instance) => {
+        instance.fullVisual.visible = available;
+        instance.emptyVisual.visible = !available;
+      });
+    };
+    const syncLitterLevelGauges = () => {
+      litterBoxInstances.forEach((instance) => {
+        instance.gauge.update(
+          litterLevelRef.current,
+          litterMaxLevelRef.current,
+        );
+      });
+    };
+    const careFacilityCountsFromScene = () => ({
+      food: foodBowlInstances.length,
+      toilet: litterBoxInstances.length,
+    });
+    const publishCareFacilityCounts = () => {
+      const counts = careFacilityCountsFromScene();
+      host.dataset.careFacilityCounts = JSON.stringify(counts);
+      setCareFacilityCounts(counts);
+    };
+    const addSecondFoodBowl = (persist: boolean) => {
+      if (foodBowlInstances.length >= MAX_CARE_FACILITY_COUNT) return false;
+      const source = foodBowlInstances[0];
+      const id = CARE_FACILITY_LAYOUT_IDS.food[1];
+      const group = source.group.clone(true);
+      group.name = "cat-food-bowl-facility-2";
+      group.position.set(1.18, 0, -3.6);
+      group.rotation.y = 0.12;
+      const obstacle: SceneObstacle = {
+        id,
+        minX: group.position.x - 0.17,
+        maxX: group.position.x + 0.17,
+        minZ: group.position.z - 0.15,
+        maxZ: group.position.z + 0.15,
+      };
+      runtimeObstacleById.set(id, obstacle);
+      dynamicCareObstacleIds.add(id);
+      group.userData.isNavigationObstacle = true;
+      group.userData.collisionBounds = { ...obstacle };
+      const proxy = group.getObjectByProperty(
+        "name",
+        "food-bowl-click-proxy",
+      );
+      if (proxy) clickableObjects.push(proxy);
+      const emptyVisual =
+        group.getObjectByName(source.emptyVisual.name) ??
+        group.getObjectByName("cat-food-bowl-empty-fallback");
+      const fullVisual =
+        group.getObjectByName(source.fullVisual.name) ??
+        group.getObjectByName("cat-food-bowl-full-fallback");
+      if (!emptyVisual || !fullVisual) return false;
+      const sparkles: FoodBowlInstance["sparkles"] = [];
+      group.traverse((object) => {
+        if (
+          object instanceof THREE.Sprite &&
+          object.name.startsWith("premium-food-sparkle-")
+        ) {
+          object.material = object.material.clone();
+          const index = Number(object.name.split("-").at(-1) ?? 1) - 1;
+          sparkles.push({
+            sprite: object,
+            material: object.material,
+            phase: Math.max(0, index) * 1.7,
+          });
+        }
+      });
+      const baseApproach = new THREE.Vector3(
+        group.position.x + (FOOD_BOWL_APPROACH_POSITION.x - FOOD_BOWL_POSITION.x),
+        0,
+        group.position.z + (FOOD_BOWL_APPROACH_POSITION.z - FOOD_BOWL_POSITION.z),
+      );
+      const baseWait = new THREE.Vector3(
+        group.position.x + (FOOD_BOWL_WAIT_POSITION.x - FOOD_BOWL_POSITION.x),
+        0,
+        group.position.z + (FOOD_BOWL_WAIT_POSITION.z - FOOD_BOWL_POSITION.z),
+      );
+      const approachPosition = baseApproach.clone();
+      const waitPosition = baseWait.clone();
+      scene.add(group);
+      const entry = registerEditableWorldObject({
+        id,
+        label: "고양이 밥그릇 2",
+        object: group,
+        obstacle,
+        onTransform: (editable) => {
+          updateAnchoredVector(editable, baseApproach, approachPosition);
+          updateAnchoredVector(editable, baseWait, waitPosition);
+        },
+      });
+      foodBowlInstances.push({
+        id,
+        group,
+        obstacle,
+        approachPosition,
+        waitPosition,
+        emptyVisual,
+        fullVisual,
+        sparkles,
+      });
+      syncFoodBowlVisuals();
+      appliedFoodGrade = undefined;
+      applyFoodGradeAppearance();
+      if (persist) {
+        persistEditableObject(entry);
+        selectEditableObject(entry);
+      }
+      publishCareFacilityCounts();
+      return true;
+    };
+    const addSecondLitterBox = (persist: boolean) => {
+      if (litterBoxInstances.length >= MAX_CARE_FACILITY_COUNT) return false;
+      const source = litterBoxInstances[0];
+      const id = CARE_FACILITY_LAYOUT_IDS.toilet[1];
+      const group = source.group.clone(true);
+      group.name = "covered-cat-litter-box-facility-2";
+      group.position.set(3.45, 0, -3.62);
+      group.rotation.y = 0.18;
+      const obstacle: SceneObstacle = {
+        id,
+        minX: group.position.x - 0.55,
+        maxX: group.position.x + 0.55,
+        minZ: group.position.z - 0.5,
+        maxZ: group.position.z + 0.5,
+      };
+      runtimeObstacleById.set(id, obstacle);
+      dynamicCareObstacleIds.add(id);
+      group.userData.isNavigationObstacle = true;
+      group.userData.collisionBounds = { ...obstacle };
+      const proxy = group.getObjectByProperty(
+        "name",
+        "litter-box-click-proxy",
+      );
+      if (proxy) clickableObjects.push(proxy);
+      const gauge = createLitterLevelGauge(
+        litterLevelRef.current,
+        litterMaxLevelRef.current,
+      );
+      gauge.label.position.set(group.position.x, 1.12, group.position.z);
+      scene.add(gauge.label);
+      billboardObjects.push(gauge.label);
+      const odorParticles: LitterBoxInstance["odorParticles"] = [];
+      group.traverse((object) => {
+        if (
+          object instanceof THREE.Sprite &&
+          object.name.startsWith("litter-odor-particle-")
+        ) {
+          object.material = object.material.clone();
+          const index = Number(object.name.split("-").at(-1) ?? 1) - 1;
+          odorParticles.push({
+            sprite: object,
+            material: object.material,
+            phase: Math.max(0, index) / 7,
+            drift: index % 2 ? 1 : -1,
+          });
+        }
+      });
+      const baseApproach = new THREE.Vector3(
+        group.position.x + (LITTER_BOX_APPROACH_POSITION.x - LITTER_BOX_POSITION.x),
+        0,
+        group.position.z + (LITTER_BOX_APPROACH_POSITION.z - LITTER_BOX_POSITION.z),
+      );
+      const baseUse = new THREE.Vector3(group.position.x, 0, group.position.z + 0.08);
+      const baseWait = new THREE.Vector3(
+        group.position.x + (LITTER_BOX_WAIT_POSITION.x - LITTER_BOX_POSITION.x),
+        0,
+        group.position.z + (LITTER_BOX_WAIT_POSITION.z - LITTER_BOX_POSITION.z),
+      );
+      const approachPosition = baseApproach.clone();
+      const usePosition = baseUse.clone();
+      const waitPosition = baseWait.clone();
+      scene.add(group);
+      const entry = registerEditableWorldObject({
+        id,
+        label: "고양이 화장실 2",
+        object: group,
+        obstacle,
+        onTransform: (editable) => {
+          updateAnchoredVector(editable, baseApproach, approachPosition);
+          updateAnchoredVector(editable, baseUse, usePosition);
+          updateAnchoredVector(editable, baseWait, waitPosition);
+          gauge.label.position.set(
+            editable.object.position.x,
+            1.12,
+            editable.object.position.z,
+          );
+        },
+      });
+      litterBoxInstances.push({
+        id,
+        group,
+        obstacle,
+        approachPosition,
+        usePosition,
+        waitPosition,
+        gauge,
+        odorParticles,
+      });
+      syncLitterLevelGauges();
+      if (persist) {
+        persistEditableObject(entry);
+        selectEditableObject(entry);
+      }
+      publishCareFacilityCounts();
+      return true;
+    };
+    addCareFacilityInScene = (intent) =>
+      intent === "food"
+        ? addSecondFoodBowl(true)
+        : addSecondLitterBox(true);
+    if (
+      countCareFacilities(savedWorldLayout, "food") ===
+      MAX_CARE_FACILITY_COUNT
+    ) {
+      addSecondFoodBowl(false);
+    }
+    if (
+      countCareFacilities(savedWorldLayout, "toilet") ===
+      MAX_CARE_FACILITY_COUNT
+    ) {
+      addSecondLitterBox(false);
+    }
+    publishCareFacilityCounts();
 
     void Promise.allSettled([
       meshyPropLoader.loadAsync(PALM_TREE_MODEL_URL),
@@ -4977,31 +5290,86 @@ float shoreOverlayWaterSignal( vec3 color ) {
     let characterModel: THREE.Object3D | null = null;
     let loadedAnimationClips: THREE.AnimationClip[] = [];
     const careFacilities: Record<CatCareIntent, CareFacilityState> = {
-      food: { occupant: null, queue: [] },
-      toilet: { occupant: null, queue: [] },
+      food: {
+        occupants: Array.from(
+          { length: foodBowlInstances.length },
+          () => null,
+        ),
+        queue: [],
+      },
+      toilet: {
+        occupants: Array.from(
+          { length: litterBoxInstances.length },
+          () => null,
+        ),
+        queue: [],
+      },
+    };
+    const careInstanceCount = (intent: CatCareIntent) =>
+      intent === "food"
+        ? foodBowlInstances.length
+        : litterBoxInstances.length;
+    const syncCareFacilityCapacity = (intent: CatCareIntent) => {
+      const facility = careFacilities[intent];
+      while (facility.occupants.length < careInstanceCount(intent)) {
+        facility.occupants.push(null);
+      }
+      if (facility.occupants.length > careInstanceCount(intent)) {
+        facility.occupants.length = careInstanceCount(intent);
+      }
     };
     const litterIsFull = () =>
       isLitterBoxFull(
         litterLevelRef.current,
         litterMaxLevelRef.current,
       );
-    const careApproachPosition = (intent: CatCareIntent) =>
-      intent === "food"
-        ? foodBowlApproachPosition
-        : litterBoxUsePosition;
+    const claimableCareFacilityIndex = (
+      intent: CatCareIntent,
+      catId: string,
+    ) => {
+      syncCareFacilityCapacity(intent);
+      const facility = careFacilities[intent];
+      if (intent === "toilet" && litterIsFull()) return -1;
+      const occupiedIndex = facility.occupants.indexOf(catId);
+      if (occupiedIndex >= 0) return occupiedIndex;
+      if (facility.queue[0] !== catId) return -1;
+      return facility.occupants.findIndex((occupant) => occupant === null);
+    };
+    const careApproachPosition = (
+      intent: CatCareIntent,
+      facilityIndex: number,
+    ) => {
+      if (intent === "food") {
+        return (
+          foodBowlInstances[facilityIndex] ?? foodBowlInstances[0]
+        ).approachPosition;
+      }
+      return (
+        litterBoxInstances[facilityIndex] ?? litterBoxInstances[0]
+      ).usePosition;
+    };
     const careWaitPosition = (intent: CatCareIntent, catId: string) => {
       const facility = careFacilities[intent];
       const queueIndex = Math.max(0, facility.queue.indexOf(catId));
-      const base =
-        intent === "food" ? foodBowlWaitPosition : litterBoxWaitPosition;
+      const instances =
+        intent === "food" ? foodBowlInstances : litterBoxInstances;
+      const instance = instances[queueIndex % Math.max(1, instances.length)];
+      const base = instance?.waitPosition ??
+        (intent === "food" ? foodBowlWaitPosition : litterBoxWaitPosition);
       return base
         .clone()
-        .add(new THREE.Vector3(-queueIndex * 0.34, 0, queueIndex * 0.18));
+        .add(
+          new THREE.Vector3(
+            -Math.floor(queueIndex / Math.max(1, instances.length)) * 0.34,
+            0,
+            Math.floor(queueIndex / Math.max(1, instances.length)) * 0.18,
+          ),
+        );
     };
     const enqueueCare = (intent: CatCareIntent, catId: string) => {
       const facility = careFacilities[intent];
       if (
-        facility.occupant !== catId &&
+        !facility.occupants.includes(catId) &&
         !facility.queue.includes(catId)
       ) {
         facility.queue.push(catId);
@@ -5010,32 +5378,25 @@ float shoreOverlayWaterSignal( vec3 color ) {
     const leaveCareQueue = (intent: CatCareIntent, catId: string) => {
       const facility = careFacilities[intent];
       facility.queue = facility.queue.filter((queuedId) => queuedId !== catId);
-      if (facility.occupant === catId) facility.occupant = null;
-    };
-    const canClaimCareFacility = (
-      intent: CatCareIntent,
-      catId: string,
-    ) => {
-      const facility = careFacilities[intent];
-      if (intent === "toilet" && litterIsFull()) return false;
-      return (
-        facility.occupant === catId ||
-        (facility.occupant === null && facility.queue[0] === catId)
+      facility.occupants = facility.occupants.map((occupant) =>
+        occupant === catId ? null : occupant,
       );
     };
     const claimCareFacility = (intent: CatCareIntent, catId: string) => {
       const facility = careFacilities[intent];
-      if (facility.occupant === catId) return true;
-      if (facility.occupant !== null || facility.queue[0] !== catId) {
-        return false;
+      const index = claimableCareFacilityIndex(intent, catId);
+      if (index < 0) return null;
+      if (facility.occupants[index] !== catId) {
+        facility.queue.shift();
+        facility.occupants[index] = catId;
       }
-      facility.queue.shift();
-      facility.occupant = catId;
-      return true;
+      return index;
     };
     const releaseCareFacility = (intent: CatCareIntent, catId: string) => {
       const facility = careFacilities[intent];
-      if (facility.occupant === catId) facility.occupant = null;
+      facility.occupants = facility.occupants.map((occupant) =>
+        occupant === catId ? null : occupant,
+      );
     };
 
     type SecondaryAgent = {
@@ -5291,6 +5652,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
               phase: "approaching",
               timer: 0,
               insideFacility: false,
+              facilityIndex: null,
             };
             entry.ambientInitialized = false;
             entry.careWaypoints.length = 0;
@@ -5313,7 +5675,10 @@ float shoreOverlayWaterSignal( vec3 color ) {
         ).filter((obstacle) => obstacle !== ownObstacle);
         if (entry.care?.intent === "toilet") {
           navigationObstacles = navigationObstacles.filter(
-            (obstacle) => obstacle !== litterBoxObstacle,
+            (obstacle) =>
+              !litterBoxInstances.some(
+                (instance) => instance.obstacle === obstacle,
+              ),
           );
         }
 
@@ -5352,8 +5717,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
               releaseCareFacility(care.intent, entry.catId);
               if (care.intent === "food") {
                 foodAvailableRef.current = false;
-                fullBowlVisual.visible = false;
-                emptyBowlVisual.visible = true;
+                syncFoodBowlVisuals();
                 onCatCareEventRef.current?.({
                   catId: entry.catId,
                   seatId: entry.seatId,
@@ -5365,10 +5729,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
                   undefined,
                   litterMaxLevelRef.current,
                 );
-                litterLevelGauge.update(
-                  litterLevelRef.current,
-                  litterMaxLevelRef.current,
-                );
+                syncLitterLevelGauges();
                 onCatCareEventRef.current?.({
                   catId: entry.catId,
                   seatId: entry.seatId,
@@ -5397,12 +5758,13 @@ float shoreOverlayWaterSignal( vec3 color ) {
               careAnimation = "idle";
             }
           } else {
-            const mayClaim = canClaimCareFacility(
+            const claimableIndex = claimableCareFacilityIndex(
               care.intent,
               entry.catId,
             );
+            const mayClaim = claimableIndex >= 0;
             const target = mayClaim
-              ? careApproachPosition(care.intent)
+              ? careApproachPosition(care.intent, claimableIndex)
               : careWaitPosition(care.intent, entry.catId);
             care.phase = mayClaim ? "approaching" : "waiting";
             const arrived = moveSecondaryTowards(
@@ -5426,14 +5788,21 @@ float shoreOverlayWaterSignal( vec3 color ) {
                 care.phase = "recovering";
                 care.timer = CARE_RECOVERY_SECONDS * 1.8;
                 careAnimation = "sit";
-              } else if (claimCareFacility(care.intent, entry.catId)) {
-                care.phase = "using";
-                care.insideFacility = true;
-                care.timer =
-                  care.intent === "food"
-                    ? FOOD_USE_SECONDS
-                    : TOILET_USE_SECONDS;
-                careAnimation = care.intent === "food" ? "eat" : "sit";
+              } else {
+                const claimedIndex = claimCareFacility(
+                  care.intent,
+                  entry.catId,
+                );
+                if (claimedIndex !== null) {
+                  care.phase = "using";
+                  care.insideFacility = true;
+                  care.facilityIndex = claimedIndex;
+                  care.timer =
+                    care.intent === "food"
+                      ? FOOD_USE_SECONDS
+                      : TOILET_USE_SECONDS;
+                  careAnimation = care.intent === "food" ? "eat" : "sit";
+                }
               }
             }
           }
@@ -6041,7 +6410,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
           onFoodBowlClickRef.current?.();
         } else if (targetId === "litter-box") {
           litterLevelRef.current = 0;
-          litterLevelGauge.update(0);
+          syncLitterLevelGauges();
           onLitterBoxClickRef.current?.();
         } else if (targetId.startsWith("cat-seat-")) {
           const seatId = targetId.slice(4) as SeatId;
@@ -6110,10 +6479,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
           Number(seatId.slice(-1)) <= activeSeatCountRef.current;
       });
       syncWorkstationDecorGroups();
-      fullBowlVisual.visible = hasFoodAvailable();
-      emptyBowlVisual.visible = !hasFoodAvailable();
+      syncFoodBowlVisuals();
       applyFoodGradeAppearance();
-      premiumFoodSparkles.forEach(({ sprite, material, phase }) => {
+      foodBowlInstances
+        .flatMap((instance) => instance.sparkles)
+        .forEach(({ sprite, material, phase }) => {
         const premiumVisible =
           hasFoodAvailable() && foodGradeRef.current === "Premium";
         sprite.visible = premiumVisible;
@@ -6122,19 +6492,17 @@ float shoreOverlayWaterSignal( vec3 color ) {
         material.opacity = premiumVisible ? 0.28 + pulse * 0.72 : 0;
         sprite.position.y =
           0.14 + Math.floor(phase / 3) * 0.08 + pulse * 0.07;
-      });
-      litterLevelGauge.update(
-        litterLevelRef.current,
-        litterMaxLevelRef.current,
-      );
+        });
+      syncLitterLevelGauges();
       const litterRatio = THREE.MathUtils.clamp(
         litterLevelRef.current / litterMaxLevelRef.current,
         0,
         1,
       );
       const litterFull = litterIsFull();
-      litterOdorParticles.forEach(
-        ({ sprite, material, phase, drift }, index) => {
+      litterBoxInstances.forEach((instance) => {
+        instance.odorParticles.forEach(
+          ({ sprite, material, phase, drift }, index) => {
           const progress = (animationTime * 0.16 + phase) % 1;
           const visible = litterRatio > 0.01;
           sprite.visible = visible;
@@ -6156,8 +6524,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
             : 0;
           material.rotation =
             Math.sin(animationTime * 0.75 + phase * 8) * 0.2;
-        },
-      );
+          },
+        );
+      });
       radioClickProxy.visible =
         layoutEditorEnabled || activeSeatCountRef.current >= 4;
       radioLamp.visible =
@@ -6476,6 +6845,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
             phase: "approaching",
             timer: 0,
             insideFacility: false,
+            facilityIndex: null,
           };
           enqueueCare(intent, primaryCareCatId);
           ambientPhase = "resting";
@@ -6608,8 +6978,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
             if (care.intent === "food") {
               carePreviewConsumed = true;
               foodAvailableRef.current = false;
-              fullBowlVisual.visible = false;
-              emptyBowlVisual.visible = true;
+              syncFoodBowlVisuals();
               onCatCareEventRef.current?.({
                 catId: primaryCareCatId,
                 seatId: primaryCareSeatId,
@@ -6623,10 +6992,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
                 undefined,
                 litterMaxLevelRef.current,
               );
-              litterLevelGauge.update(
-                litterLevelRef.current,
-                litterMaxLevelRef.current,
-              );
+              syncLitterLevelGauges();
               onCatCareEventRef.current?.({
                 catId: primaryCareCatId,
                 seatId: primaryCareSeatId,
@@ -6650,12 +7016,13 @@ float shoreOverlayWaterSignal( vec3 color ) {
             setAmbientLabel("다시 해변을 돌아다닐 준비를 하는 중");
           }
         } else {
-          const mayClaim = canClaimCareFacility(
+          const claimableIndex = claimableCareFacilityIndex(
             care.intent,
             primaryCareCatId,
           );
+          const mayClaim = claimableIndex >= 0;
           const target = mayClaim
-            ? careApproachPosition(care.intent)
+            ? careApproachPosition(care.intent, claimableIndex)
             : careWaitPosition(care.intent, primaryCareCatId);
           care.phase = mayClaim ? "approaching" : "waiting";
           desiredPosition.copy(target);
@@ -6698,17 +7065,24 @@ float shoreOverlayWaterSignal( vec3 color ) {
               care.timer = CARE_RECOVERY_SECONDS * 1.8;
               playAnimation("sit", 0.24);
               setAmbientLabel("빈 밥그릇을 보고 야옹하는 중");
-            } else if (claimCareFacility(care.intent, primaryCareCatId)) {
-              care.phase = "using";
-              care.insideFacility = true;
-              care.timer =
-                care.intent === "food"
-                  ? FOOD_USE_SECONDS
-                  : TOILET_USE_SECONDS;
-              playAnimation(
-                care.intent === "food" ? "eat-drink" : "sit",
-                0.24,
+            } else {
+              const claimedIndex = claimCareFacility(
+                care.intent,
+                primaryCareCatId,
               );
+              if (claimedIndex !== null) {
+                care.phase = "using";
+                care.insideFacility = true;
+                care.facilityIndex = claimedIndex;
+                care.timer =
+                  care.intent === "food"
+                    ? FOOD_USE_SECONDS
+                    : TOILET_USE_SECONDS;
+                playAnimation(
+                  care.intent === "food" ? "eat-drink" : "sit",
+                  0.24,
+                );
+              }
             }
           }
         }
@@ -6872,7 +7246,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const ignoredInteractionObstacles = new Set<SceneObstacle>();
       if (wantsDeskInteraction) ignoredInteractionObstacles.add(deskObstacle);
       if (wantsLitterInteraction) {
-        ignoredInteractionObstacles.add(litterBoxObstacle);
+        litterBoxInstances.forEach((instance) => {
+          ignoredInteractionObstacles.add(instance.obstacle);
+        });
       }
       const navigationObstacles =
         ignoredInteractionObstacles.size > 0
@@ -7272,6 +7648,40 @@ float shoreOverlayWaterSignal( vec3 color ) {
             <strong>
               {selectedLayoutObjectLabel ?? "월드의 객체를 눌러주세요"}
             </strong>
+          </div>
+          <div
+            className="world-layout-care-actions"
+            role="group"
+            aria-label="고양이 생활 시설 추가"
+          >
+            <button
+              type="button"
+              disabled={
+                careFacilityCounts.food >= MAX_CARE_FACILITY_COUNT
+              }
+              onClick={() =>
+                layoutEditorRuntimeRef.current?.addCareFacility("food")
+              }
+            >
+              밥그릇 추가
+              <small>
+                {careFacilityCounts.food}/{MAX_CARE_FACILITY_COUNT}
+              </small>
+            </button>
+            <button
+              type="button"
+              disabled={
+                careFacilityCounts.toilet >= MAX_CARE_FACILITY_COUNT
+              }
+              onClick={() =>
+                layoutEditorRuntimeRef.current?.addCareFacility("toilet")
+              }
+            >
+              화장실 추가
+              <small>
+                {careFacilityCounts.toilet}/{MAX_CARE_FACILITY_COUNT}
+              </small>
+            </button>
           </div>
           <div className="world-layout-edit-actions">
             <button

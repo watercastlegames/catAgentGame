@@ -1,4 +1,12 @@
 export const WORLD_OBJECT_LAYOUT_STORAGE_KEY = "agent-forest-world-object-layout-v1";
+export const MAX_CARE_FACILITY_COUNT = 2;
+export const CARE_FACILITY_LAYOUT_IDS = Object.freeze({
+  food: Object.freeze(["cat-food-bowl", "cat-food-bowl-2"]),
+  toilet: Object.freeze([
+    "covered-cat-litter-box",
+    "covered-cat-litter-box-2",
+  ]),
+});
 
 // 관리자가 배치 저장 후 확정한 좌표는 이 객체에 반영한다.
 // 일반 사용자는 브라우저별 localStorage 대신 이 값을 공통 기본 배치로 사용한다.
@@ -155,6 +163,16 @@ export function parseWorldObjectLayout(raw) {
   } catch {
     return {};
   }
+}
+
+export function countCareFacilities(layout, intent) {
+  const ids = CARE_FACILITY_LAYOUT_IDS[intent];
+  if (!ids) return 0;
+
+  return Math.min(
+    MAX_CARE_FACILITY_COUNT,
+    1 + (layout && Object.hasOwn(layout, ids[1]) ? 1 : 0),
+  );
 }
 
 export function transformWorldPoint(basePoint, initialPose, currentPose) {

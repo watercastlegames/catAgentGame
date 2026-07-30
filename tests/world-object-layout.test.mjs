@@ -3,7 +3,10 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
+  CARE_FACILITY_LAYOUT_IDS,
   HARD_CODED_WORLD_OBJECT_LAYOUT,
+  MAX_CARE_FACILITY_COUNT,
+  countCareFacilities,
   isWorldLayoutAdminHost,
   parseWorldObjectLayout,
   transformObstacleBounds,
@@ -40,6 +43,37 @@ test("saved world layout accepts only finite transforms", () => {
     },
   );
   assert.deepEqual(parseWorldObjectLayout("{"), {});
+});
+
+test("care facilities restore one or two placed instances with a hard cap", () => {
+  assert.equal(MAX_CARE_FACILITY_COUNT, 2);
+  assert.deepEqual(CARE_FACILITY_LAYOUT_IDS.food, [
+    "cat-food-bowl",
+    "cat-food-bowl-2",
+  ]);
+  assert.equal(countCareFacilities({}, "food"), 1);
+  assert.equal(
+    countCareFacilities(
+      {
+        "cat-food-bowl-2": { x: 1.1, z: -3.6, rotationY: 0.12 },
+      },
+      "food",
+    ),
+    2,
+  );
+  assert.equal(
+    countCareFacilities(
+      {
+        "covered-cat-litter-box-2": {
+          x: 3.4,
+          z: -3.6,
+          rotationY: 0.18,
+        },
+      },
+      "toilet",
+    ),
+    2,
+  );
 });
 
 test("anchored interaction points follow object translation and yaw", () => {
@@ -82,5 +116,10 @@ test("administrator placement mode reveals and exports every object", async () =
   );
   assert.match(source, /host\.dataset\.savedWorldLayout/);
   assert.match(source, /saveLayout: saveCurrentWorldLayout/);
+  assert.match(source, /addCareFacility: \(intent\)/);
+  assert.match(source, /밥그릇 추가/);
+  assert.match(source, /화장실 추가/);
+  assert.match(source, /claimableCareFacilityIndex/);
+  assert.match(source, /facility\.occupants\.findIndex/);
   assert.match(source, /공통 기본 배치로 하드코딩합니다/);
 });
