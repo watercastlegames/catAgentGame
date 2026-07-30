@@ -150,3 +150,40 @@ test("buttons provide persistent pointer, keyboard, and reduced-motion feedback"
   assert.match(css, /@keyframes ui-close-button-press/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
 });
+
+test("popup secondary text keeps a readable minimum size", async () => {
+  const css = await readFile(
+    new URL("../app/globals.css", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(css, /Popup readability pass v5/);
+  assert.match(
+    css,
+    /\.radio-panel\.game-popup \.radio-hardware > span:nth-of-type\(2\)\s*\{[\s\S]*?font-size:\s*14px;/,
+  );
+  assert.match(
+    css,
+    /\.radio-panel\.game-popup \.cat-need-row em\s*\{[\s\S]*?font-size:\s*14px;/,
+  );
+  assert.match(
+    css,
+    /\.radio-panel\.game-popup \.desk-item-card small\s*\{[\s\S]*?font-size:\s*14px;/,
+  );
+  assert.match(
+    css,
+    /\.radio-panel\.game-popup \.companion-backend-card small\s*\{[\s\S]*?font-size:\s*14px;/,
+  );
+  assert.match(
+    css,
+    /\.radio-panel\.game-popup \.composer-meta\s*\{[\s\S]*?font-size:\s*14px;/,
+  );
+  assert.match(
+    css,
+    /\.radio-panel\.game-popup \.activity-log li small\s*\{[\s\S]*?font-size:\s*14px;/,
+  );
+  assert.match(
+    css,
+    /@media \(max-width:\s*420px\)\s*\{[\s\S]*?\.radio-panel\.game-popup \.food-grade-actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/,
+  );
+});
