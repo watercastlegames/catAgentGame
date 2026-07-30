@@ -84,7 +84,7 @@ test("laser play uses a six-use cap with 3, 2, and 1 happiness", () => {
   );
 });
 
-test("feather toy stays rewarding across all six daily plays", () => {
+test("feather toy uses its original six-play happiness balance", () => {
   const now = new Date(2026, 6, 30, 12).getTime();
   let log = {};
   const gains = [];
@@ -98,7 +98,7 @@ test("feather toy stays rewarding across all six daily plays", () => {
     log = completed.log;
     gains.push(completed.happinessGain);
   }
-  assert.deepEqual(gains, [8, 8, 5, 5, 3, 3]);
+  assert.deepEqual(gains, [5, 5, 3, 3, 1, 1]);
 });
 
 test("petting grants three happiness only once per ten minutes", () => {

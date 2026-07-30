@@ -4114,43 +4114,60 @@ float shoreOverlayWaterSignal( vec3 color ) {
     };
 
     const toyHuntGroup = new THREE.Group();
-    toyHuntGroup.name = "cat-toy-hunt";
+    toyHuntGroup.name = "cat-feather-lure";
     toyHuntGroup.visible = false;
-    const toyBallMaterial = new THREE.MeshToonMaterial({
-      color: 0xf4a56e,
+    const toyFeatherMaterials = [
+      new THREE.MeshToonMaterial({ color: 0x74aa91 }),
+      new THREE.MeshToonMaterial({ color: 0xf0b585 }),
+      new THREE.MeshToonMaterial({ color: 0xf5dfae }),
+    ];
+    const toyFeatherVeinMaterial = new THREE.MeshToonMaterial({
+      color: 0x8b695b,
     });
-    const toyFeatherMaterial = new THREE.MeshToonMaterial({
-      color: 0x76a991,
+    const toyFeatherKnotMaterial = new THREE.MeshToonMaterial({
+      color: 0x9bc8b3,
     });
-    for (const material of [toyBallMaterial, toyFeatherMaterial]) {
+    for (const material of [
+      ...toyFeatherMaterials,
+      toyFeatherVeinMaterial,
+      toyFeatherKnotMaterial,
+    ]) {
       material.userData.outlineParameters = {
         thickness: ILLUSTRATION_OUTLINE_THICKNESS,
         color: ILLUSTRATION_OUTLINE_COLOR.toArray(),
         alpha: ILLUSTRATION_OUTLINE_ALPHA,
       };
     }
-    const toyBall = new THREE.Mesh(
-      new THREE.SphereGeometry(0.115, 18, 12),
-      toyBallMaterial,
+    const toyFeatherKnot = new THREE.Mesh(
+      new THREE.SphereGeometry(0.042, 16, 10),
+      toyFeatherKnotMaterial,
     );
-    toyBall.position.y = 0.12;
-    toyHuntGroup.add(toyBall);
+    toyFeatherKnot.position.y = 0.08;
+    toyHuntGroup.add(toyFeatherKnot);
     for (let index = 0; index < 3; index += 1) {
       const feather = new THREE.Mesh(
-        new THREE.ConeGeometry(0.055, 0.22, 10),
-        toyFeatherMaterial,
+        new THREE.ConeGeometry(0.07, 0.32, 12),
+        toyFeatherMaterials[index],
       );
       feather.position.set(
-        (index - 1) * 0.055,
-        0.27 + Math.abs(index - 1) * 0.02,
+        (index - 1) * 0.072,
+        0.25 + Math.abs(index - 1) * 0.025,
         0,
       );
-      feather.rotation.z = (index - 1) * -0.34;
-      toyHuntGroup.add(feather);
+      feather.rotation.z = (index - 1) * -0.42;
+      const vein = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.009, 0.009, 0.25, 8),
+        toyFeatherVeinMaterial,
+      );
+      vein.position.copy(feather.position);
+      vein.position.y -= 0.01;
+      vein.rotation.z = feather.rotation.z;
+      toyHuntGroup.add(feather, vein);
     }
     scene.add(toyHuntGroup);
     const toyTarget = new THREE.Vector3();
     let toyActive = false;
+    let toyChaseElapsed = 0;
     let toyAttackElapsed = 0;
     let toyCatId = "";
     const startToyHuntFromPointer = (clientX: number, clientY: number) => {
@@ -4166,6 +4183,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       toyHuntGroup.position.copy(toyTarget);
       toyHuntGroup.visible = true;
       toyActive = true;
+      toyChaseElapsed = 0;
       toyAttackElapsed = 0;
       toyCatId =
         interactionCatIdRef.current ??
@@ -4178,6 +4196,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       if (!toyActive) return;
       const catId = toyCatId;
       toyActive = false;
+      toyChaseElapsed = 0;
       toyAttackElapsed = 0;
       toyCatId = "";
       toyHuntGroup.visible = false;
@@ -6105,8 +6124,10 @@ float shoreOverlayWaterSignal( vec3 color ) {
         animationActions.set(DESK_KNEADING_ANIMATION_KEY, kneadingAction);
 
         const toyAnimationClips = [
+          ["toy-run", "|Run_F", 0.92],
           ["toy-crouch", "|Crouch_idle", 0.96],
-          ["toy-pounce", "|Jump_place", 1.14],
+          ["toy-pounce", "|Jump_run", 1.05],
+          ["toy-grab", "|Attack_crouch", 1.48],
           ["toy-attack-left", "|Attack_Left", 1.08],
           ["toy-attack-right", "|Attack_Right", 1.08],
         ] as const;
@@ -6777,9 +6798,20 @@ float shoreOverlayWaterSignal( vec3 color ) {
         if (!isAutonomous || placementModeRef.current !== "toy") {
           resolveToyHunt(false);
         } else {
+          toyChaseElapsed += delta;
           const toyPulse = Math.sin(animationTime * 6.8) * 0.5 + 0.5;
-          toyHuntGroup.rotation.y += delta * 1.8;
-          toyHuntGroup.position.y = toyPulse * 0.035;
+          if (toyAttackElapsed <= 0) {
+            toyHuntGroup.position.x =
+              toyTarget.x + Math.sin(toyChaseElapsed * 3.1) * 0.16;
+            toyHuntGroup.position.z =
+              toyTarget.z + Math.cos(toyChaseElapsed * 2.55) * 0.11;
+          } else {
+            toyHuntGroup.position.x = toyTarget.x;
+            toyHuntGroup.position.z = toyTarget.z;
+          }
+          toyHuntGroup.position.y = 0.035 + toyPulse * 0.055;
+          toyHuntGroup.rotation.y = Math.sin(toyChaseElapsed * 4.2) * 0.32;
+          toyHuntGroup.rotation.z = Math.sin(toyChaseElapsed * 5.4) * 0.12;
         }
       }
 
@@ -6899,34 +6931,39 @@ float shoreOverlayWaterSignal( vec3 color ) {
           setAmbientLabel("레이저 점을 앞발로 잡아보는 중");
         }
       } else if (toyActive && isAutonomous) {
-        desiredPosition.copy(toyTarget);
-        movementSpeed = LASER_CHASE_MOVE_SPEED * 0.86;
-        const distance = currentPosition.distanceTo(toyTarget);
+        desiredPosition.copy(toyHuntGroup.position);
+        desiredPosition.y = 0;
+        movementSpeed = LASER_CHASE_MOVE_SPEED * 1.24;
+        const distance = currentPosition.distanceTo(desiredPosition);
         if (distance > CARE_ARRIVAL_DISTANCE * 1.7) {
           isMoving = true;
-          requestedWalkFadeSeconds = 0.18;
-          setAmbientLabel("깃털 장난감으로 달려가는 중");
+          requestedWalkFadeSeconds = null;
+          playAnimation("toy-run", 0.12);
+          setAmbientLabel("움직이는 깃털을 보고 신나게 뛰어가는 중");
         } else {
           desiredPosition.copy(currentPosition);
           isMoving = false;
           toyAttackElapsed += delta;
-          if (toyAttackElapsed < 0.55) {
+          if (toyAttackElapsed < 0.35) {
             playAnimation("toy-crouch", 0.14);
-            setAmbientLabel("깃털을 노리며 신나게 엉덩이를 흔드는 중");
-          } else if (toyAttackElapsed < 1.8) {
+            setAmbientLabel("깃털을 노리며 몸을 낮추는 중");
+          } else if (toyAttackElapsed < 1.7) {
             playAnimation("toy-pounce", 0.12);
-            setAmbientLabel("깃털 장난감으로 폴짝 뛰어드는 중");
-          } else if (toyAttackElapsed < 2.65) {
+            setAmbientLabel("달리던 힘으로 깃털에 폴짝 뛰어드는 중");
+          } else if (toyAttackElapsed < 2.95) {
+            playAnimation("toy-grab", 0.1);
+            setAmbientLabel("두 앞발로 깃털을 붙잡는 중");
+          } else if (toyAttackElapsed < 3.75) {
             playAnimation("toy-attack-left", 0.1);
             setAmbientLabel("왼발로 깃털을 잡으며 노는 중");
-          } else if (toyAttackElapsed < 3.5) {
+          } else if (toyAttackElapsed < 4.55) {
             playAnimation("toy-attack-right", 0.1);
             setAmbientLabel("오른발로 깃털을 잡으며 노는 중");
           } else {
             playAnimation("sit-play", 0.18);
             setAmbientLabel("깃털 장난감이 마음에 들어 골골거리는 중");
           }
-          if (toyAttackElapsed >= 4.25) {
+          if (toyAttackElapsed >= 5.05) {
             completionElapsed = 0;
             completionParticles.visible = true;
             playCompletionChime();

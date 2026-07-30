@@ -242,9 +242,9 @@ export function playHappinessGain(kind: PlayKind, nextCount: number) {
     if (nextCount <= 4) return 2;
     return 1;
   }
-  if (nextCount <= 2) return 8;
-  if (nextCount <= 4) return 5;
-  return 3;
+  if (nextCount <= 2) return 5;
+  if (nextCount <= 4) return 3;
+  return 1;
 }
 
 export function completePlay(
