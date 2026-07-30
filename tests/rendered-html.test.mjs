@@ -170,6 +170,12 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   );
   assert.match(world3d, /const isSecondaryAutonomous =/);
   assert.match(world3d, /if \(!entry\.care && ambientAnimation !== "walk"\)/);
+  assert.match(world3d, /interactionCatIdRef/);
+  assert.match(world3d, /"toy-crouch", "\|Crouch_idle"/);
+  assert.match(world3d, /"toy-pounce", "\|Jump_place"/);
+  assert.match(world3d, /"toy-attack-left", "\|Attack_Left"/);
+  assert.match(world3d, /"toy-attack-right", "\|Attack_Right"/);
+  assert.match(page, /interactionCatId=\{focusedCatId\}/);
   assert.match(world3d, /spawnCollectibleShell/);
   assert.match(world3d, /amount: 1/);
   assert.doesNotMatch(world3d, /amount: 5/);

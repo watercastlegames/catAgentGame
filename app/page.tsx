@@ -1612,7 +1612,8 @@ export default function Home() {
   );
 
   const beginLaserPlay = useCallback(() => {
-    const targetCat = seatViews[0];
+    const targetCat =
+      seatViews.find((seat) => seat.catId === focusedCatId) ?? seatViews[0];
     if (!targetCat || !AUTONOMOUS_AGENT_STATUSES.has(targetCat.status as AgentStatus)) {
       worldAudioRef.current?.playUi("purchaseFail");
       setToast("작업 중인 고양이는 방해하지 않아요. 쉬는 시간에 놀아 주세요.");
@@ -1641,7 +1642,7 @@ export default function Home() {
     setToast(
       `월드 바닥을 누른 채 움직여 주세요. ${LASER_DURATION_MS / 1_000}초 동안 고양이가 레이저를 쫓아요.`,
     );
-  }, [seatViews, worldPlacementMode]);
+  }, [focusedCatId, seatViews, worldPlacementMode]);
 
   const resolveLaserPlay = useCallback(
     ({ catId, completed }: { catId: string; completed: boolean }) => {
@@ -1676,7 +1677,8 @@ export default function Home() {
   );
 
   const beginToyHunt = useCallback(() => {
-    const targetCat = seatViews[0];
+    const targetCat =
+      seatViews.find((seat) => seat.catId === focusedCatId) ?? seatViews[0];
     if (
       !targetCat ||
       !AUTONOMOUS_AGENT_STATUSES.has(targetCat.status as AgentStatus)
@@ -1705,8 +1707,9 @@ export default function Home() {
     setWorldPlacementMode("toy");
     setRadioOpen(false);
     worldAudioRef.current?.playUi("itemEquip");
+    worldAudioRef.current?.playCat("greet");
     setToast("해변 바닥을 눌러 깃털 장난감을 던져 주세요.");
-  }, [seatViews, worldPlacementMode]);
+  }, [focusedCatId, seatViews, worldPlacementMode]);
 
   const resolveToyHunt = useCallback(
     ({ catId, completed }: { catId: string; completed: boolean }) => {
@@ -2762,6 +2765,7 @@ export default function Home() {
               worldShellDaily.count < WORLD_SHELL_DAILY_CAP
             }
             placementMode={worldPlacementMode}
+            interactionCatId={focusedCatId}
             snackPlacement={snackPlacement}
             onWorldPlacement={placeWorldInteraction}
             onSnackResolved={resolveSnackPlacement}

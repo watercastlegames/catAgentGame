@@ -88,6 +88,7 @@ type AgentWorld3DProps = {
   }) => void;
   worldShellSpawningEnabled: boolean;
   placementMode: WorldPlacementMode;
+  interactionCatId?: string;
   snackPlacement: SnackPlacement | null;
   onWorldPlacement?: (position: { x: number; z: number }) => void;
   onSnackResolved?: (event: {
@@ -2871,6 +2872,7 @@ export default function AgentWorld3D({
   onShellCollect,
   worldShellSpawningEnabled,
   placementMode,
+  interactionCatId,
   snackPlacement,
   onWorldPlacement,
   onSnackResolved,
@@ -2903,6 +2905,7 @@ export default function AgentWorld3D({
   const onShellCollectRef = useRef(onShellCollect);
   const worldShellSpawningEnabledRef = useRef(worldShellSpawningEnabled);
   const placementModeRef = useRef<WorldPlacementMode>(placementMode);
+  const interactionCatIdRef = useRef(interactionCatId);
   const snackPlacementRef = useRef<SnackPlacement | null>(snackPlacement);
   const onWorldPlacementRef = useRef(onWorldPlacement);
   const onSnackResolvedRef = useRef(onSnackResolved);
@@ -2955,6 +2958,7 @@ export default function AgentWorld3D({
     onShellCollectRef.current = onShellCollect;
     worldShellSpawningEnabledRef.current = worldShellSpawningEnabled;
     placementModeRef.current = placementMode;
+    interactionCatIdRef.current = interactionCatId;
     snackPlacementRef.current = snackPlacement;
     onWorldPlacementRef.current = onWorldPlacement;
     onSnackResolvedRef.current = onSnackResolved;
@@ -2978,6 +2982,7 @@ export default function AgentWorld3D({
     onShellCollect,
     worldShellSpawningEnabled,
     placementMode,
+    interactionCatId,
     snackPlacement,
     onWorldPlacement,
     onSnackResolved,
@@ -4162,7 +4167,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
       toyHuntGroup.visible = true;
       toyActive = true;
       toyAttackElapsed = 0;
-      toyCatId = (seatsRef.current[0] ?? DEFAULT_SEAT_VIEW).catId;
+      toyCatId =
+        interactionCatIdRef.current ??
+        (seatsRef.current[0] ?? DEFAULT_SEAT_VIEW).catId;
       avoidanceWaypoints.length = 0;
       setAmbientLabel("깃털 장난감을 발견했어요");
       return true;
@@ -6097,14 +6104,21 @@ float shoreOverlayWaterSignal( vec3 color ) {
         kneadingAction.timeScale = 0.92;
         animationActions.set(DESK_KNEADING_ANIMATION_KEY, kneadingAction);
 
-        const toyAttackClip = animationSource.animations.find((candidate) =>
-          candidate.name.endsWith("|Attack_Left"),
-        );
-        if (toyAttackClip) {
-          const toyAttackAction = mixer.clipAction(toyAttackClip);
-          toyAttackAction.setLoop(THREE.LoopRepeat, Infinity);
-          toyAttackAction.timeScale = 1.12;
-          animationActions.set("toy-attack", toyAttackAction);
+        const toyAnimationClips = [
+          ["toy-crouch", "|Crouch_idle", 0.96],
+          ["toy-pounce", "|Jump_place", 1.14],
+          ["toy-attack-left", "|Attack_Left", 1.08],
+          ["toy-attack-right", "|Attack_Right", 1.08],
+        ] as const;
+        for (const [key, suffix, timeScale] of toyAnimationClips) {
+          const clip = animationSource.animations.find((candidate) =>
+            candidate.name.endsWith(suffix),
+          );
+          if (!clip) continue;
+          const action = mixer.clipAction(clip);
+          action.setLoop(THREE.LoopRepeat, Infinity);
+          action.timeScale = timeScale;
+          animationActions.set(key, action);
         }
 
         playAnimation("idle-look", 0);
@@ -6732,7 +6746,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       ) {
         laserActive = true;
         laserElapsed = 0;
-        laserCatId = primaryView.catId;
+        laserCatId = interactionCatIdRef.current ?? primaryView.catId;
         laserTarget.copy(currentPosition);
         laserTarget.x = THREE.MathUtils.clamp(laserTarget.x + 0.65, -3.7, 3.7);
         laserPointerGroup.position.copy(laserTarget);
@@ -6774,7 +6788,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
         activeSnackId = requestedSnack.id;
         activeSnackTimer = 5;
         activeSnackEatingTimer = 0;
-        activeSnackCatId = primaryView.catId;
+        activeSnackCatId = interactionCatIdRef.current ?? primaryView.catId;
         activeSnackPhase = "approaching";
         snackTarget.set(requestedSnack.x, 0, requestedSnack.z);
         snackGroup.position.copy(snackTarget);
@@ -6896,14 +6910,31 @@ float shoreOverlayWaterSignal( vec3 color ) {
           desiredPosition.copy(currentPosition);
           isMoving = false;
           toyAttackElapsed += delta;
-          playAnimation("toy-attack", 0.16);
-          setAmbientLabel("깃털 장난감을 톡톡 사냥하는 중");
-          if (toyAttackElapsed >= 3.2) {
+          if (toyAttackElapsed < 0.55) {
+            playAnimation("toy-crouch", 0.14);
+            setAmbientLabel("깃털을 노리며 신나게 엉덩이를 흔드는 중");
+          } else if (toyAttackElapsed < 1.8) {
+            playAnimation("toy-pounce", 0.12);
+            setAmbientLabel("깃털 장난감으로 폴짝 뛰어드는 중");
+          } else if (toyAttackElapsed < 2.65) {
+            playAnimation("toy-attack-left", 0.1);
+            setAmbientLabel("왼발로 깃털을 잡으며 노는 중");
+          } else if (toyAttackElapsed < 3.5) {
+            playAnimation("toy-attack-right", 0.1);
+            setAmbientLabel("오른발로 깃털을 잡으며 노는 중");
+          } else {
+            playAnimation("sit-play", 0.18);
+            setAmbientLabel("깃털 장난감이 마음에 들어 골골거리는 중");
+          }
+          if (toyAttackElapsed >= 4.25) {
+            completionElapsed = 0;
+            completionParticles.visible = true;
+            playCompletionChime();
             resolveToyHunt(true);
             ambientPhase = "resting";
             ambientTimer = randomBetween(1.8, 2.8);
             playAnimation("sit-play", 0.22);
-            setAmbientLabel("사냥 놀이를 마치고 쉬는 중");
+            setAmbientLabel("신나게 놀고 만족해서 골골거리는 중");
           }
         }
       } else if (activeSnackPhase !== "none" && isAutonomous) {
