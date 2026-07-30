@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent Forest · 전체 팝업 UI 품질 검수</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #5f4c44;
+        --muted: #8b766a;
+        --paper: #fff8e8;
+        --paper-2: #f6e8c8;
+        --line: #8a6657;
+        --mint: #8ed0b8;
+        --mint-deep: #4f8a76;
+        --coral: #e99b8e;
+        --shadow: 0 20px 55px rgba(87, 60, 49, 0.18);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: #dcebe0;
+      }
+
+      body {
+        margin: 0;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at 8% 10%, rgba(255, 255, 255, 0.68), transparent 24rem),
+          linear-gradient(145deg, #d8eee7 0%, #f5edcf 55%, #d5e7db 100%);
+        font-family: "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+      }
+
+      header,
+      main,
+      footer {
+        width: min(1440px, calc(100% - 32px));
+        margin-inline: auto;
+      }
+
+      header {
+        padding: 56px 0 30px;
+      }
+
+      .eyebrow {
+        margin: 0 0 10px;
+        color: var(--mint-deep);
+        font-size: 13px;
+        font-weight: 900;
+        letter-spacing: 0.16em;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin-top: 0;
+      }
+
+      h1 {
+        max-width: 900px;
+        margin-bottom: 12px;
+        font-size: clamp(34px, 5vw, 70px);
+        line-height: 1.05;
+        letter-spacing: -0.055em;
+      }
+
+      header > p:last-child {
+        max-width: 820px;
+        color: var(--muted);
+        font-size: 17px;
+        line-height: 1.65;
+      }
+
+      .summary {
+        display: grid;
+        margin-bottom: 26px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .summary article,
+      .panel {
+        border: 1px solid rgba(138, 102, 87, 0.26);
+        border-radius: 22px;
+        background: rgba(255, 248, 232, 0.88);
+        box-shadow: var(--shadow);
+      }
+
+      .summary article {
+        min-height: 130px;
+        padding: 22px;
+      }
+
+      .summary strong {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--mint-deep);
+        font-size: 34px;
+      }
+
+      .summary span {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .panel {
+        margin-bottom: 26px;
+        padding: clamp(20px, 4vw, 42px);
+      }
+
+      .panel-head {
+        display: flex;
+        margin-bottom: 20px;
+        align-items: end;
+        justify-content: space-between;
+        gap: 14px;
+      }
+
+      .panel-head h2 {
+        margin-bottom: 0;
+        font-size: clamp(24px, 3.5vw, 42px);
+        letter-spacing: -0.04em;
+      }
+
+      .panel-head p {
+        margin-bottom: 2px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        overflow: hidden;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.42);
+      }
+
+      th,
+      td {
+        padding: 13px 14px;
+        border-bottom: 1px solid rgba(138, 102, 87, 0.16);
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      th {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      td {
+        font-size: 14px;
+      }
+
+      .pass {
+        color: #2e775f;
+        font-weight: 900;
+      }
+
+      .gallery {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .gallery.mobile {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      figure {
+        margin: 0;
+        overflow: hidden;
+        border: 1px solid rgba(138, 102, 87, 0.25);
+        border-radius: 18px;
+        background: #edf2e8;
+      }
+
+      figure img {
+        display: block;
+        width: 100%;
+        height: auto;
+        background: #d9e9df;
+      }
+
+      figcaption {
+        display: flex;
+        min-height: 58px;
+        padding: 12px 14px;
+        align-items: center;
+        justify-content: space-between;
+        background: var(--paper);
+        gap: 8px;
+      }
+
+      figcaption strong {
+        font-size: 13px;
+      }
+
+      figcaption span {
+        flex: none;
+        padding: 4px 8px;
+        border-radius: 999px;
+        color: #2e775f;
+        background: #d8eee5;
+        font-size: 11px;
+        font-weight: 900;
+      }
+
+      .compare-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .compare-card {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        overflow: hidden;
+        border: 1px solid rgba(138, 102, 87, 0.24);
+        border-radius: 18px;
+        background: var(--paper);
+      }
+
+      .compare-card div {
+        min-width: 0;
+      }
+
+      .compare-card img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .compare-card b {
+        display: block;
+        padding: 9px 12px;
+        color: var(--muted);
+        font-size: 11px;
+        text-align: center;
+      }
+
+      .notes {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .notes article {
+        padding: 18px 20px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.44);
+      }
+
+      .notes h3 {
+        margin-bottom: 7px;
+        font-size: 17px;
+      }
+
+      .notes p {
+        margin-bottom: 0;
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      footer {
+        padding: 0 0 48px;
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
+      }
+
+      @media (max-width: 1000px) {
+        .summary,
+        .gallery,
+        .gallery.mobile {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .compare-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-width: 640px) {
+        header,
+        main,
+        footer {
+          width: min(100% - 20px, 1440px);
+        }
+
+        header {
+          padding-top: 34px;
+        }
+
+        .summary,
+        .gallery,
+        .gallery.mobile,
+        .notes {
+          grid-template-columns: 1fr;
+        }
+
+        .panel {
+          padding: 18px 14px;
+          border-radius: 16px;
+        }
+
+        .panel-head {
+          display: block;
+        }
+
+        .panel-head p {
+          margin-top: 8px;
+        }
+
+        .table-wrap {
+          overflow-x: auto;
+        }
+
+        table {
+          min-width: 720px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <p class="eyebrow">AGENT FOREST · POPUP UI QA · 2026-07-30</p>
+      <h1>전체 팝업을 하나의 그림 언어로 통일했습니다.</h1>
+      <p>
+        캔버스 내부 고정, 손그림 9-slice 프레임, 큰 닫기 버튼, 실제 고양이
+        스타일 미리보기, PC·모바일 한 화면 배치를 기준으로 12개 화면을
+        다시 검수한 결과입니다.
+      </p>
+    </header>
+
+    <main>
+      <section class="summary" aria-label="검수 요약">
+        <article><strong>13</strong><span>검수 완료 화면 및 모달</span></article>
+        <article><strong>25</strong><span>PC·모바일 최종 캡처</span></article>
+        <article><strong>100%</strong><span>캔버스 내부 팝업 유지</span></article>
+        <article><strong>PASS</strong><span>잘림·겹침·긴 제목 회귀 확인</span></article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>화면 정의 및 완료 상태</h2>
+          <p>S01은 팝업이 없는 월드 기본 화면이므로 본 전수표에서 제외</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>화면</th>
+                <th>정의</th>
+                <th>핵심 개선</th>
+                <th>PC</th>
+                <th>모바일</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>S00</td><td>첫 연결 온보딩</td><td>실제 고양이 이미지, 3단계 안내, 긴 제목 한 줄</td><td class="pass">PASS</td><td class="pass">PASS</td></tr>
+              <tr><td>S02</td><td>고양이 목록</td><td>목록·추가 버튼 전체 폭, 욕구 그래프 노출</td><td class="pass">PASS</td><td class="pass">PASS</td></tr>
+              <tr><td>S03</td><td>고양이 상세</td><td>배고픔·배설·행복도 그래프, 이미지형 털색 카드</td><td class="pass">PASS</td><td class="pass">PASS</td></tr>
+              <tr><td>S03-A</td><td>털색 구매 모달</td><td>실제 털색 고양이 미리보기, 가격·보유 조개</td><td class="pass">PASS</td><td class="pass">PASS</td></tr>
+              <tr><td>S04</td><td>자리 꾸미기</td><td>4개 자리 카드, 2열 배치, 진행 그래프</td><td class="pass">PASS</td><td class="pass">PASS</td></tr>
+              <tr><td>S05</td><td>자리 구매 모달</td><td>자리 이미지, 가격·보유 잔액, 구매 상태</td><td class="pass">PASS</td><td class="pass">PASS</td></tr>
+              <tr><td>S06</td><td>PC 세션 연결</td><td>설치 편지·연결 코드 입력을 이미지 패널화</td><td class="pass">PASS</td><td class="pass">PASS</td></tr>
+              <tr><td>S07</td><td>업무 지시</td><td>부서 탭·입력창·두 실행 버튼 한 화면</td><td class="pass">PASS</td><td class="pass">PASS</td></tr>
+              <tr><td>S08</td><td>진행 상태</td><td>빈 상태 이미지 카드와 무료 꾸미기 항상 노출</td><td class="pass">PASS</td><td class="pass">PASS</td></tr>
+              <tr><td>S09</td><td>활동 기록</td><td>독립 스크롤, 기록 삭제·법적 링크 하단 고정</td><td class="pass">PASS</td><td class="pass">PASS</td></tr>
+              <tr><td>S10</td><td>승인 요청</td><td>요청 내용 카드, 2+1 승인 버튼 배치</td><td class="pass">PASS</td><td class="pass">PASS</td></tr>
+              <tr><td>S11</td><td>연결 오류</td><td>오류 이미지·설명·복구 버튼·꾸미기 동시 노출</td><td class="pass">PASS</td><td class="pass">PASS</td></tr>
+              <tr><td>S12</td><td>PC 연결 해제</td><td>경고 이미지, 영향 설명, 유지·해제 이중 확인</td><td class="pass">PASS</td><td class="pass">PASS</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>PC 최종 화면</h2>
+          <p>900 × 1000 검수 뷰</p>
+        </div>
+        <div class="gallery">
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-pc-onboarding.png" alt="PC 첫 연결 온보딩" /><figcaption><strong>S00 첫 연결</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-pc-cat-list.png" alt="PC 고양이 목록" /><figcaption><strong>S02 고양이 목록</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-pc-cat-detail.png" alt="PC 고양이 상세" /><figcaption><strong>S03 고양이 상세</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-pc-style-purchase-modal.png" alt="PC 털색 구매" /><figcaption><strong>S03-A 털색 구매</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-pc-desk.png" alt="PC 자리 꾸미기" /><figcaption><strong>S04 자리 꾸미기</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-pc-seat-unlock-modal.png" alt="PC 자리 구매" /><figcaption><strong>S05 자리 구매</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-pc-work-connect.png" alt="PC 연결" /><figcaption><strong>S06 PC 연결</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-pc-work-task-final.png" alt="PC 업무 지시" /><figcaption><strong>S07 업무 지시</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-pc-status.png" alt="PC 진행 상태" /><figcaption><strong>S08 진행 상태</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-pc-log.png" alt="PC 활동 기록" /><figcaption><strong>S09 활동 기록</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-pc-approval.png" alt="PC 승인 요청" /><figcaption><strong>S10 승인 요청</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-pc-error.png" alt="PC 연결 오류" /><figcaption><strong>S11 연결 오류</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-pc-disconnect-modal.png" alt="PC 연결 해제" /><figcaption><strong>S12 연결 해제</strong><span>PASS</span></figcaption></figure>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>모바일 최종 화면</h2>
+          <p>390 × 844 실제 반응형 검수</p>
+        </div>
+        <div class="gallery mobile">
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-mobile-onboarding.png" alt="모바일 첫 연결" /><figcaption><strong>S00 첫 연결</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-mobile-cat-list.png" alt="모바일 고양이 목록" /><figcaption><strong>S02 고양이 목록</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-mobile-cat-detail.png" alt="모바일 고양이 상세" /><figcaption><strong>S03 고양이 상세</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-mobile-style-purchase-modal.png" alt="모바일 털색 구매" /><figcaption><strong>S03-A 털색 구매</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-mobile-desk.png" alt="모바일 자리 꾸미기" /><figcaption><strong>S04 자리 꾸미기</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-mobile-seat-unlock-modal.png" alt="모바일 자리 구매" /><figcaption><strong>S05 자리 구매</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-mobile-work-connect.png" alt="모바일 PC 연결" /><figcaption><strong>S06 PC 연결</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-mobile-work-task.png" alt="모바일 업무 지시" /><figcaption><strong>S07 업무 지시</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-mobile-status.png" alt="모바일 진행 상태" /><figcaption><strong>S08 진행 상태</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-mobile-log.png" alt="모바일 활동 기록" /><figcaption><strong>S09 활동 기록</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-mobile-approval.png" alt="모바일 승인 요청" /><figcaption><strong>S10 승인 요청</strong><span>PASS</span></figcaption></figure>
+          <figure><img src="qa-assets/popup-ui-all-20260730/after-mobile-disconnect-modal.png" alt="모바일 연결 해제" /><figcaption><strong>S12 연결 해제</strong><span>PASS</span></figcaption></figure>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>대표 전·후 비교</h2>
+          <p>기존 늘어난 배경 이미지에서 9-slice 프레임으로 전환</p>
+        </div>
+        <div class="compare-grid">
+          <article class="compare-card">
+            <div><img src="qa-assets/popup-ui-all-20260730/baseline-pc-desk.png" alt="자리 꾸미기 개선 전" /><b>개선 전</b></div>
+            <div><img src="qa-assets/popup-ui-all-20260730/after-pc-desk.png" alt="자리 꾸미기 개선 후" /><b>개선 후</b></div>
+          </article>
+          <article class="compare-card">
+            <div><img src="qa-assets/popup-ui-all-20260730/baseline-pc-work-task.png" alt="업무 지시 개선 전" /><b>개선 전</b></div>
+            <div><img src="qa-assets/popup-ui-all-20260730/after-pc-work-task-final.png" alt="업무 지시 개선 후" /><b>개선 후</b></div>
+          </article>
+          <article class="compare-card">
+            <div><img src="qa-assets/popup-ui-all-20260730/baseline-pc-log.png" alt="활동 기록 개선 전" /><b>개선 전</b></div>
+            <div><img src="qa-assets/popup-ui-all-20260730/after-pc-log.png" alt="활동 기록 개선 후" /><b>개선 후</b></div>
+          </article>
+          <article class="compare-card">
+            <div><img src="qa-assets/popup-ui-all-20260730/baseline-pc-style-purchase-modal.png" alt="털색 구매 개선 전" /><b>개선 전</b></div>
+            <div><img src="qa-assets/popup-ui-all-20260730/after-pc-style-purchase-modal.png" alt="털색 구매 개선 후" /><b>개선 후</b></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>검수 결론</h2></div>
+        <div class="notes">
+          <article><h3>그림형 UI 통일</h3><p>반복 카드와 입력 면은 단순 CSS 박스가 아니라 기존 손그림 PNG를 9-slice로 사용해 모서리와 선 굵기를 유지했습니다.</p></article>
+          <article><h3>정보의 중심 정렬</h3><p>팝업 제목, 닫기 버튼, 가격·잔액, 주요 실행 버튼을 같은 시각적 축에 맞추고 긴 모바일 제목도 한 줄로 안정화했습니다.</p></article>
+          <article><h3>한 화면 우선</h3><p>업무 입력 두 버튼, 활동 기록 하단 링크, 진행 상태 꾸미기 영역처럼 사용자가 반드시 봐야 하는 요소는 팝업 내부에서 잘리지 않게 재배치했습니다.</p></article>
+          <article><h3>실제 이미지 미리보기</h3><p>털색 구매와 온보딩은 임시 발바닥 아이콘 대신 실제 적용될 고양이 스타일 이미지를 표시해 구매 결과를 예측할 수 있게 했습니다.</p></article>
+        </div>
+      </section>
+    </main>
+
+    <footer>Agent Forest · Popup UI full-screen quality report · 2026-07-30</footer>
+  </body>
+</html>

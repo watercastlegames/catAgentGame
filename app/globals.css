@@ -5605,6 +5605,575 @@ button {
   background-size: contain;
 }
 
+/*
+ * Popup quality pass v4 — every popup now uses the same native image pieces.
+ * Repeated cards and controls use 9-slice borders so their hand-drawn corners
+ * stay round instead of stretching into heavy or jagged outlines.
+ */
+.radio-screen.has-tabs::after {
+  top: 62px;
+  box-sizing: border-box;
+  border: 14px solid transparent;
+  border-radius: 17px;
+  background: none;
+  border-image: url("/art/ui/slices/panel-card-v2.png") 42 fill / 14px stretch;
+  box-shadow: none;
+}
+
+.radio-screen.has-tabs > .panel-section,
+.radio-screen.has-tabs > .radio-subtabs + .panel-section {
+  max-height: calc(100% - 56px);
+  padding-inline: 12px;
+  scrollbar-color: rgba(174, 141, 118, 0.72) transparent;
+  scrollbar-width: thin;
+}
+
+.radio-screen.has-tabs > .panel-section::-webkit-scrollbar,
+.activity-log ol::-webkit-scrollbar {
+  width: 7px;
+}
+
+.radio-screen.has-tabs > .panel-section::-webkit-scrollbar-thumb,
+.activity-log ol::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(174, 141, 118, 0.74);
+  background-clip: padding-box;
+}
+
+.radio-screen.has-tabs > .panel-section::-webkit-scrollbar-track,
+.activity-log ol::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.radio-subtabs,
+.desk-seat-tabs {
+  margin-bottom: 9px;
+  gap: 7px;
+}
+
+.radio-subtabs button,
+.desk-seat-tabs button {
+  filter: drop-shadow(0 2px 0 rgba(102, 74, 63, 0.16));
+}
+
+.radio-subtabs button.selected,
+.desk-seat-tabs button.selected {
+  filter: drop-shadow(0 2px 0 rgba(82, 105, 88, 0.17));
+}
+
+.desk-panel {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+.desk-tier-summary,
+.desk-safety-note,
+.style-purchase-balance,
+.onboarding-copy ol,
+.free-decor {
+  box-sizing: border-box;
+  border: 11px solid transparent;
+  border-radius: 13px;
+  background: none;
+  border-image: url("/art/ui/slices/panel-strip-v2.png") 32 46 fill / 11px
+    15px stretch;
+}
+
+.desk-tier-summary {
+  padding: 7px 10px 9px;
+}
+
+.desk-item-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cat-list-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.cat-list-card,
+.radio-panel .cat-add-button {
+  width: 100%;
+}
+
+.desk-item-card,
+.session-list > button,
+.activity-log li,
+.task-agent {
+  box-sizing: border-box;
+  border: 12px solid transparent;
+  border-radius: 15px;
+  background: none;
+  border-image: url("/art/ui/slices/card-default-v2.png") 38 46 fill / 12px
+    15px stretch;
+  box-shadow: none;
+}
+
+.desk-item-card.equipped,
+.session-list > button.selected {
+  background: none;
+  border-image-source: url("/art/ui/slices/card-selected-v2.png");
+}
+
+.desk-item-card {
+  min-height: 134px;
+  padding: 1px 3px 5px;
+  gap: 2px;
+}
+
+.desk-item-preview {
+  min-height: 62px;
+  background-size: contain;
+  mix-blend-mode: multiply;
+}
+
+.desk-item-card strong {
+  font-size: 15px;
+}
+
+.desk-item-card small {
+  min-height: 22px;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.desk-item-card em {
+  margin-top: 1px;
+  padding: 3px 9px 5px;
+  font-size: 13px;
+}
+
+.desk-item-card.locked {
+  filter: grayscale(0.44);
+  opacity: 0.62;
+}
+
+.desk-item-card.locked.next-seat {
+  filter: none;
+  opacity: 1;
+}
+
+.desk-safety-note {
+  margin-top: 9px;
+  padding: 5px 11px 7px;
+  color: #79665c;
+  font-size: 11px;
+  text-align: center;
+}
+
+.install-letter,
+.selected-session-line,
+.result-preview,
+.approval-command,
+.approval-detail,
+.ui-empty-state {
+  box-sizing: border-box;
+  border: 14px solid transparent;
+  background: none;
+  border-image: url("/art/ui/slices/panel-card-v2.png") 42 fill / 14px stretch;
+}
+
+.install-letter {
+  padding: 18px 20px 19px;
+}
+
+.install-letter strong {
+  font-family: "Gaegu", "Gowun Dodum", sans-serif;
+  font-size: 20px;
+}
+
+.install-letter p {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.install-letter button {
+  min-height: 42px;
+  padding-inline: 16px;
+  border: 10px solid transparent;
+  background: none;
+  border-image: url("/art/ui/slices/button-primary-v2.png") 30 42 fill / 10px
+    14px stretch;
+  font-family: "Gaegu", sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.pairing-form {
+  margin-top: 12px;
+}
+
+.pairing-controls input,
+.task-composer textarea {
+  box-sizing: border-box;
+  border: 13px solid transparent;
+  border-radius: 14px;
+  background: none;
+  border-image: url("/art/ui/slices/panel-card-v2.png") 42 fill / 13px stretch;
+  outline: none;
+}
+
+.pairing-controls input:focus,
+.task-composer textarea:focus {
+  filter: drop-shadow(0 0 4px rgba(82, 120, 100, 0.28));
+}
+
+.selected-session-line {
+  min-height: 42px;
+  padding: 6px 11px;
+}
+
+.department-tabs {
+  gap: 7px;
+}
+
+.department-tabs button {
+  min-height: 42px;
+  padding-block: 5px;
+}
+
+.task-composer .section-heading {
+  margin-bottom: 4px;
+}
+
+.task-composer textarea {
+  height: 92px;
+  min-height: 92px;
+}
+
+.task-composer form {
+  gap: 3px;
+}
+
+.task-composer .run-button,
+.task-composer .simulate-button {
+  min-height: 43px;
+}
+
+.department-tabs button,
+.free-decor button,
+.game-button,
+.radio-panel .run-button,
+.radio-panel .simulate-button,
+.radio-panel .pairing-controls button,
+.radio-panel .session-actions button,
+.radio-panel .cat-add-button,
+.radio-panel .interrupt-button,
+.radio-panel .clear-history,
+.approval-actions button {
+  box-sizing: border-box;
+  border: 10px solid transparent;
+  border-radius: 13px;
+  background: none;
+  border-image: url("/art/ui/slices/button-secondary-v2.png") 30 42 fill / 10px
+    14px stretch;
+}
+
+.game-button.primary,
+.radio-panel .run-button,
+.radio-panel .pairing-controls button,
+.radio-panel .cat-add-button,
+.approval-actions .approve,
+.department-tabs button.selected,
+.free-decor button.selected {
+  background: none;
+  border-image-source: url("/art/ui/slices/button-primary-v2.png");
+}
+
+.game-button.danger,
+.radio-panel .session-actions .session-disconnect,
+.radio-panel .interrupt-button,
+.radio-panel .clear-history,
+.approval-actions .reject {
+  background: none;
+  border-image-source: url("/art/ui/slices/button-danger-v2.png");
+}
+
+.game-button:disabled,
+.radio-panel button:disabled {
+  background: none;
+  border-image-source: url("/art/ui/slices/button-disabled-v2.png");
+}
+
+.task-agent {
+  padding: 3px 7px;
+}
+
+.result-preview {
+  padding: 13px 16px;
+}
+
+.free-decor {
+  margin-top: 10px;
+  padding: 7px 9px;
+}
+
+.radio-screen.has-tabs .ui-empty-state {
+  min-height: 260px;
+  padding: 20px 28px;
+}
+
+.radio-screen.has-tabs .ui-empty-icon {
+  width: 66px;
+  height: 66px;
+}
+
+.activity-log {
+  display: grid;
+  min-height: 0 !important;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  overflow: hidden !important;
+}
+
+.activity-log .section-heading {
+  margin-bottom: 7px;
+}
+
+.activity-log ol {
+  display: grid;
+  min-height: 0;
+  padding: 1px 3px 2px 0;
+  align-content: start;
+  overflow-x: hidden;
+  overflow-y: auto;
+  gap: 6px;
+}
+
+.activity-log li {
+  min-height: 58px;
+  padding: 4px 9px 5px;
+  grid-template-columns: 8px minmax(0, 1fr);
+}
+
+.activity-log li strong {
+  font-size: 16px;
+}
+
+.activity-log li small {
+  font-size: 10px;
+}
+
+.activity-log .clear-history {
+  width: 100%;
+  min-height: 43px;
+  margin-top: 7px;
+  font-size: 14px;
+}
+
+.legal-links {
+  flex-wrap: nowrap;
+  margin-top: 5px;
+  justify-content: center;
+  gap: 4px 9px;
+}
+
+.legal-links a {
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.style-purchase-modal:not(.onboarding-modal):not(.seat-unlock-modal) {
+  min-height: 68%;
+}
+
+.style-purchase-copy {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+}
+
+.important-confirm-modal .style-purchase-copy {
+  min-height: 460px;
+  justify-content: center;
+}
+
+.style-purchase-cat-preview {
+  display: block;
+  width: min(58%, 190px);
+  height: 170px;
+  margin: -8px auto 5px;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+  transform: scale(1.12);
+}
+
+.style-purchase-balance {
+  width: 100%;
+  padding: 8px 10px 10px;
+}
+
+.onboarding-cat {
+  width: 150px;
+  height: 150px;
+  background: url("/art/ui/cat-styles/cat-style-blue-v1.png") center 56% / 132%
+    auto no-repeat;
+  mix-blend-mode: multiply;
+}
+
+.onboarding-copy ol {
+  padding: 8px 12px 10px;
+}
+
+.desk-purchase-preview.workstation-unlock-preview {
+  min-height: 218px;
+  background-color: transparent;
+  background-position: center;
+  background-size: contain;
+  mix-blend-mode: multiply;
+}
+
+.approval-modal {
+  min-height: 68%;
+  overflow: hidden;
+}
+
+.approval-copy {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.approval-command,
+.approval-detail {
+  padding: 10px 13px;
+}
+
+.approval-actions {
+  margin-top: auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.approval-actions .reject {
+  grid-column: 1 / -1;
+}
+
+.approval-actions button {
+  min-height: 50px;
+  padding-inline: 11px;
+  font-size: 17px;
+  white-space: nowrap;
+}
+
+@media (max-width: 820px) {
+  .radio-screen.has-tabs::after {
+    top: 56px;
+  }
+
+  .radio-screen.has-tabs > .panel-section,
+  .radio-screen.has-tabs > .radio-subtabs + .panel-section {
+    max-height: calc(100% - 50px);
+    padding-inline: 9px;
+  }
+
+  .desk-item-card {
+    min-height: 132px;
+  }
+
+  .desk-item-preview {
+    min-height: 60px;
+  }
+
+  .style-purchase-cat-preview {
+    height: 148px;
+  }
+
+  .legal-links a {
+    font-size: 8px;
+  }
+}
+
+@media (max-width: 420px) {
+  .style-purchase-title,
+  .approval-dialog-title {
+    left: 12%;
+    width: 65%;
+    height: 62px;
+    padding-inline: 7px;
+    font-size: 20px;
+    line-height: 0.96;
+    text-wrap: balance;
+  }
+
+  .radio-screen.has-tabs::after {
+    top: 52px;
+    border-width: 12px;
+    border-image-width: 12px;
+  }
+
+  .radio-screen.has-tabs > .panel-section,
+  .radio-screen.has-tabs > .radio-subtabs + .panel-section {
+    max-height: calc(100% - 46px);
+    padding-inline: 7px;
+  }
+
+  .desk-item-grid {
+    gap: 7px;
+  }
+
+  .desk-item-card {
+    min-height: 126px;
+    border-width: 10px;
+    border-image-width: 10px 13px;
+  }
+
+  .desk-item-preview {
+    min-height: 56px;
+  }
+
+  .desk-item-card strong {
+    font-size: 15px;
+  }
+
+  .activity-log li {
+    min-height: 54px;
+  }
+
+  .radio-screen.has-tabs .ui-empty-state {
+    min-height: 232px;
+    padding: 16px 20px;
+  }
+
+  .activity-log li strong {
+    font-size: 15px;
+  }
+
+  .style-purchase-modal:not(.onboarding-modal):not(.seat-unlock-modal) {
+    min-height: 72%;
+  }
+
+  .style-purchase-cat-preview {
+    width: 65%;
+    height: 132px;
+  }
+
+  .onboarding-cat {
+    width: 126px;
+    height: 126px;
+  }
+
+  .approval-modal {
+    min-height: 72%;
+  }
+
+  .approval-actions button {
+    font-size: 15px;
+  }
+
+  .important-confirm-modal .style-purchase-copy {
+    min-height: 430px;
+  }
+}
+
 @media (max-width: 540px) {
   .desk-purchase-preview.workstation-unlock-preview {
     min-height: 180px;

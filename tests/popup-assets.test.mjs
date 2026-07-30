@@ -63,10 +63,26 @@ test("popup quality pass uses clean slices and real cat appearance captures", as
   );
   assert.match(page, /className="cat-style-preview"/);
   assert.match(page, /catStylePreviewUrl\(style\.id\)/);
+  assert.match(page, /className="style-purchase-cat-preview"/);
+  assert.match(page, /catStylePreviewUrl\(pendingCatStyle\)/);
+  assert.match(page, /uiPreview === "s12"/);
+  assert.match(page, /setConfirmDialog\(\{ kind: "disconnect" \}\)/);
   assert.match(
     css,
     /border-image:\s*url\("\/art\/ui\/popup-frame-v1\.png"\)\s*58 fill/,
   );
   assert.match(css, /close-button-round-v3\.png/);
   assert.match(css, /\.need-track b\s*\{[\s\S]*?position:\s*absolute/);
+  assert.match(
+    css,
+    /\.cat-list-grid\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\)/,
+  );
+  assert.match(
+    css,
+    /\.task-composer textarea\s*\{[\s\S]*?height:\s*92px;[\s\S]*?min-height:\s*92px;/,
+  );
+  assert.match(
+    css,
+    /\.style-purchase-title,[\s\S]*?width:\s*65%;[\s\S]*?font-size:\s*20px;/,
+  );
 });

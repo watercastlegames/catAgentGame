@@ -1297,6 +1297,10 @@ export default function Home() {
       } else if (uiPreview === "s11") {
         setRadioPage("status-log");
         setStatusLogTab("status");
+      } else if (uiPreview === "s12") {
+        setRadioPage("work");
+        setWorkTab("connect");
+        setConfirmDialog({ kind: "disconnect" });
       }
     });
     return () => {
@@ -2827,6 +2831,13 @@ export default function Home() {
               닫기
             </button>
             <div className="style-purchase-copy">
+              <img
+                className="style-purchase-cat-preview"
+                src={catStylePreviewUrl(pendingCatStyle)}
+                alt=""
+                aria-hidden="true"
+                draggable={false}
+              />
               <strong>{pendingCatStyle}</strong>
               <p>
                 처음 한 번만 구매하면 이후에는 조개 없이 다시 적용할 수
