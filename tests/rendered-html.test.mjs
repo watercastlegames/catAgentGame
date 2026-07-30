@@ -588,8 +588,44 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /purchaseSecondFoodBowl/);
   assert.match(page, /foodBowlCount=\{foodBowlCount\}/);
   assert.match(page, /litterBoxCount=\{litterBoxCount\}/);
-  assert.match(page, /밥그릇 2호기 구매/);
-  assert.match(page, /화장실 2호기 구매/);
+  assert.match(page, /className="world-facility-shop"/);
+  assert.match(page, /aria-label="월드 생활 시설 구매"/);
+  assert.match(page, /onClick=\{buySecondFoodBowl\}/);
+  assert.match(page, /onClick=\{upgradeLitterFacility\}/);
+  const deskPanelIndex = page.indexOf(
+    'className="panel-section desk-panel"',
+  );
+  const deskSeatGridIndex = page.indexOf(
+    'className="desk-item-grid" role="group" aria-label="자리 객체"',
+  );
+  const facilityShopIndex = page.indexOf(
+    'className="world-facility-shop"',
+  );
+  const seatDecorHeadingIndex = page.indexOf(
+    '자리 {(selectedSeat ?? "seat-1").slice(-1)} 소품',
+  );
+  assert.ok(deskPanelIndex >= 0);
+  assert.ok(deskSeatGridIndex > deskPanelIndex);
+  assert.ok(facilityShopIndex > deskSeatGridIndex);
+  assert.ok(seatDecorHeadingIndex > facilityShopIndex);
+  assert.equal(
+    page.slice(0, deskPanelIndex).includes("onClick={buySecondFoodBowl}"),
+    false,
+  );
+  assert.equal(
+    page
+      .slice(0, deskPanelIndex)
+      .includes("onClick={upgradeLitterFacility}"),
+    false,
+  );
+  assert.match(
+    css,
+    /\.world-facility-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2/,
+  );
+  assert.match(
+    css,
+    /\.world-facility-card\s*\{[\s\S]*?border-image:\s*url\("\/art\/ui\/slices\/card-default-v2\.png"\)/,
+  );
   assert.match(page, /litterLevel=\{litterLevel\}/);
   assert.match(page, /onLitterBoxClick=\{cleanLitterFacility\}/);
   assert.match(world3d, /outcome: "toilet-blocked"/);

@@ -3325,7 +3325,7 @@ export default function Home() {
                       );
                     })}
                   </div>
-                  <div className="cat-care-actions">
+                  <div className="cat-care-actions care-play-actions">
                     <button
                       type="button"
                       className="game-button primary"
@@ -3354,30 +3354,6 @@ export default function Home() {
                         오늘 {playLog[focusedCatId]?.toy?.count ?? 0}/
                         {PLAY_DAILY_CAP_PER_CAT}회
                       </small>
-                    </button>
-                    <button
-                      type="button"
-                      className="game-button secondary"
-                      disabled={
-                        foodBowlCount >= MAX_OWNED_FOOD_BOWL_COUNT
-                      }
-                      onClick={buySecondFoodBowl}
-                    >
-                      {foodBowlCount >= MAX_OWNED_FOOD_BOWL_COUNT
-                        ? "밥그릇 2개 보유"
-                        : `밥그릇 2호기 구매 · ${FOOD_BOWL_2_PRICE} 조개`}
-                    </button>
-                    <button
-                      type="button"
-                      className="game-button secondary"
-                      disabled={litterTier >= 3}
-                      onClick={upgradeLitterFacility}
-                    >
-                      {litterTier >= 3
-                        ? "화장실 최대 확장"
-                        : litterTier === 1
-                          ? `화장실 2호기 구매 · ${LITTER_TIER_PRICE[2]} 조개`
-                          : `화장실 용량 3단계 확장 · ${LITTER_TIER_PRICE[3]} 조개`}
                     </button>
                   </div>
                     </>
@@ -3484,6 +3460,67 @@ export default function Home() {
                     );
                   })}
                 </div>
+                <section
+                  className="world-facility-shop"
+                  aria-labelledby="world-facility-shop-title"
+                >
+                  <div className="decor-catalog-heading">
+                    <strong id="world-facility-shop-title">
+                      월드 생활 시설
+                    </strong>
+                    <small>
+                      기본 1개 제공 · 추가 시설은 구매 후 월드에 배치돼요.
+                    </small>
+                  </div>
+                  <div
+                    className="world-facility-grid"
+                    role="group"
+                    aria-label="월드 생활 시설 구매"
+                  >
+                    <article className="world-facility-card">
+                      <div>
+                        <strong>밥그릇</strong>
+                        <small>식사 대기 중인 고양이를 나눠 받아요.</small>
+                      </div>
+                      <em>
+                        {foodBowlCount}/{MAX_OWNED_FOOD_BOWL_COUNT}
+                      </em>
+                      <button
+                        type="button"
+                        className="game-button secondary"
+                        disabled={
+                          foodBowlCount >= MAX_OWNED_FOOD_BOWL_COUNT
+                        }
+                        onClick={buySecondFoodBowl}
+                      >
+                        {foodBowlCount >= MAX_OWNED_FOOD_BOWL_COUNT
+                          ? "2개 보유"
+                          : `2호기 구매 · ${FOOD_BOWL_2_PRICE} 조개`}
+                      </button>
+                    </article>
+                    <article className="world-facility-card">
+                      <div>
+                        <strong>고양이 화장실</strong>
+                        <small>
+                          두 번째 시설을 추가하고 이후 공용 용량을 확장해요.
+                        </small>
+                      </div>
+                      <em>{litterBoxCount}/2</em>
+                      <button
+                        type="button"
+                        className="game-button secondary"
+                        disabled={litterTier >= 3}
+                        onClick={upgradeLitterFacility}
+                      >
+                        {litterTier >= 3
+                          ? "최대 확장"
+                          : litterTier === 1
+                            ? `2호기 구매 · ${LITTER_TIER_PRICE[2]} 조개`
+                            : `용량 3단계 · ${LITTER_TIER_PRICE[3]} 조개`}
+                      </button>
+                    </article>
+                  </div>
+                </section>
                 <div className="decor-catalog-heading">
                   <strong>
                     자리 {(selectedSeat ?? "seat-1").slice(-1)} 소품

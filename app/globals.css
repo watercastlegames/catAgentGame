@@ -6007,6 +6007,79 @@ button {
   padding: 7px 10px 9px;
 }
 
+.care-play-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.world-facility-shop {
+  margin-top: 13px;
+}
+
+.world-facility-shop > .decor-catalog-heading {
+  margin-top: 0;
+}
+
+.world-facility-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.world-facility-card {
+  display: grid;
+  min-width: 0;
+  box-sizing: border-box;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  padding: 8px 10px 10px;
+  border: 12px solid transparent;
+  border-radius: 15px;
+  color: #694f43;
+  background: none;
+  border-image: url("/art/ui/slices/card-default-v2.png") 38 46 fill / 12px
+    15px stretch;
+  gap: 4px 9px;
+}
+
+.world-facility-card > div {
+  display: grid;
+  gap: 2px;
+}
+
+.world-facility-card strong {
+  font-family: "Gaegu", sans-serif;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.world-facility-card small {
+  color: #806f64;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.world-facility-card > em {
+  min-width: 42px;
+  padding: 3px 8px 5px;
+  border-radius: 999px;
+  color: #6d5345;
+  background: rgba(239, 210, 157, 0.55);
+  font-family: "Gaegu", sans-serif;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 900;
+  text-align: center;
+}
+
+.world-facility-card > .game-button {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 46px;
+  margin-top: 3px;
+  font-size: 16px;
+}
+
 .desk-item-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
@@ -6590,6 +6663,14 @@ button {
     min-height: 60px;
   }
 
+  .care-play-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .care-play-actions > :last-child {
+    grid-column: 1 / -1;
+  }
+
   .style-purchase-cat-preview {
     height: 148px;
   }
@@ -6627,6 +6708,16 @@ button {
 
   .desk-item-grid {
     gap: 7px;
+  }
+
+  .world-facility-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+  }
+
+  .world-facility-card {
+    border-width: 10px;
+    border-image-width: 10px 13px;
   }
 
   .desk-item-card {
