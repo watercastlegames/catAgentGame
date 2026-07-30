@@ -3296,21 +3296,39 @@ export default function Home() {
                     <>
                   <div className="care-facility-summary">
                     <span>
-                      <strong>
-                        밥그릇 {foodBowlCount}/{MAX_OWNED_FOOD_BOWL_COUNT}
-                      </strong>
-                      <small>
-                        {foodBowlState.grade
-                          ? `${FOOD_PROFILES[foodBowlState.grade].label} · ${foodBowlState.portionsRemaining}/${FOOD_PORTIONS_PER_FILL}인분`
-                          : "비어 있음"}
-                      </small>
+                      <img
+                        className="care-facility-icon"
+                        src="/art/ui/care-v1/care-food-bowl-v1.png"
+                        alt=""
+                        aria-hidden="true"
+                        draggable={false}
+                      />
+                      <span className="care-facility-copy">
+                        <strong>
+                          밥그릇 {foodBowlCount}/{MAX_OWNED_FOOD_BOWL_COUNT}
+                        </strong>
+                        <small>
+                          {foodBowlState.grade
+                            ? `${FOOD_PROFILES[foodBowlState.grade].label} · ${foodBowlState.portionsRemaining}/${FOOD_PORTIONS_PER_FILL}인분`
+                            : "비어 있음"}
+                        </small>
+                      </span>
                     </span>
                     <span>
-                      <strong>화장실 {litterBoxCount}/2</strong>
-                      <small>
-                        용량 {litterTier}단계 · 오염도{" "}
-                        {Math.round(litterLevel)}/{litterMaxLevel}
-                      </small>
+                      <img
+                        className="care-facility-icon"
+                        src="/art/ui/care-v1/care-litter-box-v1.png"
+                        alt=""
+                        aria-hidden="true"
+                        draggable={false}
+                      />
+                      <span className="care-facility-copy">
+                        <strong>화장실 {litterBoxCount}/2</strong>
+                        <small>
+                          용량 {litterTier}단계 · 오염도{" "}
+                          {Math.round(litterLevel)}/{litterMaxLevel}
+                        </small>
+                      </span>
                     </span>
                   </div>
                   <div className="food-grade-actions">
@@ -3323,6 +3341,13 @@ export default function Home() {
                           key={grade}
                           onClick={() => refillFoodBowl(grade)}
                         >
+                          <img
+                            className="care-action-icon"
+                            src="/art/ui/care-v1/care-food-bowl-v1.png"
+                            alt=""
+                            aria-hidden="true"
+                            draggable={false}
+                          />
                           <span>{profile.buttonLabel}</span>
                           <small>{profile.price} 조개 · {profile.satiationMinutes}분</small>
                         </button>
@@ -3335,14 +3360,28 @@ export default function Home() {
                       className="game-button primary"
                       onClick={beginSnackPlacement}
                     >
-                      간식 놓기 · {SNACK_PRICE} 조개
+                      <img
+                        className="care-action-icon"
+                        src="/art/ui/care-v1/care-snack-v1.png"
+                        alt=""
+                        aria-hidden="true"
+                        draggable={false}
+                      />
+                      <span>간식 놓기 · {SNACK_PRICE} 조개</span>
                     </button>
                     <button
                       type="button"
                       className="game-button primary"
                       onClick={beginLaserPlay}
                     >
-                      레이저 포인터 · {LASER_DURATION_MS / 1_000}초
+                      <img
+                        className="care-action-icon"
+                        src="/art/ui/care-v1/care-laser-v1.png"
+                        alt=""
+                        aria-hidden="true"
+                        draggable={false}
+                      />
+                      <span>레이저 포인터 · {LASER_DURATION_MS / 1_000}초</span>
                       <small>
                         오늘 {playLog[focusedCatId]?.laser?.count ?? 0}/
                         {PLAY_DAILY_CAP_PER_CAT}회
@@ -3353,7 +3392,14 @@ export default function Home() {
                       className="game-button primary"
                       onClick={beginToyHunt}
                     >
-                      깃털 장난감 사냥
+                      <img
+                        className="care-action-icon"
+                        src="/art/ui/care-v1/care-feather-v1.png"
+                        alt=""
+                        aria-hidden="true"
+                        draggable={false}
+                      />
+                      <span>깃털 장난감 사냥</span>
                       <small>
                         오늘 {playLog[focusedCatId]?.toy?.count ?? 0}/
                         {PLAY_DAILY_CAP_PER_CAT}회

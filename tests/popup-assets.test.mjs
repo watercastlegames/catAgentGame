@@ -61,8 +61,21 @@ test("popup quality pass uses clean slices and real cat appearance captures", as
     ).length,
     15,
   );
+  assert.equal(
+    POPUP_UI_ASSETS.filter((source) =>
+      source.startsWith("/art/ui/care-v1/care-"),
+    ).length,
+    5,
+  );
   assert.match(page, /className="cat-style-preview"/);
   assert.match(page, /catStylePreviewUrl\(style\.id\)/);
+  assert.match(page, /className="care-facility-icon"/);
+  assert.match(page, /className="care-action-icon"/);
+  assert.match(page, /\/art\/ui\/care-v1\/care-food-bowl-v1\.png/);
+  assert.match(page, /\/art\/ui\/care-v1\/care-litter-box-v1\.png/);
+  assert.match(page, /\/art\/ui\/care-v1\/care-snack-v1\.png/);
+  assert.match(page, /\/art\/ui\/care-v1\/care-laser-v1\.png/);
+  assert.match(page, /\/art\/ui\/care-v1\/care-feather-v1\.png/);
   assert.match(page, /className="style-purchase-cat-preview"/);
   assert.match(page, /catStylePreviewUrl\(pendingCatStyle\)/);
   assert.match(page, /uiPreview === "s12"/);

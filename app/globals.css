@@ -6946,8 +6946,44 @@ button {
   white-space: normal;
 }
 
+.radio-panel.game-popup .care-facility-summary > span {
+  min-height: 158px;
+  grid-template-rows: 86px auto;
+  align-content: start;
+  justify-items: center;
+  gap: 7px;
+  text-align: center;
+}
+
+.radio-panel.game-popup .care-facility-icon {
+  width: 90px;
+  height: 86px;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 0 rgba(113, 82, 65, 0.12));
+  pointer-events: none;
+}
+
+.radio-panel.game-popup .care-facility-copy {
+  display: grid;
+  min-width: 0;
+  justify-items: center;
+  gap: 2px;
+}
+
+.radio-panel.game-popup .care-action-icon {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 0 rgba(113, 82, 65, 0.12));
+  pointer-events: none;
+}
+
 .radio-panel.game-popup .food-grade-actions .game-button {
-  min-height: 96px;
+  min-height: 154px;
+  grid-template-rows: 72px auto auto;
+  align-content: center;
+  justify-items: center;
+  gap: 2px;
 }
 
 .radio-panel.game-popup .food-grade-actions .game-button span {
@@ -6962,6 +6998,21 @@ button {
 .radio-panel.game-popup .care-play-actions .game-button small {
   font-size: 14px;
   line-height: 1.3;
+}
+
+.radio-panel.game-popup .care-play-actions .game-button {
+  min-height: 156px;
+  display: grid;
+  grid-template-rows: 76px auto auto;
+  align-content: center;
+  justify-items: center;
+  gap: 3px;
+  text-align: center;
+}
+
+.radio-panel.game-popup .care-play-actions .game-button > span {
+  font-size: 16px;
+  line-height: 1.2;
 }
 
 .radio-panel.game-popup .desk-tier-summary small,
@@ -7083,6 +7134,16 @@ button {
   }
 
   .radio-panel.game-popup .food-grade-actions .game-button {
-    min-height: 82px;
+    min-height: 142px;
+  }
+
+  .radio-panel.game-popup .care-facility-summary > span {
+    min-height: 150px;
+    padding-inline: 7px;
+  }
+
+  .radio-panel.game-popup .care-facility-icon {
+    width: 82px;
+    height: 82px;
   }
 }
