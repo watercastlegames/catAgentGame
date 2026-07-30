@@ -86,3 +86,39 @@ test("popup quality pass uses clean slices and real cat appearance captures", as
     /\.style-purchase-title,[\s\S]*?width:\s*65%;[\s\S]*?font-size:\s*20px;/,
   );
 });
+
+test("popup scrolling stays inside a clipped viewport and tabs use nine-slice art", async () => {
+  const [page, css] = await Promise.all([
+    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(
+    page,
+    /radioPage === "desk" && \(\s*<div className="desk-seat-tabs"/,
+  );
+  assert.match(
+    css,
+    /\.radio-screen\s*\{[\s\S]*?grid-template-rows:\s*minmax\(0,\s*1fr\);[\s\S]*?overflow:\s*hidden;/,
+  );
+  assert.match(
+    css,
+    /\.radio-screen:not\(\.has-tabs\) > \.panel-section\s*\{[\s\S]*?overflow-y:\s*auto;[\s\S]*?overscroll-behavior:\s*contain;/,
+  );
+  assert.match(
+    css,
+    /\.radio-screen\.has-tabs > \.desk-seat-tabs \+ \.panel-section/,
+  );
+  assert.match(
+    css,
+    /\.radio-subtabs button,\s*\.desk-seat-tabs button\s*\{[\s\S]*?border-image-source:\s*url\("\/art\/ui\/slices\/tab-idle-v2\.png"\);[\s\S]*?border-image-slice:\s*42 54 28 54 fill;/,
+  );
+  assert.match(
+    css,
+    /\.radio-subtabs button\.selected,\s*\.desk-seat-tabs button\.selected\s*\{[\s\S]*?border-image-source:\s*url\("\/art\/ui\/slices\/tab-active-v2\.png"\);/,
+  );
+  assert.match(
+    css,
+    /\.style-purchase-copy,\s*\.onboarding-copy,\s*\.approval-copy\s*\{[\s\S]*?overflow-y:\s*auto;[\s\S]*?touch-action:\s*pan-y;/,
+  );
+});

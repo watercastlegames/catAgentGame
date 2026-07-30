@@ -2423,6 +2423,35 @@ export default function Home() {
             )}
 
             {radioPage === "desk" && (
+              <div className="desk-seat-tabs" role="tablist" aria-label="꾸밀 좌석">
+                {unlockedSeatIds.map(
+                  (seatId, index) => (
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={(selectedSeat ?? "seat-1") === seatId}
+                      className={(selectedSeat ?? "seat-1") === seatId ? "selected" : ""}
+                      key={seatId}
+                      onClick={() => setSelectedSeat(seatId)}
+                    >
+                      자리 {index + 1}
+                    </button>
+                  ),
+                )}
+                {activeSeatCount < MAX_SEAT_COUNT && (
+                  <button
+                    type="button"
+                    className="seat-unlock-tab"
+                    aria-label={`자리 ${activeSeatCount + 1} 추가`}
+                    onClick={requestSeatUnlock}
+                  >
+                    + 자리
+                  </button>
+                )}
+              </div>
+            )}
+
+            {radioPage === "desk" && (
               <section className="panel-section desk-panel">
                 <div className="section-heading">
                   <div>
@@ -2430,32 +2459,6 @@ export default function Home() {
                     <h2>자리 꾸미기</h2>
                   </div>
                   <span className="shell-balance">{shells} 조개</span>
-                </div>
-                <div className="desk-seat-tabs" role="tablist" aria-label="꾸밀 좌석">
-                  {unlockedSeatIds.map(
-                    (seatId, index) => (
-                      <button
-                        type="button"
-                        role="tab"
-                        aria-selected={(selectedSeat ?? "seat-1") === seatId}
-                        className={(selectedSeat ?? "seat-1") === seatId ? "selected" : ""}
-                        key={seatId}
-                        onClick={() => setSelectedSeat(seatId)}
-                      >
-                        자리 {index + 1}
-                      </button>
-                    ),
-                  )}
-                  {activeSeatCount < MAX_SEAT_COUNT && (
-                    <button
-                      type="button"
-                      className="seat-unlock-tab"
-                      aria-label={`자리 ${activeSeatCount + 1} 추가`}
-                      onClick={requestSeatUnlock}
-                    >
-                      + 자리
-                    </button>
-                  )}
                 </div>
                 <div className="desk-tier-summary">
                   <span>

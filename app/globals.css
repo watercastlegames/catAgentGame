@@ -5610,6 +5610,83 @@ button {
  * Repeated cards and controls use 9-slice borders so their hand-drawn corners
  * stay round instead of stretching into heavy or jagged outlines.
  */
+.radio-screen {
+  box-sizing: border-box;
+  display: grid;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.radio-screen.has-tabs {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.radio-screen:not(.has-tabs) > .panel-section {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 22px 12px 24px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 16px;
+  scrollbar-color: rgba(174, 141, 118, 0.72) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  touch-action: pan-y;
+}
+
+.radio-screen:not(.has-tabs)::before,
+.radio-screen.has-tabs::before {
+  position: absolute;
+  z-index: 6;
+  right: 8px;
+  left: 0;
+  height: 22px;
+  content: "";
+  pointer-events: none;
+}
+
+.radio-screen:not(.has-tabs)::before {
+  top: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(249, 235, 210, 0.99) 0 24%,
+    rgba(249, 235, 210, 0)
+  );
+}
+
+.radio-screen.has-tabs::before {
+  top: 62px;
+  background: linear-gradient(
+    to bottom,
+    rgba(244, 225, 192, 0.99) 0 24%,
+    rgba(244, 225, 192, 0)
+  );
+}
+
+.radio-screen:not(.has-tabs) > .panel-section::-webkit-scrollbar {
+  width: 7px;
+}
+
+.radio-screen:not(.has-tabs) > .panel-section::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(174, 141, 118, 0.74);
+  background-clip: padding-box;
+}
+
+.radio-screen:not(.has-tabs) > .panel-section::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 .radio-screen.has-tabs::after {
   top: 62px;
   box-sizing: border-box;
@@ -5621,11 +5698,21 @@ button {
 }
 
 .radio-screen.has-tabs > .panel-section,
-.radio-screen.has-tabs > .radio-subtabs + .panel-section {
-  max-height: calc(100% - 56px);
-  padding-inline: 12px;
+.radio-screen.has-tabs > .radio-subtabs + .panel-section,
+.radio-screen.has-tabs > .desk-seat-tabs + .panel-section {
+  width: 100%;
+  height: auto;
+  max-height: none;
+  min-height: 0;
+  padding: 18px 12px 22px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 16px;
   scrollbar-color: rgba(174, 141, 118, 0.72) transparent;
+  scrollbar-gutter: stable;
   scrollbar-width: thin;
+  touch-action: pan-y;
 }
 
 .radio-screen.has-tabs > .panel-section::-webkit-scrollbar,
@@ -5654,11 +5741,29 @@ button {
 
 .radio-subtabs button,
 .desk-seat-tabs button {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 1px 9px 0;
+  border: 12px solid transparent;
+  border-width: 12px 14px 8px;
+  background: none;
+  border-image-source: url("/art/ui/slices/tab-idle-v2.png");
+  border-image-slice: 42 54 28 54 fill;
+  border-image-width: 12px 14px 8px;
+  border-image-repeat: stretch;
   filter: drop-shadow(0 2px 0 rgba(102, 74, 63, 0.16));
 }
 
 .radio-subtabs button.selected,
 .desk-seat-tabs button.selected {
+  padding-top: 0;
+  border: 12px solid transparent;
+  border-width: 12px 14px 8px;
+  background: none;
+  border-image-source: url("/art/ui/slices/tab-active-v2.png");
+  border-image-slice: 44 55 30 55 fill;
+  border-image-width: 12px 14px 8px;
+  border-image-repeat: stretch;
   filter: drop-shadow(0 2px 0 rgba(82, 105, 88, 0.17));
 }
 
@@ -6064,14 +6169,85 @@ button {
   white-space: nowrap;
 }
 
+.style-purchase-modal,
+.approval-modal {
+  box-sizing: border-box;
+  display: grid;
+  height: min(80%, 680px);
+  max-height: 80%;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.style-purchase-copy,
+.onboarding-copy,
+.approval-copy {
+  min-width: 0;
+  min-height: 0;
+  padding-right: 7px;
+  padding-block: 44px 18px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 16px;
+  scrollbar-color: rgba(174, 141, 118, 0.72) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  touch-action: pan-y;
+}
+
+.style-purchase-modal::after,
+.approval-modal::after {
+  position: absolute;
+  z-index: 3;
+  top: 88px;
+  right: 8%;
+  left: 8%;
+  height: 40px;
+  background: linear-gradient(
+    to bottom,
+    rgba(249, 235, 210, 0.99) 0 72%,
+    rgba(249, 235, 210, 0)
+  );
+  content: "";
+  pointer-events: none;
+}
+
+.important-confirm-modal .style-purchase-copy {
+  min-height: 0;
+}
+
+.style-purchase-copy::-webkit-scrollbar,
+.onboarding-copy::-webkit-scrollbar,
+.approval-copy::-webkit-scrollbar {
+  width: 7px;
+}
+
+.style-purchase-copy::-webkit-scrollbar-thumb,
+.onboarding-copy::-webkit-scrollbar-thumb,
+.approval-copy::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(174, 141, 118, 0.74);
+  background-clip: padding-box;
+}
+
+.style-purchase-copy::-webkit-scrollbar-track,
+.onboarding-copy::-webkit-scrollbar-track,
+.approval-copy::-webkit-scrollbar-track {
+  background: transparent;
+}
+
 @media (max-width: 820px) {
+  .radio-screen.has-tabs::before,
   .radio-screen.has-tabs::after {
     top: 56px;
   }
 
   .radio-screen.has-tabs > .panel-section,
-  .radio-screen.has-tabs > .radio-subtabs + .panel-section {
-    max-height: calc(100% - 50px);
+  .radio-screen.has-tabs > .radio-subtabs + .panel-section,
+  .radio-screen.has-tabs > .desk-seat-tabs + .panel-section {
+    max-height: none;
     padding-inline: 9px;
   }
 
@@ -6104,6 +6280,7 @@ button {
     text-wrap: balance;
   }
 
+  .radio-screen.has-tabs::before,
   .radio-screen.has-tabs::after {
     top: 52px;
     border-width: 12px;
@@ -6111,8 +6288,9 @@ button {
   }
 
   .radio-screen.has-tabs > .panel-section,
-  .radio-screen.has-tabs > .radio-subtabs + .panel-section {
-    max-height: calc(100% - 46px);
+  .radio-screen.has-tabs > .radio-subtabs + .panel-section,
+  .radio-screen.has-tabs > .desk-seat-tabs + .panel-section {
+    max-height: none;
     padding-inline: 7px;
   }
 
@@ -6170,7 +6348,7 @@ button {
   }
 
   .important-confirm-modal .style-purchase-copy {
-    min-height: 430px;
+    min-height: 0;
   }
 }
 
