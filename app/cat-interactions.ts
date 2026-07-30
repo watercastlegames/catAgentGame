@@ -2,6 +2,9 @@ export const SNACK_LOG_KEY = "agent-forest-snack-log-v1";
 export const SNACK_PRICE = 6;
 export const SNACK_COOLDOWN_MS = 60_000;
 export const SNACK_DAILY_CAP_PER_CAT = 8;
+export const SNACK_EATING_SECONDS = 2.8;
+export const SNACK_MIN_APPROACH_TIMEOUT_SECONDS = 12;
+export const SNACK_MAX_APPROACH_TIMEOUT_SECONDS = 45;
 export const PLAY_LOG_KEY = "agent-forest-play-log-v1";
 export const PLAY_COOLDOWN_MS = 60_000;
 export const PLAY_DAILY_CAP_PER_CAT = 6;
@@ -93,6 +96,23 @@ export function snackHappinessGain(nextCount: number) {
   if (nextCount <= 3) return 5;
   if (nextCount <= 6) return 3;
   return 1;
+}
+
+export function snackApproachTimeoutSeconds(
+  distance: number,
+  moveSpeed: number,
+) {
+  const safeDistance = Number.isFinite(distance) ? Math.max(0, distance) : 0;
+  const safeMoveSpeed =
+    Number.isFinite(moveSpeed) && moveSpeed > 0 ? moveSpeed : 0.1;
+  const estimatedTravelSeconds = safeDistance / safeMoveSpeed;
+  return Math.min(
+    SNACK_MAX_APPROACH_TIMEOUT_SECONDS,
+    Math.max(
+      SNACK_MIN_APPROACH_TIMEOUT_SECONDS,
+      estimatedTravelSeconds * 2.2 + 4,
+    ),
+  );
 }
 
 export function completeSnack(

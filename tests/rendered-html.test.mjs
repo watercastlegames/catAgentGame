@@ -171,6 +171,17 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /const isSecondaryAutonomous =/);
   assert.match(world3d, /if \(!entry\.care && ambientAnimation !== "walk"\)/);
   assert.match(world3d, /interactionCatIdRef/);
+  assert.match(world3d, /snackApproachTimeoutSeconds/);
+  assert.match(world3d, /activeSnackEatingTimer = SNACK_EATING_SECONDS/);
+  assert.match(
+    world3d,
+    /releaseCareFacility\(primaryCare\.intent, primaryCareCatId\)/,
+  );
+  assert.match(world3d, /primaryCare\.insideFacility = false/);
+  assert.match(world3d, /activeSnackTimer = 0/);
+  assert.match(world3d, /!primaryCare &&\s*activeSnackPhase === "none"/);
+  assert.match(world3d, /interactionDebugState/);
+  assert.match(world3d, /characterVisible: characterVisual\.visible/);
   assert.match(world3d, /"toy-run", "\|Run_F"/);
   assert.match(world3d, /"toy-crouch", "\|Crouch_idle"/);
   assert.match(world3d, /"toy-pounce", "\|Jump_run"/);

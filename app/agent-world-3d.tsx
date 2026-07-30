@@ -18,6 +18,10 @@ import {
   type CatCareOutcome,
   selectCatCareIntent,
 } from "./cat-needs";
+import {
+  SNACK_EATING_SECONDS,
+  snackApproachTimeoutSeconds,
+} from "./cat-interactions";
 import { FOOD_PROFILES, type FoodGrade } from "./food-bowl-state";
 import {
   addLitterWaste,
@@ -3005,6 +3009,8 @@ export default function AgentWorld3D({
     if (!host) return;
 
     const diagnosticParams = new URLSearchParams(window.location.search);
+    const interactionDebugMode =
+      diagnosticParams.get("interactionDebug") === "1";
     const layoutEditorAuthorized = isWorldLayoutAdminHost(
       window.location.hostname,
     );
@@ -5321,6 +5327,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
     let mixer: THREE.AnimationMixer | null = null;
     const animationActions = new Map<string, THREE.AnimationAction>();
     let currentAction: THREE.AnimationAction | null = null;
+    let currentAnimationKey = "";
     let characterModel: THREE.Object3D | null = null;
     let loadedAnimationClips: THREE.AnimationClip[] = [];
     const careFacilities: Record<CatCareIntent, CareFacilityState> = {
@@ -5353,10 +5360,12 @@ float shoreOverlayWaterSignal( vec3 color ) {
       }
     };
     const litterIsFull = () =>
-      isLitterBoxFull(
-        litterLevelRef.current,
-        litterMaxLevelRef.current,
-      );
+      carePreviewMode === "toilet"
+        ? false
+        : isLitterBoxFull(
+            litterLevelRef.current,
+            litterMaxLevelRef.current,
+          );
     const claimableCareFacilityIndex = (
       intent: CatCareIntent,
       catId: string,
@@ -5495,6 +5504,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       nextAction.play();
       previousAction?.fadeOut(fadeSeconds);
       currentAction = nextAction;
+      currentAnimationKey = key;
     };
 
     const removeClickable = (object: THREE.Object3D | null) => {
@@ -6818,21 +6828,40 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const requestedSnack = snackPlacementRef.current;
       if (requestedSnack && requestedSnack.id !== activeSnackId) {
         activeSnackId = requestedSnack.id;
-        activeSnackTimer = 5;
         activeSnackEatingTimer = 0;
         activeSnackCatId = interactionCatIdRef.current ?? primaryView.catId;
         activeSnackPhase = "approaching";
         snackTarget.set(requestedSnack.x, 0, requestedSnack.z);
+        activeSnackTimer = snackApproachTimeoutSeconds(
+          currentPosition.distanceTo(snackTarget),
+          CARE_MOVE_SPEED,
+        );
         snackGroup.position.copy(snackTarget);
         snackGroup.visible = true;
+        if (primaryCare && activeSnackCatId === primaryCareCatId) {
+          leaveCareQueue(primaryCare.intent, primaryCareCatId);
+          releaseCareFacility(primaryCare.intent, primaryCareCatId);
+          primaryCare.insideFacility = false;
+          primaryCare.facilityIndex = null;
+          primaryCare = null;
+          primaryCareRetrySeconds = 0;
+        }
+        ambientPhase = "resting";
+        ambientTarget.copy(currentPosition);
         avoidanceWaypoints.length = 0;
         setAmbientLabel("간식을 발견하고 걸어가는 중");
       }
       if (activeSnackPhase !== "none") {
-        activeSnackTimer -= delta;
         snackGroup.position.y =
           0.012 + Math.sin(animationTime * 3.5) * 0.018;
-        if (activeSnackTimer <= 0) resolveActiveSnack(false);
+        if (
+          activeSnackPhase === "approaching" &&
+          isAutonomous &&
+          !isPrimaryBlocked
+        ) {
+          activeSnackTimer -= delta;
+          if (activeSnackTimer <= 0) resolveActiveSnack(false);
+        }
       }
 
       if (isAutonomous && !wasAutonomous) {
@@ -6872,6 +6901,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       }
       if (
         !primaryCare &&
+        activeSnackPhase === "none" &&
         !isPrimaryBlocked &&
         primaryCareRetrySeconds <= 0
       ) {
@@ -6987,12 +7017,21 @@ float shoreOverlayWaterSignal( vec3 color ) {
             currentPosition.copy(snackTarget);
             desiredPosition.copy(currentPosition);
             activeSnackPhase = "eating";
-            activeSnackEatingTimer = 1.35;
+            activeSnackTimer = 0;
+            activeSnackEatingTimer = SNACK_EATING_SECONDS;
+            isMoving = false;
+            requestedWalkFadeSeconds = null;
+            avoidanceWaypoints.length = 0;
+            lastNavigationTarget.copy(currentPosition);
             playAnimation("eat-drink", 0.2);
             setAmbientLabel("간식을 맛있게 먹는 중");
           }
         } else {
           desiredPosition.copy(currentPosition);
+          isMoving = false;
+          requestedWalkFadeSeconds = null;
+          avoidanceWaypoints.length = 0;
+          lastNavigationTarget.copy(currentPosition);
           activeSnackEatingTimer -= delta;
           playAnimation("eat-drink", 0.2);
           if (activeSnackEatingTimer <= 0) {
@@ -7151,7 +7190,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
                 care.insideFacility = true;
                 care.facilityIndex = claimedIndex;
                 care.timer =
-                  care.intent === "food"
+                  care.intent === "toilet" &&
+                  carePreviewMode === "toilet" &&
+                  interactionDebugMode
+                    ? 300
+                    : care.intent === "food"
                     ? FOOD_USE_SECONDS
                     : TOILET_USE_SECONDS;
                 playAnimation(
@@ -7563,6 +7606,16 @@ float shoreOverlayWaterSignal( vec3 color ) {
           insideFacility: primaryCare?.insideFacility ?? false,
           x: Number(currentPosition.x.toFixed(3)),
           z: Number(currentPosition.z.toFixed(3)),
+        });
+      }
+      if (interactionDebugMode) {
+        host.dataset.interactionDebugState = JSON.stringify({
+          snackPhase: activeSnackPhase,
+          animation: currentAnimationKey,
+          characterVisible: characterVisual.visible,
+          careIntent: primaryCare?.intent ?? null,
+          carePhase: primaryCare?.phase ?? null,
+          insideFacility: primaryCare?.insideFacility ?? false,
         });
       }
       // 실제 키캡 애니메이션이 재생되는 동안만 이름표를 모니터 위에 고정한다.

@@ -26,6 +26,19 @@ test("snacks use the 5, 3, and 1 happiness soft cap", () => {
   assert.equal(interactions.snackHappinessGain(8), 1);
 });
 
+test("snack approach timeout scales with distance and leaves time to eat", () => {
+  assert.equal(
+    interactions.snackApproachTimeoutSeconds(0.4, 0.62),
+    interactions.SNACK_MIN_APPROACH_TIMEOUT_SECONDS,
+  );
+  assert.ok(interactions.snackApproachTimeoutSeconds(6, 0.62) > 25);
+  assert.equal(
+    interactions.snackApproachTimeoutSeconds(100, 0.62),
+    interactions.SNACK_MAX_APPROACH_TIMEOUT_SECONDS,
+  );
+  assert.ok(interactions.SNACK_EATING_SECONDS >= 2.5);
+});
+
 test("completed snacks apply a sixty-second cooldown and daily cap", () => {
   const now = new Date(2026, 6, 30, 12).getTime();
   let log = {};
