@@ -1,12 +1,16 @@
 /** Cloudflare Worker entry point for the vinext-starter template. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import { handleCompanyCliRequest } from "./company-relay";
 import { handleRelayRequest } from "./relay";
 import { handlePlayerSyncRequest } from "./player-sync";
 
 interface Env {
   ASSETS: Fetcher;
   DB: D1Database;
+  APP_EDITION: "service" | "public";
+  COMPANY_CLI_ENDPOINT?: string;
+  COMPANY_CLI_API_TOKEN?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -33,6 +37,9 @@ const worker = {
 
     const playerSyncResponse = await handlePlayerSyncRequest(request, env);
     if (playerSyncResponse) return playerSyncResponse;
+
+    const companyCliResponse = await handleCompanyCliRequest(request, env);
+    if (companyCliResponse) return companyCliResponse;
 
     const relayResponse = await handleRelayRequest(request, env);
     if (relayResponse) return relayResponse;

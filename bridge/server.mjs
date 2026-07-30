@@ -9,7 +9,10 @@ import {
   loadOrCreateRelayIdentity,
 } from "./cloud-relay.mjs";
 import { CodexAppServerClient } from "./codex-app-server-client.mjs";
-import { createSimulationEvents } from "./event-mapper.mjs";
+import {
+  createSimulationEvents,
+  mapCodexEvent,
+} from "./event-mapper.mjs";
 import { PairingAttemptLimiter, PairingStore } from "./pairing-store.mjs";
 import { isSafeReadOnlyCommand } from "./security-policy.mjs";
 import {
@@ -346,19 +349,6 @@ function extractItemText(item) {
   return "";
 }
 
-function itemCopy(itemType) {
-  const copy = {
-    agentMessage: ["답변을 정리하고 있어요", "작업 결과를 보고서로 작성 중이에요"],
-    reasoning: ["해결 방법을 검토하고 있어요", "문제를 차근차근 살펴보는 중이에요"],
-    commandExecution: ["로컬 도구를 사용하고 있어요", "필요한 명령을 안전하게 실행 중이에요"],
-    fileChange: ["파일을 수정하고 있어요", "작업 결과를 프로젝트에 반영 중이에요"],
-    mcpToolCall: ["연결 도구를 사용하고 있어요", "외부 도구의 결과를 기다리는 중이에요"],
-    webSearch: ["자료를 찾고 있어요", "최신 자료를 확인하는 중이에요"],
-    plan: ["작업 순서를 정리했어요", "해야 할 일을 단계별로 나누고 있어요"],
-  };
-  return copy[itemType] ?? copy.reasoning;
-}
-
 function cacheItem(threadId, turnId, item) {
   if (!item?.id) return;
   itemCache.set(item.id, {
@@ -389,7 +379,7 @@ function handleNotification({ method, params }) {
       threadId: params.thread.id,
       source: "codex",
     });
-    return;
+    if (!threadId) return;
   }
 
   if (method === "thread/status/changed" && params.thread) {
@@ -404,6 +394,7 @@ function handleNotification({ method, params }) {
 
   if (!threadId) return;
   const context = contextFor(threadId);
+  context.threadId = threadId;
 
   if (method === "turn/started") {
     const turnId = params.turn?.id ?? params.turnId ?? null;
@@ -411,41 +402,10 @@ function handleNotification({ method, params }) {
     context.taskId = turnId ?? context.taskId;
     context.lastMessage = "";
     if (turnId) activeTurns.set(threadId, turnId);
-    broadcast({
-      type: "agent.status",
-      taskId: context.taskId,
-      threadId,
-      turnId,
-      agentId: context.agentId,
-      department: context.department,
-      status: "moving",
-      location: context.department,
-      title: `${context.departmentLabel} 작업 공간으로 이동 중`,
-      detail: "선택한 Codex 세션에서 새 작업을 시작했어요.",
-      source: "codex",
-    });
-    return;
   }
 
   if (method === "item/started") {
     cacheItem(threadId, params.turnId ?? context.turnId, params.item);
-    const itemType = params.item?.type ?? "reasoning";
-    const [title, detail] = itemCopy(itemType);
-    broadcast({
-      type: "agent.status",
-      taskId: context.taskId,
-      threadId,
-      turnId: params.turnId ?? context.turnId,
-      agentId: context.agentId,
-      department: context.department,
-      status: "working",
-      location: context.department,
-      title,
-      detail,
-      itemType,
-      source: "codex",
-    });
-    return;
   }
 
   if (method === "item/agentMessage/delta") {
@@ -462,40 +422,7 @@ function handleNotification({ method, params }) {
     if (itemType === "agentMessage") {
       const result = extractItemText(params.item) || context.lastMessage;
       context.lastMessage = result;
-      broadcast({
-        type: "task.result",
-        taskId: context.taskId,
-        threadId,
-        turnId: params.turnId ?? context.turnId,
-        agentId: context.agentId,
-        department: context.department,
-        status: "reporting",
-        location: "queue",
-        title: "작업 결과를 보고하고 있어요",
-        detail: "Codex의 최종 답변을 정리했어요.",
-        result,
-        source: "codex",
-      });
     }
-    return;
-  }
-
-  if (method === "turn/diff/updated") {
-    broadcast({
-      type: "agent.status",
-      taskId: context.taskId,
-      threadId,
-      turnId: params.turnId ?? context.turnId,
-      agentId: context.agentId,
-      department: context.department,
-      status: "working",
-      location: context.department,
-      title: "파일 변경 사항을 정리하고 있어요",
-      detail: "프로젝트에 반영될 변경 내용을 확인 중이에요.",
-      itemType: "fileChange",
-      source: "codex",
-    });
-    return;
   }
 
   if (method === "thread/tokenUsage/updated") {
@@ -517,7 +444,6 @@ function handleNotification({ method, params }) {
     const turn = params.turn ?? {};
     activeTurns.delete(threadId);
     lastRunOk = turn.status === "completed";
-    const failed = turn.status === "failed";
     for (const [itemId, cached] of itemCache) {
       if (
         cached.threadId === threadId &&
@@ -526,40 +452,14 @@ function handleNotification({ method, params }) {
         itemCache.delete(itemId);
       }
     }
-    broadcast({
-      type: failed ? "task.failed" : "task.completed",
-      taskId: context.taskId,
-      threadId,
-      turnId: turn.id ?? context.turnId,
-      agentId: context.agentId,
-      department: context.department,
-      status: failed ? "failed" : "completed",
-      location: failed ? context.department : "queue",
-      title: failed ? "Codex 작업 중 문제가 생겼어요" : "Codex 작업이 완료됐어요",
-      detail: failed
-        ? safeText(turn.error?.message, 280) || "작업이 정상적으로 완료되지 않았어요."
-        : "PC에서 실행된 Codex 세션의 작업을 마쳤어요.",
-      result: context.lastMessage,
-      source: "codex",
-    });
-    broadcast({ type: "bridge.status", ...publicState(), source: "bridge" });
-    return;
   }
 
-  if (method === "error") {
-    broadcast({
-      type: "task.failed",
-      taskId: context.taskId,
-      threadId,
-      turnId: context.turnId,
-      agentId: context.agentId,
-      department: context.department,
-      status: "failed",
-      location: context.department,
-      title: "Codex 연결에서 문제가 발생했어요",
-      detail: safeText(params.error?.message ?? params.message, 280),
-      source: "codex",
-    });
+  for (const event of mapCodexEvent({ method, params }, context)) {
+    broadcast(event);
+  }
+
+  if (method === "turn/completed") {
+    broadcast({ type: "bridge.status", ...publicState(), source: "bridge" });
   }
 }
 
@@ -619,7 +519,7 @@ function handleServerRequest({ id, method, params }) {
 
   if (
     isSafeReadOnlyCommand(
-      method,
+      "command_execution",
       params.command ?? approvalItem(params)?.command,
     )
   ) {

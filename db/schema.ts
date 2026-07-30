@@ -95,6 +95,24 @@ export const relayPairAttempts = sqliteTable(
   },
 );
 
+export const companyCliQuotaHourly = sqliteTable(
+  "company_cli_quota_hourly",
+  {
+    deviceId: text("device_id").primaryKey(),
+    windowStartedAt: integer("window_started_at").notNull(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+  },
+);
+
+export const companyCliQuotaDaily = sqliteTable(
+  "company_cli_quota_daily",
+  {
+    scope: text("scope").primaryKey(),
+    windowStartedAt: integer("window_started_at").notNull(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+  },
+);
+
 export const users = sqliteTable(
   "users",
   {

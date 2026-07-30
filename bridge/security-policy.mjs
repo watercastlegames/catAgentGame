@@ -25,8 +25,8 @@ const SAFE_READ_ONLY_COMMANDS = [
   /^(node|npm) -v$/i,
 ];
 
-export function isSafeReadOnlyCommand(method, rawCommand) {
-  if (method !== "item/commandExecution/requestApproval") return false;
+export function isSafeReadOnlyCommand(kind, rawCommand) {
+  if (kind !== "command_execution") return false;
   const command = String(rawCommand ?? "").trim();
   if (!command || command.length > 200) return false;
   const lowered = command.toLowerCase();

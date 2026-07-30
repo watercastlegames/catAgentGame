@@ -319,6 +319,11 @@ button {
   user-select: none;
 }
 
+.world-3d-host.is-placement-mode,
+.world-3d-host.is-placement-mode canvas {
+  cursor: crosshair !important;
+}
+
 .world-3d-canvas.is-layout-editing {
   cursor: crosshair;
 }
@@ -3584,6 +3589,127 @@ button {
   gap: 7px;
 }
 
+.care-facility-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.cat-name-editor {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 2px solid rgba(122, 91, 72, 0.22);
+  border-radius: 13px;
+  background: rgba(255, 250, 235, 0.9);
+}
+
+.cat-name-editor span,
+.cat-name-editor small {
+  color: #765f51;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.cat-name-editor input {
+  min-width: 0;
+  height: 34px;
+  border: 2px solid rgba(122, 91, 72, 0.28);
+  border-radius: 10px;
+  outline: none;
+  background: #fffdf7;
+  color: #5f463a;
+  font: 900 17px "Gaegu", sans-serif;
+  text-align: center;
+}
+
+.cat-name-editor input:focus {
+  border-color: #d48761;
+  box-shadow: 0 0 0 3px rgba(212, 135, 97, 0.16);
+}
+
+.care-facility-summary > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 2px solid rgba(122, 91, 72, 0.24);
+  border-radius: 13px;
+  background: rgba(255, 248, 228, 0.88);
+}
+
+.care-facility-summary strong {
+  color: #694c3e;
+  font-family: "Gaegu", sans-serif;
+  font-size: 16px;
+}
+
+.care-facility-summary small {
+  overflow: hidden;
+  color: #7a6a5d;
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.food-grade-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.food-grade-actions .game-button {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  padding-inline: 6px;
+}
+
+.food-grade-actions .game-button span {
+  font-size: 13px;
+}
+
+.food-grade-actions .game-button small {
+  font-size: 9px;
+  font-weight: 900;
+  opacity: 0.78;
+}
+
+.daily-economy-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.daily-economy-summary > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 2px solid rgba(121, 91, 70, 0.2);
+  border-radius: 13px;
+  background: rgba(255, 248, 226, 0.86);
+}
+
+.daily-economy-summary strong {
+  color: #6d5142;
+  font-size: 12px;
+}
+
+.daily-economy-summary small {
+  color: #846d5e;
+  font-size: 11px;
+  font-weight: 900;
+}
+
 .game-button,
 .radio-panel .run-button,
 .radio-panel .simulate-button,
@@ -5868,6 +5994,121 @@ button {
   color: #79665c;
   font-size: 11px;
   text-align: center;
+}
+
+.decor-catalog-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 13px 2px 5px;
+  color: #694f43;
+}
+
+.decor-catalog-heading strong {
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.decor-catalog-heading small {
+  color: #8b7568;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.workstation-decor-grid .decor-catalog-card[aria-pressed="true"] {
+  transform: translateY(-2px);
+  filter: drop-shadow(0 4px 0 rgba(99, 117, 83, 0.25));
+}
+
+.companion-backend-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-bottom: 14px;
+}
+
+.companion-backend-card {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 132px;
+  box-sizing: border-box;
+  align-content: start;
+  padding: 11px 12px;
+  border: 12px solid transparent;
+  border-radius: 15px;
+  color: #694f43;
+  background: none;
+  border-image: url("/art/ui/slices/card-default-v2.png") 38 46 fill / 12px
+    15px stretch;
+  text-align: left;
+  cursor: pointer;
+  gap: 4px;
+}
+
+.companion-backend-card.selected {
+  border-image-source: url("/art/ui/slices/card-selected-v2.png");
+  transform: translateY(-2px);
+}
+
+.companion-backend-card > .connection-dot {
+  position: absolute;
+  top: 13px;
+  right: 14px;
+}
+
+.companion-backend-card strong {
+  padding-right: 22px;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.companion-backend-card small {
+  min-height: 32px;
+  color: #806f64;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.companion-backend-card em {
+  justify-self: start;
+  padding: 3px 8px;
+  border-radius: 999px;
+  color: #7c5946;
+  background: rgba(239, 210, 157, 0.46);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.backend-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.backend-capabilities b {
+  padding: 2px 6px;
+  border-radius: 7px;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.backend-capabilities .yes {
+  color: #55725c;
+  background: rgba(128, 171, 132, 0.22);
+}
+
+.backend-capabilities .no {
+  color: #9a8173;
+  background: rgba(140, 121, 111, 0.1);
+  text-decoration: line-through;
+}
+
+.backend-ready-note {
+  margin-bottom: 0;
 }
 
 .install-letter,

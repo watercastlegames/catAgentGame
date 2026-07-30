@@ -25,6 +25,7 @@ export type CatNeedState = {
   hunger: number;
   toilet: number;
   happiness: number;
+  satiationUntil: number;
   lastComputedAt: number;
 };
 
@@ -74,6 +75,7 @@ export function createDefaultCatNeedState(now = Date.now()): CatNeedState {
     hunger: 0,
     toilet: 0,
     happiness: 30,
+    satiationUntil: 0,
     lastComputedAt: now,
   };
 }
@@ -98,10 +100,17 @@ export function computeCatNeedState(
   const lastComputedAt = Number.isFinite(state.lastComputedAt)
     ? Math.min(now, Math.max(0, state.lastComputedAt))
     : now;
+  const satiationUntil = Number.isFinite(state.satiationUntil)
+    ? Math.max(0, state.satiationUntil)
+    : 0;
+  const hungerAnchor = Math.min(
+    now,
+    Math.max(lastComputedAt, satiationUntil),
+  );
   return {
     hunger: computeCurrentValue(
       state.hunger,
-      lastComputedAt,
+      hungerAnchor,
       HUNGER_FILL_MS,
       now,
     ),
@@ -113,6 +122,7 @@ export function computeCatNeedState(
     ),
     // 행복도는 시간 경과가 아니라 사건으로만 변한다.
     happiness: clampNeed(state.happiness, 30),
+    satiationUntil,
     lastComputedAt: now,
   };
 }
@@ -151,7 +161,12 @@ export function selectCatCareIntent(
 
 export function updateCatNeedState(
   state: CatNeedState,
-  patch: Partial<Pick<CatNeedState, "hunger" | "toilet" | "happiness">>,
+  patch: Partial<
+    Pick<
+      CatNeedState,
+      "hunger" | "toilet" | "happiness" | "satiationUntil"
+    >
+  >,
   now = Date.now(),
 ): CatNeedState {
   const current = computeCatNeedState(state, now);
@@ -159,14 +174,27 @@ export function updateCatNeedState(
     hunger: clampNeed(patch.hunger ?? current.hunger),
     toilet: clampNeed(patch.toilet ?? current.toilet),
     happiness: clampNeed(patch.happiness ?? current.happiness, 30),
+    satiationUntil: Math.max(
+      0,
+      Number(patch.satiationUntil ?? current.satiationUntil) || 0,
+    ),
     lastComputedAt: now,
   };
 }
+
+export type MealCareEffect = {
+  satiationMinutes: number;
+  happinessGain: number;
+};
 
 export function applyCatCareOutcome(
   state: CatNeedState,
   outcome: CatCareOutcome,
   now = Date.now(),
+  mealEffect: MealCareEffect = {
+    satiationMinutes: HUNGER_FILL_MS / 60_000,
+    happinessGain: MEAL_HAPPINESS_GAIN,
+  },
 ): CatNeedState {
   const current = computeCatNeedState(state, now);
   if (outcome === "meal-completed") {
@@ -174,7 +202,9 @@ export function applyCatCareOutcome(
       current,
       {
         hunger: 0,
-        happiness: current.happiness + MEAL_HAPPINESS_GAIN,
+        happiness: current.happiness + mealEffect.happinessGain,
+        satiationUntil:
+          now + Math.max(0, mealEffect.satiationMinutes) * 60_000,
       },
       now,
     );
@@ -225,6 +255,8 @@ export function parseCatNeedsStore(
               hunger: clampNeed(Number(state.hunger)),
               toilet: clampNeed(Number(state.toilet)),
               happiness: clampNeed(Number(state.happiness), 30),
+              satiationUntil:
+                Math.max(0, Number(state.satiationUntil)) || 0,
               lastComputedAt: Number(state.lastComputedAt) || now,
             },
             now,

@@ -41,6 +41,7 @@ test("cat needs start at the integrated-plan defaults", () => {
     hunger: 0,
     toilet: 0,
     happiness: 30,
+    satiationUntil: 0,
     lastComputedAt: 1_000,
   });
 });
@@ -63,6 +64,20 @@ test("offline progress is capped at twelve hours and happiness does not decay", 
   assert.equal(current.toilet, 100);
   assert.equal(current.happiness, 22);
   assert.equal(getHappinessBand(current.happiness), "sulky");
+});
+
+test("paid food pauses hunger until its satiation window expires", () => {
+  const start = {
+    ...createDefaultCatNeedState(1_000),
+    hunger: 20,
+    satiationUntil: 61_000,
+  };
+  const stillFull = computeCatNeedState(start, 31_000);
+  assert.equal(stillFull.hunger, 20);
+  assert.equal(stillFull.satiationUntil, 61_000);
+
+  const afterExpiry = computeCatNeedState(start, 61_000 + HUNGER_FILL_MS / 2);
+  assert.equal(afterExpiry.hunger, 70);
 });
 
 test("need tones switch only at the display thresholds", () => {
@@ -95,11 +110,22 @@ test("care outcomes consume needs and empty bowls reduce happiness", () => {
     hunger: 92,
     toilet: 91,
     happiness: 50,
+    satiationUntil: 0,
     lastComputedAt: 1_000,
   };
   const fed = applyCatCareOutcome(state, "meal-completed", 1_000);
   assert.equal(fed.hunger, 0);
   assert.equal(fed.happiness, 54);
+  assert.equal(fed.satiationUntil, 1_000 + HUNGER_FILL_MS);
+
+  const premium = applyCatCareOutcome(
+    state,
+    "meal-completed",
+    1_000,
+    { satiationMinutes: 240, happinessGain: 9 },
+  );
+  assert.equal(premium.happiness, 59);
+  assert.equal(premium.satiationUntil, 1_000 + 240 * 60_000);
 
   const missed = applyCatCareOutcome(state, "meal-missed", 1_000);
   assert.equal(missed.hunger, 92);

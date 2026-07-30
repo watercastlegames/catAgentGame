@@ -67,6 +67,40 @@ test("does not expose raw reasoning text to the browser", () => {
   assert.doesNotMatch(JSON.stringify(event), /private chain of thought/);
 });
 
+test("maps the live Codex App Server notification shape", () => {
+  const ctx = {
+    ...context(),
+    threadId: "thread_live",
+    turnId: "turn_live",
+  };
+  const [working] = mapCodexEvent(
+    {
+      method: "item/started",
+      params: {
+        threadId: "thread_live",
+        turnId: "turn_live",
+        item: { type: "commandExecution", command: "git status" },
+      },
+    },
+    ctx,
+  );
+  const [completed] = mapCodexEvent(
+    {
+      method: "turn/completed",
+      params: {
+        threadId: "thread_live",
+        turn: { id: "turn_live", status: "completed" },
+      },
+    },
+    ctx,
+  );
+
+  assert.equal(working.itemType, "commandExecution");
+  assert.equal(working.threadId, "thread_live");
+  assert.equal(working.turnId, "turn_live");
+  assert.equal(completed.type, "task.completed");
+});
+
 test("creates a complete no-cost simulation path", () => {
   const events = createSimulationEvents(context());
   assert.deepEqual(

@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent Forest 구현 전수 점검표 · 2026-07-30</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #fffdf7;
+      --canvas: #f3eddf;
+      --ink: #332a25;
+      --muted: #74685f;
+      --line: #ded1bf;
+      --done: #32734d;
+      --done-bg: #e4f2e8;
+      --partial: #9a651d;
+      --partial-bg: #fff0cf;
+      --missing: #a6453f;
+      --missing-bg: #fbe4e1;
+      --blocked: #633c8c;
+      --blocked-bg: #eee3f8;
+      --external: #59636d;
+      --external-bg: #e9edf0;
+      --accent: #d77e50;
+      --accent-soft: #fff0e6;
+      --shadow: 0 14px 32px rgba(80, 58, 39, .09);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 15% 0, rgba(255,255,255,.8), transparent 28rem),
+        var(--canvas);
+      color: var(--ink);
+      font-family: "Pretendard", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+      line-height: 1.55;
+    }
+    main { width: min(1480px, calc(100% - 32px)); margin: 32px auto 72px; }
+    header, section {
+      background: rgba(255,253,247,.96);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+    }
+    header { padding: 34px; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin-bottom: 12px; font-size: clamp(28px, 4vw, 46px); line-height: 1.15; letter-spacing: -.04em; }
+    h2 { margin-bottom: 18px; font-size: 25px; letter-spacing: -.03em; }
+    h3 { margin: 0 0 10px; font-size: 18px; }
+    code, .mono { font-family: "Cascadia Code", Consolas, monospace; }
+    code { padding: .15em .38em; border-radius: 6px; background: #f0e8dc; word-break: break-all; }
+    .eyebrow { color: var(--accent); font-size: 13px; font-weight: 900; letter-spacing: .14em; text-transform: uppercase; }
+    .lead { max-width: 1020px; color: var(--muted); font-size: 17px; }
+    .verdict {
+      margin-top: 22px;
+      padding: 18px 20px;
+      border: 1px solid #efb499;
+      border-left: 7px solid var(--accent);
+      border-radius: 14px;
+      background: var(--accent-soft);
+    }
+    .verdict strong { display: block; margin-bottom: 4px; font-size: 20px; }
+    section { margin-top: 22px; padding: 28px; }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .summary-card {
+      min-height: 112px;
+      padding: 17px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+    }
+    .summary-card .value { display: block; margin-top: 5px; font-size: 32px; font-weight: 900; }
+    .summary-card small { color: var(--muted); }
+    .summary-card[data-tone="done"] .value { color: var(--done); }
+    .summary-card[data-tone="partial"] .value { color: var(--partial); }
+    .summary-card[data-tone="missing"] .value { color: var(--missing); }
+    .summary-card[data-tone="blocked"] .value { color: var(--blocked); }
+    .summary-card[data-tone="external"] .value { color: var(--external); }
+    .snapshot {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .snapshot article {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: #fff;
+    }
+    .snapshot b { display: block; margin-bottom: 4px; font-size: 18px; }
+    .ok { color: var(--done); }
+    .bad { color: var(--missing); }
+    .warn { color: var(--partial); }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 18px; }
+    .filters button {
+      appearance: none;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 9px 14px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .filters button.active { border-color: var(--ink); background: var(--ink); color: #fff; }
+    .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+    table { width: 100%; min-width: 1100px; border-collapse: collapse; }
+    th, td { padding: 13px 14px; border-bottom: 1px solid #ece3d7; vertical-align: top; text-align: left; }
+    th { position: sticky; top: 0; z-index: 1; background: #f5ede2; font-size: 13px; white-space: nowrap; }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: #fffaf2; }
+    td:nth-child(1) { width: 72px; color: var(--muted); font-weight: 900; white-space: nowrap; }
+    td:nth-child(2) { width: 122px; }
+    td:nth-child(3) { width: 250px; font-weight: 800; }
+    td:nth-child(5) { width: 310px; color: var(--muted); font-size: 13px; }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .status.done { color: var(--done); background: var(--done-bg); }
+    .status.partial { color: var(--partial); background: var(--partial-bg); }
+    .status.missing { color: var(--missing); background: var(--missing-bg); }
+    .status.blocked { color: var(--blocked); background: var(--blocked-bg); }
+    .status.external { color: var(--external); background: var(--external-bg); }
+    tr.hidden { display: none; }
+    .priority-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .priority {
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: #fff;
+    }
+    .priority .number {
+      display: inline-grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      margin-right: 8px;
+      border-radius: 9px;
+      background: var(--ink);
+      color: #fff;
+      font-weight: 900;
+    }
+    .priority p { margin: 8px 0 0; color: var(--muted); }
+    .note {
+      padding: 16px 18px;
+      border-radius: 13px;
+      background: #f0ece6;
+      color: var(--muted);
+    }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+    .source-list { margin: 0; padding-left: 22px; }
+    .source-list li + li { margin-top: 8px; }
+    footer { padding: 28px 4px 0; color: var(--muted); font-size: 13px; }
+    @media (max-width: 900px) {
+      main { width: min(100% - 18px, 1480px); margin-top: 10px; }
+      header, section { padding: 20px; border-radius: 16px; }
+      .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .snapshot, .priority-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">Agent Forest · implementation audit</div>
+    <h1>기획서 구현 전수 점검표</h1>
+    <p class="lead">기준 문서 <code>D:\soccerstarWebSource\GameCreator\catAgentGame\docs\cat-agent-meta-design-20260728.html</code>의 1~4부와 부록 C 구현 목록을 현재 소스·테스트·실행 상태에 대조했다. 화면에 버튼이 있는 것만으로 완료 처리하지 않고, 데이터 모델·동작 배선·저장·테스트·현재 런타임까지 확인했다.</p>
+    <div class="verdict">
+      <strong>결론: 무료 배포판의 핵심 생활·경제·꾸미기·AI 연결 기반은 구현됐다.</strong>
+      사료 3등급, 포만 지속, 화장실 업그레이드, 간식·놀이, 일일 경제 상한, 자리 꾸미기와 공개/서비스 AI 백엔드 분리가 실제 화면과 저장·테스트에 연결됐다. 로컬 브리지는 고정 코드로 재기동해 실제 Codex 세션 조회까지 검증했다. 남은 핵심은 외부 회사 CLI 실행기, 오프라인 보상·아이들 이벤트, 일부 시각·오디오 회귀 검증이다.
+    </div>
+    <div class="legend">
+      <span class="status done">✅ 완료</span>
+      <span class="status partial">🟡 부분 구현</span>
+      <span class="status missing">❌ 미구현</span>
+      <span class="status blocked">⛔ 현재 동작 불가</span>
+      <span class="status external">⚪ 레포 밖/결정 필요</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>판정 집계</h2>
+    <div class="summary-grid">
+      <div class="summary-card" data-tone="done"><small>완료</small><span class="value" id="count-done">0</span><small>소스·배선·검증 근거 확인</small></div>
+      <div class="summary-card" data-tone="partial"><small>부분 구현</small><span class="value" id="count-partial">0</span><small>일부 계층 또는 요구값 누락</small></div>
+      <div class="summary-card" data-tone="missing"><small>미구현</small><span class="value" id="count-missing">0</span><small>기획 요구 코드/화면/테스트 없음</small></div>
+      <div class="summary-card" data-tone="blocked"><small>현재 동작 불가</small><span class="value" id="count-blocked">0</span><small>코드는 있으나 현재 런타임 실패</small></div>
+      <div class="summary-card" data-tone="external"><small>레포 밖</small><span class="value" id="count-external">0</span><small>외부 서버 또는 정책 결정 필요</small></div>
+    </div>
+    <p class="note" style="margin:16px 0 0">완료율은 “완료”만 분자로 계산한다. 부분 구현과 현재 동작 불가는 완료로 포함하지 않는다. <strong id="completion-rate">0%</strong></p>
+  </section>
+
+  <section>
+    <h2>실행·검증 스냅샷</h2>
+    <div class="snapshot">
+      <article><b class="ok">웹 화면 정상</b><code>http://localhost:3000</code><br />HTTP 200 · dev PID 26784 실행 중</article>
+      <article><b class="ok">로컬 브리지 정상</b><code>http://127.0.0.1:4317/health</code><br />HTTP 200 · bridge PID 23912 · Codex 세션 1건 조회</article>
+      <article><b class="ok">자동 검증 통과</b><code>npm test</code><br />빌드 성공 · 73/73 테스트 통과</article>
+    </div>
+    <p class="note" style="margin:16px 0 0">73개 테스트에는 신규 사료·포만·화장실 tier·간식·놀이·쓰다듬기·일일 상한·자리 꾸미기·AI 에디션·회사 CLI 할당량 검증이 포함된다. 브리지는 health 200, 고정 코드 페어링, 실제 세션 목록 1건, 클라우드 릴레이 online까지 확인했다. 실제 업무 생성→완료와 외부 회사 실행기는 별도 종단간 검증이 남아 있다.</p>
+  </section>
+
+  <section>
+    <h2>전체 기능 체크리스트</h2>
+    <div class="filters" aria-label="상태 필터">
+      <button type="button" class="active" data-filter="all">전체</button>
+      <button type="button" data-filter="done">완료</button>
+      <button type="button" data-filter="partial">부분 구현</button>
+      <button type="button" data-filter="missing">미구현</button>
+      <button type="button" data-filter="blocked">현재 동작 불가</button>
+      <button type="button" data-filter="external">레포 밖</button>
+    </div>
+    <div class="table-wrap">
+      <table id="audit-table">
+        <thead>
+          <tr><th>ID</th><th>판정</th><th>기능</th><th>점검 결과</th><th>근거</th></tr>
+        </thead>
+        <tbody>
+          <tr data-status="done"><td>A01</td><td><span class="status done">✅ 완료</span></td><td>도토리 → 조개 이전 및 HUD</td><td>레거시 재화의 1회 이전과 조개 잔액 표시가 구현되어 있다.</td><td><code>app/page.tsx</code> · <code>SHELL_KEY</code></td></tr>
+          <tr data-status="done"><td>A02</td><td><span class="status done">✅ 완료</span></td><td>하단 키캡 4메뉴</td><td>CAT / DESK / WORK / STATUS+LOG 네 화면과 캔버스 내 메뉴가 연결되어 있다.</td><td><code>app/page.tsx</code> · <code>RADIO_MENU</code></td></tr>
+          <tr data-status="done"><td>A03</td><td><span class="status done">✅ 완료</span></td><td>월드 조개 스폰</td><td>스폰·클릭·1개 획득과 로컬 날짜별 40개 일일 상한이 연결되어 있다.</td><td><code>app/economy-ledger.ts</code> · <code>WORLD_SHELL_DAILY_CAP</code> · 테스트 25</td></tr>
+          <tr data-status="done"><td>A04</td><td><span class="status done">✅ 완료</span></td><td>조개 클릭 획득량</td><td>사용자 요구대로 클릭 한 번에 조개 1개가 증가한다.</td><td><code>app/page.tsx</code> · shell collect handler</td></tr>
+          <tr data-status="done"><td>A05</td><td><span class="status done">✅ 완료</span></td><td>업무 완료 보상</td><td>15/8/3 계단식 지급, 일일 20건·145개 상한과 simulation 무보상 게이트가 적용된다.</td><td><code>app/economy-ledger.ts</code> · 테스트 26~27</td></tr>
+          <tr data-status="done"><td>A06</td><td><span class="status done">✅ 완료</span></td><td>좌석 4단계 해금</td><td>0 / 250 / 600 / 1250 조개 비용으로 최대 4좌석이 구현되어 있다.</td><td><code>app/seat-progression.ts</code> · 관련 테스트</td></tr>
+          <tr data-status="done"><td>A07</td><td><span class="status done">✅ 완료</span></td><td>보조 고양이 이동·충돌 회피</td><td>각 고양이의 독립 배회, 경로 우회, 장애물 충돌 방지가 구현되어 있다.</td><td><code>app/agent-world-3d.tsx</code> · navigation 테스트 5건</td></tr>
+          <tr data-status="done"><td>A08</td><td><span class="status done">✅ 완료</span></td><td>관리자 배치 모드·저장</td><td>로컬 관리자 전용 객체 이동/회전/저장과 하드코딩 레이아웃 검증이 있다.</td><td><code>app/world-object-layout.mjs</code> · 테스트 43~47</td></tr>
+          <tr data-status="missing"><td>A09</td><td><span class="status missing">❌ 미구현</span></td><td>오프라인 트리클·첫 접속·택배·마일스톤</td><td>기획 1부의 보조 수급 채널과 저장 키/상한 로직이 없다.</td><td><code>agent-forest-attendance-v1</code> 등 검색 결과 없음</td></tr>
+          <tr data-status="missing"><td>A10</td><td><span class="status missing">❌ 미구현</span></td><td>아이들 월드 이벤트</td><td>표류물, 게 구경, 갈매기, 나비, 물고기 점프 이벤트 및 보상 훅이 없다.</td><td>기획 부록 C 9~11 · 구현 근거 없음</td></tr>
+          <tr data-status="done"><td>A11</td><td><span class="status done">✅ 완료</span></td><td>주요 3D 월드 오브젝트</td><td>책상 4종, 피크닉, 오두막, 야자수, 돌, 조개, 밥그릇, 화장실이 월드에 배치되어 있다.</td><td><code>app/agent-world-3d.tsx</code> · 모델/레이아웃 테스트</td></tr>
+          <tr data-status="done"><td>A12</td><td><span class="status done">✅ 완료</span></td><td>한 화면 반응형 캔버스·하단 메뉴</td><td>PC/모바일에서 캔버스 높이와 메뉴 배치를 반응형으로 처리한다.</td><td><code>app/globals.css</code> · rendered-html 테스트</td></tr>
+
+          <tr data-status="done"><td>B01</td><td><span class="status done">✅ 완료</span></td><td>배고픔·배설·행복도 코어</td><td>기본값, 시간 경과, 임계치, 12시간 오프라인 캡이 구현되어 있다.</td><td><code>app/cat-needs.ts</code> · 테스트 1~7</td></tr>
+          <tr data-status="done"><td>B02</td><td><span class="status done">✅ 완료</span></td><td>욕구 저장·복원</td><td>localStorage 지연 계산, 주기 flush, 숨김/종료 flush가 연결되어 있다.</td><td><code>app/page.tsx</code> · <code>NEEDS_KEY</code></td></tr>
+          <tr data-status="done"><td>B03</td><td><span class="status done">✅ 완료</span></td><td>고양이 이름표 욕구 그래프</td><td>배고픔·배설·행복도 게이지가 월드 이름표에 표시된다.</td><td><code>app/agent-world-3d.tsx</code> · marker gauges</td></tr>
+          <tr data-status="done"><td>B04</td><td><span class="status done">✅ 완료</span></td><td>밥그릇 1개와 빈/가득 상태</td><td>빈 그릇/가득 찬 그릇 모델 전환, 클릭 리필, 장애물·상호작용 영역이 있다.</td><td><code>FOOD_BOWL_EMPTY_MODEL_URL</code> · <code>FOOD_BOWL_FULL_MODEL_URL</code></td></tr>
+          <tr data-status="done"><td>B05</td><td><span class="status done">✅ 완료</span></td><td>배고픈 고양이 자동 이동·대기열</td><td>밥그릇 접근·대기·점유·먹기·복귀 FSM과 다른 고양이 대기가 구현되어 있다.</td><td><code>CareFacilityState</code> · food occupant/queue</td></tr>
+          <tr data-status="done"><td>B06</td><td><span class="status done">✅ 완료</span></td><td>빈 밥그릇 실패 처리</td><td>사료가 없으면 행복도 감소, demand 울음, 안내 토스트 후 다시 이동한다.</td><td><code>app/page.tsx:1346</code> 근방 · needs 테스트 7</td></tr>
+          <tr data-status="done"><td>B07</td><td><span class="status done">✅ 완료</span></td><td>사료 3종·가격·남은 급여 수</td><td>Basic/Advanced/Premium의 가격·4인분·남은 수량·구매 UI와 레거시 저장 마이그레이션이 구현됐다.</td><td><code>app/food-bowl-state.ts</code> · 테스트 32~34</td></tr>
+          <tr data-status="done"><td>B08</td><td><span class="status done">✅ 완료</span></td><td>사료 포만 지속시간</td><td><code>satiationUntil</code>을 저장하며 등급별 45/120/240분 동안 배고픔 증가를 멈춘다.</td><td><code>app/cat-needs.ts</code> · 테스트 8, 12</td></tr>
+          <tr data-status="done"><td>B09</td><td><span class="status done">✅ 완료</span></td><td>화장실 1개 기본 오브젝트</td><td>우측 상단 화장실 1개, 클릭·장애물·접근 위치와 수치 게이지가 구현되어 있다.</td><td><code>LITTER_BOX_POSITION</code> · <code>litter-box-level-gauge</code></td></tr>
+          <tr data-status="done"><td>B10</td><td><span class="status done">✅ 완료</span></td><td>배설 자동 이동·점유·대기</td><td>배설 욕구에 따라 이동하고, 사용 중이면 대기열에 서며, 완료 후 복귀한다.</td><td><code>CareFacilityState</code> · toilet occupant/queue</td></tr>
+          <tr data-status="done"><td>B11</td><td><span class="status done">✅ 완료</span></td><td>배변 누적·가득 참·청소·냄새</td><td>1회 +34, 등급별 최대치, 가득 찬 시설 진입 차단, 클릭 청소와 냄새 파티클이 구현되어 있다.</td><td><code>app/litter-box-state.mjs</code> · 테스트 35~37 · odor particles</td></tr>
+          <tr data-status="done"><td>B12</td><td><span class="status done">✅ 완료</span></td><td>화장실 등급·용량 구매/장착</td><td>단일 물리 시설을 tier 1/2/3, 용량 100/200/300으로 확장하며 가격·구매·장착 UI와 저장이 연결됐다.</td><td><code>LITTER_TIER_CAPACITY</code> · <code>LITTER_TIER_PRICE</code> · 테스트 37</td></tr>
+          <tr data-status="missing"><td>B13</td><td><span class="status missing">❌ 미구현</span></td><td>물리적 화장실 여러 개</td><td>현재 월드에는 화장실 오브젝트와 점유 대기열이 각각 1개뿐이다.</td><td><code>const LITTER_BOX_POSITION</code> 단일 정의</td></tr>
+          <tr data-status="done"><td>B14</td><td><span class="status done">✅ 완료</span></td><td>간식 급여</td><td>조개 6개 결제 후 월드에 놓고, 고양이가 먹은 뒤 완료한다. 60초 쿨다운·고양이별 일일 8회·중단 환불이 적용된다.</td><td><code>app/cat-interactions.ts</code> · 테스트 1~3</td></tr>
+          <tr data-status="partial"><td>B15</td><td><span class="status partial">🟡 부분 구현</span></td><td>간식 3종과 이력 저장</td><td><code>SNACK_LOG_KEY</code>와 고양이별 쿨다운·일일 이력은 구현됐다. 무료판 확정 흐름은 간식 1종이며 3종 카탈로그는 아직 없다.</td><td><code>app/cat-interactions.ts</code> · <code>SNACK_LOG_KEY</code></td></tr>
+          <tr data-status="done"><td>B16</td><td><span class="status done">✅ 완료</span></td><td>놀아주기·스트레스 해소</td><td>레이저 추적과 깃털공 사냥, 전용 공격 애니메이션, 행복도 보상·60초 쿨다운·일일 6회가 구현됐다.</td><td><code>app/cat-interactions.ts</code> · <code>app/agent-world-3d.tsx</code> · 테스트 4</td></tr>
+          <tr data-status="done"><td>B17</td><td><span class="status done">✅ 완료</span></td><td>쓰다듬기·꾹꾹이 행복도</td><td>좌석 클릭 쓰다듬기는 행복도 +3과 고양이별 10분 쿨다운을 적용하고, 자율 꾹꾹이 완료는 +1을 반영한다.</td><td><code>app/cat-interactions.ts</code> · <code>onKneadingCompleted</code> · 테스트 5~6</td></tr>
+          <tr data-status="done"><td>B18</td><td><span class="status done">✅ 완료</span></td><td>고양이 이름 짓기</td><td><code>CAT_NAME_KEY</code> 저장, 좌석별 이름 입력과 6자 제한, 월드 이름표 반영이 연결됐다.</td><td><code>app/page.tsx</code> · <code>CAT_NAME_KEY</code></td></tr>
+          <tr data-status="partial"><td>B19</td><td><span class="status partial">🟡 부분 구현</span></td><td>털색/무늬 구매·월드 반영</td><td>15종 가격·소유·선택 상태와 월드 스타일 전달은 있으나, 각 스타일의 실제 텍스처 시각 회귀 검증은 없다.</td><td><code>app/cat-style-economy.ts</code> · 테스트 8~10</td></tr>
+
+          <tr data-status="done"><td>C01</td><td><span class="status done">✅ 완료</span></td><td>DESK 좌석 해금 화면</td><td>좌석별 상태와 해금 버튼, 부족 잔액 처리가 동작한다.</td><td><code>app/page.tsx</code> · seat progression</td></tr>
+          <tr data-status="done"><td>C02</td><td><span class="status done">✅ 완료</span></td><td>자리 꾸미기 소유/배치 데이터</td><td><code>WORKSTATION_DECOR_KEY v2</code>로 전역 소유 목록과 좌석별 4개 장착 슬롯을 독립 저장한다.</td><td><code>app/workstation-decor.ts</code> · 테스트 62~65</td></tr>
+          <tr data-status="done"><td>C03</td><td><span class="status done">✅ 완료</span></td><td>12종 꾸미기 카탈로그</td><td>화분·머그·러그·랜턴 등 12종의 가격·구매·장착 UI와 잔액 차감이 구현됐다.</td><td><code>WORKSTATION_DECOR_CATALOG</code> · 테스트 62~64</td></tr>
+          <tr data-status="done"><td>C04</td><td><span class="status done">✅ 완료</span></td><td>좌석별 소품 오버레이</td><td>seat-1~4 각각의 장착 상태를 월드 앵커에 절차형 3D 소품으로 합성한다.</td><td><code>app/agent-world-3d.tsx</code> · <code>createWorkstationDecorOverlay</code></td></tr>
+          <tr data-status="done"><td>C05</td><td><span class="status done">✅ 완료</span></td><td>기본 책상/자리 모델 품질 처리</td><td>상단 3자리와 하단 2자리의 모델, 렌더 스케일, 외곽선, 장애물 처리가 현재 월드에 반영되어 있다.</td><td><code>app/agent-world-3d.tsx</code> · workstation 테스트</td></tr>
+
+          <tr data-status="done"><td>D01</td><td><span class="status done">✅ 완료</span></td><td>로컬 연결 UI·6자리 페어링 폼</td><td>WORK 탭에 로컬/클라우드 전송 선택, 코드 입력과 토큰 저장 UI가 있다.</td><td><code>app/page.tsx:2661</code> 근방</td></tr>
+          <tr data-status="done"><td>D02</td><td><span class="status done">✅ 완료</span></td><td>브리지 HTTP API 골격</td><td>health, pair, sessions, turns, interrupt, approval 라우트가 구현되어 있다.</td><td><code>bridge/server.mjs</code></td></tr>
+          <tr data-status="done"><td>D03</td><td><span class="status done">✅ 완료</span></td><td>현재 로컬 세션 연결</td><td>고정 코드로 브리지를 재기동해 health 200, 페어링 성공, 실제 Codex 세션 1건 조회를 확인했다.</td><td>2026-07-30 실행 점검 · bridge PID 23912</td></tr>
+          <tr data-status="done"><td>D04</td><td><span class="status done">✅ 완료</span></td><td>Codex App Server JSON-RPC 클라이언트</td><td>초기화, 요청/응답, 알림, 승인 요청 변환이 단위 테스트로 검증된다.</td><td><code>bridge/codex-app-server-client.mjs</code> · 테스트 11~12</td></tr>
+          <tr data-status="partial"><td>D05</td><td><span class="status partial">🟡 부분 구현</span></td><td>세션 목록·생성·재개·업무·중단</td><td>모든 화면·라우트·단위 테스트와 실제 목록 조회는 통과했다. 이번 점검에서는 실세션 업무 생성→완료→중단까지의 파괴적 E2E는 실행하지 않았다.</td><td><code>app/page.tsx</code> · <code>bridge/server.mjs</code></td></tr>
+          <tr data-status="done"><td>D06</td><td><span class="status done">✅ 완료</span></td><td>운영 이벤트 매퍼 통합</td><td><code>server.mjs</code>의 실제 알림 경로가 <code>mapCodexEvent</code>를 사용하고 실 App Server 형태를 테스트한다.</td><td><code>bridge/server.mjs:457</code> · 테스트 28~31</td></tr>
+          <tr data-status="done"><td>D07</td><td><span class="status done">✅ 완료</span></td><td>승인·읽기전용 보안 정책</td><td><code>command_execution</code>에 한해서 정확 일치 읽기전용 명령만 자동 승인하고 <code>file_write</code>는 거부한다.</td><td><code>bridge/security-policy.mjs</code> · 테스트 59</td></tr>
+          <tr data-status="done"><td>D08</td><td><span class="status done">✅ 완료</span></td><td>클라우드 릴레이 연결</td><td>릴레이 라우트·D1 스키마와 브리지 연결이 있으며 현재 health에서 cloudRelay online을 확인했다.</td><td><code>worker/relay.ts</code> · 2026-07-30 runtime health</td></tr>
+          <tr data-status="partial"><td>D09</td><td><span class="status partial">🟡 부분 구현</span></td><td>내 ChatGPT CLI 백엔드</td><td>서비스 카드, 회사 job/status 프록시, 인증·할당량·타임아웃은 구현됐다. 실제 회사 서버 실행기 환경값이 없어 현재는 정직하게 503을 반환한다.</td><td><code>worker/company-relay.ts</code> · 테스트 21~24</td></tr>
+          <tr data-status="partial"><td>D10</td><td><span class="status partial">🟡 부분 구현</span></td><td>내 Claude CLI 백엔드</td><td>서비스 카드와 회사 프록시 계약은 마련됐지만 Claude Code 실행기는 외부 회사 서버에 아직 연결되지 않았다.</td><td><code>app/companion-backends.ts</code> · <code>worker/company-relay.ts</code></td></tr>
+          <tr data-status="done"><td>D11</td><td><span class="status done">✅ 완료</span></td><td>free puter.com 백엔드</td><td>공식 Puter SDK 로더, <code>puter.ai.chat</code> 작업 경로와 채팅 전용 capability 제한이 구현됐다.</td><td><code>app/puter-companion.ts</code> · 테스트 18~20</td></tr>
+          <tr data-status="done"><td>D12</td><td><span class="status done">✅ 완료</span></td><td>사용자 본인 Codex 세션</td><td>로컬 브리지와 클라우드 릴레이 선택, 페어링·세션 선택이 구현됐고 실제 세션 목록을 조회했다.</td><td>D01~D05 · 2026-07-30 runtime verification</td></tr>
+          <tr data-status="done"><td>D13</td><td><span class="status done">✅ 완료</span></td><td>AI 연결 4카드 선택 UI</td><td>서비스판은 ChatGPT CLI/Claude CLI/Puter/내 PC 세션 4카드, 공개판은 안전한 Puter/내 PC 세션만 노출한다.</td><td><code>app/companion-backends.ts</code> · 테스트 18~20</td></tr>
+          <tr data-status="done"><td>D14</td><td><span class="status done">✅ 완료</span></td><td>서비스/공개 빌드 격리</td><td><code>build:service</code>, <code>build:public</code>, <code>APP_EDITION</code> 배선과 두 빌드 성공을 확인했다.</td><td><code>package.json</code> · <code>vite.config.ts</code> · <code>worker/index.ts</code></td></tr>
+          <tr data-status="done"><td>D15</td><td><span class="status done">✅ 완료</span></td><td>회사 CLI 할당량·company-job API</td><td>디바이스당 시간 3회·전체 일일 40회 D1 할당량, 큐 10, 180초 제한과 company-job/status API가 구현됐다.</td><td><code>db/schema.ts</code> · <code>worker/company-relay.ts</code> · 테스트 21~24</td></tr>
+          <tr data-status="external"><td>D16</td><td><span class="status external">⚪ 레포 밖</span></td><td>외부 서버 실행기</td><td>기획의 1.248.227.240 서버측 실행기는 이 저장소 밖 프로비저닝 작업이라 현재 코드만으로 완료할 수 없다.</td><td>기획 Phase B 9</td></tr>
+
+          <tr data-status="done"><td>E01</td><td><span class="status done">✅ 완료</span></td><td>팝업 이미지 프리로드·슬라이드</td><td>에셋을 먼저 로드하고 아래에서 올라오며, 내부 스크롤이 뷰포트 안에 고정된다.</td><td>popup-assets 테스트 28~31</td></tr>
+          <tr data-status="done"><td>E02</td><td><span class="status done">✅ 완료</span></td><td>탭 9-slice·버튼 피드백</td><td>탭 늘어짐 방지와 포인터/키보드/감소 모션 눌림 피드백이 검증된다.</td><td>테스트 31~32</td></tr>
+          <tr data-status="partial"><td>E03</td><td><span class="status partial">🟡 부분 구현</span></td><td>HUD·메뉴 자동 표시/숨김</td><td>상호작용 시 표시와 유휴 전환 코드는 있으나 모바일 실제 기기와 접근성 회귀 테스트가 없다.</td><td><code>app/page.tsx</code> · <code>app/globals.css</code></td></tr>
+          <tr data-status="partial"><td>E04</td><td><span class="status partial">🟡 부분 구현</span></td><td>UI 효과음 14종</td><td><code>UiCue</code> 타입과 호출부는 다수 있으나 실제 <code>UI_AUDIO_SOURCE</code>에는 keycapClick만 연결되어 나머지는 무음이다.</td><td><code>app/world-audio.ts:83</code></td></tr>
+          <tr data-status="done"><td>E05</td><td><span class="status done">✅ 완료</span></td><td>앰비언스·BGM·고양이·타건음</td><td>기존 MP3와 재생 디렉터가 월드 상태에 연결되어 있다.</td><td><code>public/audio</code> · <code>app/world-audio.ts</code></td></tr>
+          <tr data-status="partial"><td>E06</td><td><span class="status partial">🟡 부분 구현</span></td><td>음소거 일관성</td><td>토글 경로는 구현되어 있으나 모든 UI cue에 실제 소스가 없어 전체 큐를 검증할 수 없다.</td><td><code>playUi</code> · audio preference</td></tr>
+          <tr data-status="done"><td>E07</td><td><span class="status done">✅ 완료</span></td><td>D1 사용자 상태 동기화</td><td>사용자, 세션, 조개 delta, 욕구, 장식 상태와 bootstrap/push/pull, local-first queue가 있다.</td><td><code>db/schema.ts</code> · <code>app/storage.ts</code> · 테스트 25~27</td></tr>
+          <tr data-status="partial"><td>E08</td><td><span class="status partial">🟡 부분 구현</span></td><td>사용자 인증 경로</td><td>OpenAI 호스팅 헤더 기반 식별은 있으나 기획 2부의 Google OAuth 자체 구현은 하지 않았다. 최종 인증 정책을 명시해야 한다.</td><td><code>app/chatgpt-auth.ts</code></td></tr>
+          <tr data-status="done"><td>E09</td><td><span class="status done">✅ 완료</span></td><td>신규 4부 기능 테스트</td><td>사료 등급·포만 지속·화장실 tier·간식/놀이·일일 상한·자리 꾸미기·AI 에디션·회사 할당량 테스트를 추가했다.</td><td><code>tests/food-bowl-state.test.mjs</code> 외 신규 6개 테스트 파일</td></tr>
+          <tr data-status="partial"><td>E10</td><td><span class="status partial">🟡 부분 구현</span></td><td>실제 세션 종단간 테스트</td><td>브리지 실행→고정 코드 페어링→실제 세션 조회는 통과했다. 실세션 업무 생성→완료→중단은 사용자 작업을 변경하므로 자동 실행하지 않았다.</td><td>2026-07-30 runtime verification</td></tr>
+          <tr data-status="done"><td>E11</td><td><span class="status done">✅ 완료</span></td><td>현재 자동 빌드·회귀 테스트</td><td>2026-07-30 기준 빌드와 전체 73개 테스트가 전부 통과한다.</td><td><code>npm test</code> · 73 pass / 0 fail</td></tr>
+          <tr data-status="partial"><td>E12</td><td><span class="status partial">🟡 부분 구현</span></td><td>번들 성능</td><td>빌드는 성공하지만 500kB 초과 청크 경고가 남아 초기 로딩 비용 개선이 필요하다.</td><td>vinext build 경고</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>화장실 “여러 개” 요구의 정확한 판정</h2>
+    <p>현재 구현은 <strong>물리적 화장실 1개 + 단일 occupant + 대기열</strong>이다. 여러 고양이가 동시에 필요해도 한 마리만 사용하고 나머지는 기다린다.</p>
+    <p>통합 기획서 4부 §5의 제목은 “1개 무료, 추가 구매”지만, 같은 문서 §16은 <strong>world-object-layout을 변경하지 않고 물리적 신규 배치도 하지 않는다</strong>고 확정했으며 실제 구현안은 하나의 화장실 용량을 100/200/300으로 올리는 tier 방식이다. 따라서 다음 두 항목은 별개다.</p>
+    <div class="snapshot">
+      <article><b class="ok">기본 1개 사용·대기</b>현재 구현됨</article>
+      <article><b class="ok">용량 3단계 구매</b>100/200/300 tier 구현됨</article>
+      <article><b class="bad">물리적 여러 개 배치</b>현재 미구현 · 최종 기획과도 충돌</article>
+    </div>
+    <p class="note" style="margin:16px 0 0">실제로 화장실을 여러 개 월드에 두려면 기획서의 “물리적 신규배치 없음” 결정을 변경한 뒤, 화장실별 occupant/queue/오염도/충돌 AABB/저장 키를 배열 구조로 다시 설계해야 한다.</p>
+  </section>
+
+  <section>
+    <h2>남은 구현 권장 순서</h2>
+    <div class="priority-grid">
+      <article class="priority"><h3><span class="number">1</span>외부 회사 실행기 연결</h3><p><code>COMPANY_CLI_ENDPOINT</code>와 토큰을 서비스 환경에 연결하고 ChatGPT/Claude 실제 job 생성·상태 폴링을 검증한다.</p></article>
+      <article class="priority"><h3><span class="number">2</span>실세션 업무 E2E</h3><p>검증용 별도 workspace/thread에서 업무 생성→이벤트→완료→중단 흐름을 자동화해 D05/E10을 완료로 올린다.</p></article>
+      <article class="priority"><h3><span class="number">3</span>오프라인 보상과 출석</h3><p>첫 접속·택배·마일스톤·마일드한 오프라인 수급을 일일 경제 상한과 충돌하지 않게 구현한다.</p></article>
+      <article class="priority"><h3><span class="number">4</span>아이들 월드 이벤트</h3><p>표류물·게·갈매기·나비·물고기 점프를 보상 없는 연출부터 단계적으로 추가한다.</p></article>
+      <article class="priority"><h3><span class="number">5</span>시각·접근성 회귀 검증</h3><p>15종 털색, HUD 자동 숨김, 모바일 내부 스크롤과 3D 소품을 캡처 기반으로 비교한다.</p></article>
+      <article class="priority"><h3><span class="number">6</span>UI 오디오·번들 최적화</h3><p>무음 cue에 실제 짧은 사운드를 연결하고 Three.js·팝업 자산을 지연 로드해 500kB 초과 청크를 줄인다.</p></article>
+    </div>
+  </section>
+
+  <section>
+    <h2>점검 근거</h2>
+    <ul class="source-list">
+      <li>기준 기획서: <code>D:\soccerstarWebSource\GameCreator\catAgentGame\docs\cat-agent-meta-design-20260728.html</code></li>
+      <li>주요 화면/상태: <code>D:\soccerstarWebSource\GameCreator\catAgentGame\app\page.tsx</code></li>
+      <li>월드/고양이/시설: <code>D:\soccerstarWebSource\GameCreator\catAgentGame\app\agent-world-3d.tsx</code></li>
+      <li>욕구/화장실/경제: <code>app\cat-needs.ts</code>, <code>app\food-bowl-state.ts</code>, <code>app\litter-box-state.mjs</code>, <code>app\economy-ledger.ts</code>, <code>app\cat-interactions.ts</code></li>
+      <li>꾸미기: <code>app\workstation-decor.ts</code>, <code>app\agent-world-3d.tsx</code></li>
+      <li>세션 연결: <code>bridge\server.mjs</code>, <code>bridge\codex-app-server-client.mjs</code>, <code>bridge\event-mapper.mjs</code>, <code>bridge\security-policy.mjs</code></li>
+      <li>AI/동기화: <code>app\companion-backends.ts</code>, <code>app\puter-companion.ts</code>, <code>worker\company-relay.ts</code>, <code>db\schema.ts</code>, <code>worker\relay.ts</code></li>
+      <li>자동 검증: <code>npm test</code> 실행 결과 빌드 성공, 73/73 통과</li>
+      <li>현재 실행: 웹 3000 HTTP 200, 브리지 4317 HTTP 200, 페어링 성공, 실제 세션 1건, 클라우드 릴레이 online</li>
+    </ul>
+  </section>
+
+  <footer>
+    이 문서는 2026-07-30 현재 저장소와 로컬 실행 상태를 기준으로 작성한 감사(audit) 결과다. 이후 구현 변경 시 상태와 근거를 함께 갱신해야 한다.
+  </footer>
+</main>
+<script>
+  const rows = [...document.querySelectorAll("#audit-table tbody tr")];
+  const statuses = ["done", "partial", "missing", "blocked", "external"];
+  statuses.forEach((status) => {
+    document.getElementById(`count-${status}`).textContent =
+      rows.filter((row) => row.dataset.status === status).length;
+  });
+  const done = rows.filter((row) => row.dataset.status === "done").length;
+  document.getElementById("completion-rate").textContent =
+    `엄격 완료율 ${Math.round((done / rows.length) * 100)}% (${done}/${rows.length})`;
+
+  document.querySelectorAll("[data-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      document.querySelectorAll("[data-filter]").forEach((item) => item.classList.remove("active"));
+      button.classList.add("active");
+      const filter = button.dataset.filter;
+      rows.forEach((row) => row.classList.toggle("hidden", filter !== "all" && row.dataset.status !== filter));
+    });
+  });
+</script>
+</body>
+</html>

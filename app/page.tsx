@@ -14,6 +14,8 @@ import AgentWorld3D, {
   type AgentWorldLocation,
   type SeatId,
   type SeatView,
+  type SnackPlacement,
+  type WorldPlacementMode,
 } from "./agent-world-3d";
 import {
   assignSeat,
@@ -38,11 +40,27 @@ import {
   updateCatNeedState,
 } from "./cat-needs";
 import {
+  FOOD_BOWL_KEY,
+  FOOD_PORTIONS_PER_FILL,
+  FOOD_PROFILES,
+  type FoodBowlState,
+  type FoodGrade,
+  consumeFoodPortion,
+  createDefaultFoodBowlState,
+  fillFoodBowl,
+  parseFoodBowlState,
+  serializeFoodBowlState,
+} from "./food-bowl-state";
+import {
   LITTER_BOX_STORAGE_KEY,
+  LITTER_TIER_PRICE,
+  LITTER_TIER_STORAGE_KEY,
   addLitterWaste,
   cleanLitterBox as resetLitterBoxState,
   isLitterBoxFull,
+  litterCapacityForTier,
   parseLitterLevel,
+  parseLitterTier,
 } from "./litter-box-state.mjs";
 import {
   CAT_STYLE_OWNERSHIP_KEY,
@@ -58,11 +76,58 @@ import {
   nextWorkstationSlot,
   parseActiveSeatCount,
 } from "./seat-progression";
+import {
+  WORKSTATION_DECOR_CATALOG,
+  WORKSTATION_DECOR_KEY,
+  createDefaultWorkstationDecorState,
+  equippedDecorIds,
+  parseWorkstationDecorState,
+  purchaseOrEquipWorkstationDecor,
+  type WorkstationDecorState,
+  type WorkstationSeatId,
+} from "./workstation-decor";
 import { preloadPopupAssets } from "./popup-assets.mjs";
 import {
   type PlayerCloudSync,
   createPlayerCloudSync,
 } from "./storage";
+import {
+  TASK_REWARD_DAILY_KEY,
+  WORLD_SHELL_DAILY_CAP,
+  WORLD_SHELL_DAILY_KEY,
+  claimTaskReward,
+  claimWorldShells,
+  createDailyCounter,
+  parseDailyCounter,
+  type DailyCounter,
+} from "./economy-ledger";
+import {
+  LASER_DURATION_MS,
+  PETTING_LOG_KEY,
+  PLAY_DAILY_CAP_PER_CAT,
+  PLAY_LOG_KEY,
+  SNACK_LOG_KEY,
+  SNACK_PRICE,
+  completePlay,
+  completePetting,
+  completeSnack,
+  parsePettingLog,
+  parsePlayLog,
+  parseSnackLog,
+  playAvailability,
+  snackAvailability,
+  type CatInteractionLog,
+  type CatPlayLog,
+  type PettingLog,
+} from "./cat-interactions";
+import {
+  APP_EDITION,
+  COMPANION_BACKEND_KEY,
+  parseCompanionBackend,
+  visibleCompanionBackends,
+  type CompanionBackendId,
+} from "./companion-backends";
+import { submitPuterTask } from "./puter-companion";
 
 type Department = "general" | "coding" | "design" | "music";
 type AgentStatus =
@@ -75,6 +140,11 @@ type AgentStatus =
   | "waiting_approval"
   | "failed"
   | "completed";
+const AUTONOMOUS_AGENT_STATUSES = new Set<AgentStatus>([
+  "idle",
+  "completed",
+  "failed",
+]);
 type Usage = {
   input_tokens?: number;
   cached_input_tokens?: number;
@@ -165,6 +235,7 @@ type BridgeHealth = {
 type CompanionTransport = "local" | "cloud";
 type RadioPage = "cats" | "desk" | "work" | "status-log";
 type CatPage = "list" | "detail";
+type CatDetailTab = "style" | "care";
 type WorkTab = "connect" | "task";
 type StatusLogTab = "status" | "log";
 type ConfirmDialog =
@@ -183,11 +254,11 @@ const SELECTED_SESSION_KEY = "agent-forest-selected-session";
 const SEAT_ASSIGNMENTS_KEY = "agent-forest-seat-assignments-v1";
 const LEGACY_ACORN_KEY = "agent-forest-acorns-v1";
 const SHELL_KEY = "agent-forest-shell-v1";
-const FOOD_BOWL_KEY = "agent-forest-food-bowl-v1";
 const DECOR_KEY = "agent-forest-decor-v1";
 const DEMO_SEEN_KEY = "agent-forest-demo-seen-v1";
 const EVENT_HISTORY_KEY = "agent-forest-event-history-v1";
 const ONBOARDING_KEY = "agent-forest-onboarding-v1";
+const CAT_NAME_KEY = "agent-forest-cat-name-v1";
 const INSTALL_HANDOFF =
   "이 저장소의 AGENTS.md를 읽고 Agent Forest를 설치·실행한 뒤 연결 주소를 열어줘.";
 
@@ -397,6 +468,7 @@ export default function Home() {
   const [popupAssetsReady, setPopupAssetsReady] = useState(false);
   const [radioPage, setRadioPage] = useState<RadioPage>("cats");
   const [catPage, setCatPage] = useState<CatPage>("list");
+  const [catDetailTab, setCatDetailTab] = useState<CatDetailTab>("style");
   const [workTab, setWorkTab] = useState<WorkTab>("connect");
   const [statusLogTab, setStatusLogTab] = useState<StatusLogTab>("status");
   const [hudDormant, setHudDormant] = useState(false);
@@ -418,14 +490,35 @@ export default function Home() {
   const [audioEnabled, setAudioEnabled] = useState(true);
   // 고양이 외형 — 지금은 섬 전체가 한 마리라 전역 하나. 좌석별로 나눌 때 이 값이 기본값이 된다.
   const [catStyle, setCatStyle] = useState("Blue");
+  const [catNames, setCatNames] = useState<Record<string, string>>({});
   const [ownedCatStyles, setOwnedCatStyles] = useState<Set<string>>(
     () => new Set(["Blue"]),
   );
   const [pendingCatStyle, setPendingCatStyle] = useState<string | null>(null);
   const catShapeId = "slim";
   const [catNeeds, setCatNeeds] = useState<CatNeedsStore>({});
-  const [foodAvailable, setFoodAvailable] = useState(true);
+  const [foodBowlState, setFoodBowlState] = useState<FoodBowlState>(
+    createDefaultFoodBowlState,
+  );
   const [litterLevel, setLitterLevel] = useState(0);
+  const [litterTier, setLitterTier] = useState(1);
+  const [worldShellDaily, setWorldShellDaily] = useState<DailyCounter>(
+    createDailyCounter,
+  );
+  const [taskRewardDaily, setTaskRewardDaily] = useState<DailyCounter>(
+    createDailyCounter,
+  );
+  const [snackLog, setSnackLog] = useState<CatInteractionLog>({});
+  const [playLog, setPlayLog] = useState<CatPlayLog>({});
+  const [workstationDecor, setWorkstationDecor] =
+    useState<WorkstationDecorState>(createDefaultWorkstationDecorState);
+  const [companionBackend, setCompanionBackend] = useState<CompanionBackendId>(
+    () => parseCompanionBackend(null),
+  );
+  const [worldPlacementMode, setWorldPlacementMode] =
+    useState<WorldPlacementMode>(null);
+  const [snackPlacement, setSnackPlacement] =
+    useState<SnackPlacement | null>(null);
 
   const relayEventCursor = useRef(0);
   const taskToThreadRef = useRef(new Map<string, string>());
@@ -449,7 +542,19 @@ export default function Home() {
   const modalAudioPrimedRef = useRef(false);
   const previousModalOpenRef = useRef(false);
   const catNeedsRef = useRef<CatNeedsStore>({});
+  const foodBowlStateRef = useRef<FoodBowlState>(
+    createDefaultFoodBowlState(),
+  );
   const litterLevelRef = useRef(0);
+  const litterTierRef = useRef(1);
+  const litterMaxLevelRef = useRef(litterCapacityForTier(1));
+  const worldShellDailyRef = useRef<DailyCounter>(createDailyCounter());
+  const taskRewardDailyRef = useRef<DailyCounter>(createDailyCounter());
+  const snackLogRef = useRef<CatInteractionLog>({});
+  const playLogRef = useRef<CatPlayLog>({});
+  const pettingLogRef = useRef<PettingLog>({});
+  const snackPlacementRef = useRef<SnackPlacement | null>(null);
+  const snackPlacementIdRef = useRef(0);
   const purchaseLockedRef = useRef(false);
   const activeSeatCountRef = useRef(1);
   const shellFlyIdRef = useRef(0);
@@ -506,6 +611,8 @@ export default function Home() {
   const focusedCatId = focusedRuntime?.threadId ?? DEMO_CAT_ID;
   const focusedCatNeeds =
     catNeeds[focusedCatId] ?? createDefaultCatNeedState();
+  const foodAvailable = foodBowlState.portionsRemaining > 0;
+  const litterMaxLevel = litterCapacityForTier(litterTier);
   const pendingSeatSlot =
     confirmDialog?.kind === "seat-unlock"
       ? (WORKSTATION_SLOTS.find(
@@ -524,6 +631,22 @@ export default function Home() {
     () => activeSeatIds(activeSeatCount),
     [activeSeatCount],
   );
+  const workstationDecorBySeat = useMemo(
+    () =>
+      Object.fromEntries(
+        (["seat-1", "seat-2", "seat-3", "seat-4"] as WorkstationSeatId[]).map(
+          (seatId) => [seatId, equippedDecorIds(workstationDecor, seatId)],
+        ),
+      ),
+    [workstationDecor],
+  );
+  const companionBackendOptions = useMemo(
+    () => visibleCompanionBackends(APP_EDITION),
+    [],
+  );
+  const selectedCompanionBackend =
+    companionBackendOptions.find((backend) => backend.id === companionBackend) ??
+    companionBackendOptions[0];
   const pressedRadioIndex = pressedRadioKey
     ? RADIO_MENU.findIndex((item) => item.key === pressedRadioKey) + 1
     : 0;
@@ -531,6 +654,19 @@ export default function Home() {
   useEffect(() => {
     runtimesRef.current = runtimes;
   }, [runtimes]);
+  useEffect(() => {
+    foodBowlStateRef.current = foodBowlState;
+  }, [foodBowlState]);
+  useEffect(() => {
+    litterTierRef.current = litterTier;
+    litterMaxLevelRef.current = litterCapacityForTier(litterTier);
+  }, [litterTier]);
+  useEffect(() => {
+    snackLogRef.current = snackLog;
+  }, [snackLog]);
+  useEffect(() => {
+    playLogRef.current = playLog;
+  }, [playLog]);
   useEffect(() => {
     let disposed = false;
 
@@ -574,7 +710,7 @@ export default function Home() {
       })(),
       seatId: runtime.seatId,
       catId: runtime.threadId,
-      agentName: runtime.agentName,
+      agentName: catNames[runtime.threadId] || runtime.agentName,
       location: runtime.location,
       status: runtime.status,
       statusLabel: STATUS_COPY[runtime.status],
@@ -586,7 +722,7 @@ export default function Home() {
           {
             seatId: "seat-1",
             catId: DEMO_CAT_ID,
-            agentName: "코치 모모",
+            agentName: catNames[DEMO_CAT_ID] || "코치 모모",
             location: "general",
             status: "idle",
             statusLabel: STATUS_COPY.idle,
@@ -602,7 +738,7 @@ export default function Home() {
             ),
           },
         ];
-  }, [activeSeatCount, catNeeds, runtimeList, unlockedSeatIds]);
+  }, [activeSeatCount, catNames, catNeeds, runtimeList, unlockedSeatIds]);
 
   const apiFetch = useCallback(
     (pathname: string, init: RequestInit = {}) => {
@@ -803,11 +939,26 @@ export default function Home() {
         setCompletionSignal((value) => value + 1);
         if (event.taskId && !completedTaskIdsRef.current.has(event.taskId)) {
           completedTaskIdsRef.current.add(event.taskId);
-          setShells((value) => {
-            const next = value + 10;
-            window.localStorage.setItem(SHELL_KEY, String(next));
-            return next;
-          });
+          const claim = claimTaskReward(
+            taskRewardDailyRef.current,
+            event.mode ?? "codex",
+          );
+          taskRewardDailyRef.current = claim.counter;
+          setTaskRewardDaily(claim.counter);
+          window.localStorage.setItem(
+            TASK_REWARD_DAILY_KEY,
+            JSON.stringify(claim.counter),
+          );
+          if (claim.reward > 0) {
+            setShells((value) => {
+              const next = value + claim.reward;
+              window.localStorage.setItem(SHELL_KEY, String(next));
+              return next;
+            });
+            setToast(`업무 완료 보상으로 조개 ${claim.reward}개를 받았어요.`);
+          } else if (event.mode !== "simulation") {
+            setToast("오늘 업무 보상 20건을 모두 받았어요. 업무는 계속 맡길 수 있어요.");
+          }
         }
       }
       if (event.type === "task.failed") {
@@ -928,10 +1079,49 @@ export default function Home() {
         window.localStorage.setItem(SHELL_KEY, String(migratedShells));
       }
       setShells(migratedShells);
-      const savedFoodBowl = window.localStorage.getItem(FOOD_BOWL_KEY);
-      setFoodAvailable(savedFoodBowl !== "empty");
+      const restoredWorldShellDaily = parseDailyCounter(
+        window.localStorage.getItem(WORLD_SHELL_DAILY_KEY),
+      );
+      worldShellDailyRef.current = restoredWorldShellDaily;
+      setWorldShellDaily(restoredWorldShellDaily);
+      const restoredTaskRewardDaily = parseDailyCounter(
+        window.localStorage.getItem(TASK_REWARD_DAILY_KEY),
+      );
+      taskRewardDailyRef.current = restoredTaskRewardDaily;
+      setTaskRewardDaily(restoredTaskRewardDaily);
+      const restoredSnackLog = parseSnackLog(
+        window.localStorage.getItem(SNACK_LOG_KEY),
+      );
+      snackLogRef.current = restoredSnackLog;
+      setSnackLog(restoredSnackLog);
+      const restoredPlayLog = parsePlayLog(
+        window.localStorage.getItem(PLAY_LOG_KEY),
+      );
+      playLogRef.current = restoredPlayLog;
+      setPlayLog(restoredPlayLog);
+      pettingLogRef.current = parsePettingLog(
+        window.localStorage.getItem(PETTING_LOG_KEY),
+      );
+      const restoredFoodBowl = parseFoodBowlState(
+        window.localStorage.getItem(FOOD_BOWL_KEY),
+      );
+      foodBowlStateRef.current = restoredFoodBowl;
+      setFoodBowlState(restoredFoodBowl);
+      window.localStorage.setItem(
+        FOOD_BOWL_KEY,
+        serializeFoodBowlState(restoredFoodBowl),
+      );
+      const restoredLitterTier = parseLitterTier(
+        window.localStorage.getItem(LITTER_TIER_STORAGE_KEY),
+      );
+      const restoredLitterMaxLevel =
+        litterCapacityForTier(restoredLitterTier);
+      litterTierRef.current = restoredLitterTier;
+      litterMaxLevelRef.current = restoredLitterMaxLevel;
+      setLitterTier(restoredLitterTier);
       const restoredLitterLevel = parseLitterLevel(
         window.localStorage.getItem(LITTER_BOX_STORAGE_KEY),
+        restoredLitterMaxLevel,
       );
       litterLevelRef.current = restoredLitterLevel;
       setLitterLevel(restoredLitterLevel);
@@ -943,6 +1133,15 @@ export default function Home() {
       const restoredDecorChoice =
         window.localStorage.getItem(DECOR_KEY) ?? "coral";
       setDecorChoice(restoredDecorChoice);
+      const restoredWorkstationDecor = parseWorkstationDecorState(
+        window.localStorage.getItem(WORKSTATION_DECOR_KEY),
+      );
+      setWorkstationDecor(restoredWorkstationDecor);
+      setCompanionBackend(
+        parseCompanionBackend(
+          window.localStorage.getItem(COMPANION_BACKEND_KEY),
+        ),
+      );
       const restoredNeeds = parseCatNeedsStore(
         window.localStorage.getItem(NEEDS_KEY),
       );
@@ -952,6 +1151,25 @@ export default function Home() {
       };
       catNeedsRef.current = nextNeeds;
       setCatNeeds(nextNeeds);
+      try {
+        const restoredNames = JSON.parse(
+          window.localStorage.getItem(CAT_NAME_KEY) ?? "{}",
+        ) as Record<string, string>;
+        setCatNames(
+          Object.fromEntries(
+            Object.entries(restoredNames)
+              .filter(
+                ([id, name]) =>
+                  id &&
+                  typeof name === "string" &&
+                  name.trim().length > 0,
+              )
+              .map(([id, name]) => [id, name.trim().slice(0, 6)]),
+          ),
+        );
+      } catch {
+        window.localStorage.removeItem(CAT_NAME_KEY);
+      }
       try {
         const savedEvents = JSON.parse(
           window.localStorage.getItem(EVENT_HISTORY_KEY) ?? "[]",
@@ -1268,43 +1486,288 @@ export default function Home() {
     setPendingCatStyle(null);
   }, [applyCatLook, ownedCatStyles, pendingCatStyle, shells]);
 
-  const feedFocusedCat = useCallback(
-    (kind: "meal" | "snack") => {
+  const beginSnackPlacement = useCallback(() => {
+    if (snackPlacementRef.current) {
+      setToast("먼저 놓아둔 간식을 고양이가 먹을 때까지 기다려 주세요.");
+      return;
+    }
+    const availability = snackAvailability(
+      snackLogRef.current,
+      focusedCatId,
+    );
+    if (!availability.available) {
+      setToast(
+        availability.reason === "daily-cap"
+          ? "이 고양이는 오늘 간식을 8번 모두 먹었어요."
+          : `간식은 ${Math.ceil(availability.waitMs / 1_000)}초 뒤에 다시 줄 수 있어요.`,
+      );
+      return;
+    }
+    if (shells < SNACK_PRICE) {
+      worldAudioRef.current?.playUi("purchaseFail");
+      setToast(`간식을 놓으려면 조개 ${SNACK_PRICE}개가 필요해요.`);
+      return;
+    }
+    setWorldPlacementMode("snack");
+    setRadioOpen(false);
+    setToast("해변 바닥을 눌러 간식을 놓아 주세요.");
+  }, [focusedCatId, shells]);
+
+  const placeWorldInteraction = useCallback(
+    ({ x, z }: { x: number; z: number }) => {
+      if (worldPlacementMode !== "snack" || snackPlacementRef.current) return;
+      const nextShells = shells - SNACK_PRICE;
+      if (nextShells < 0) {
+        setWorldPlacementMode(null);
+        setToast("조개가 부족해 간식을 놓지 못했어요.");
+        return;
+      }
+      const placement = {
+        id: ++snackPlacementIdRef.current,
+        x,
+        z,
+      };
+      snackPlacementRef.current = placement;
+      setSnackPlacement(placement);
+      setWorldPlacementMode(null);
+      setShells(nextShells);
+      window.localStorage.setItem(SHELL_KEY, String(nextShells));
+      worldAudioRef.current?.playUi("itemEquip");
+      setToast("간식을 놓았어요. 고양이가 먹으러 걸어갑니다.");
+    },
+    [shells, worldPlacementMode],
+  );
+
+  const resolveSnackPlacement = useCallback(
+    ({
+      placementId,
+      catId,
+      consumed,
+    }: {
+      placementId: number;
+      catId: string;
+      consumed: boolean;
+    }) => {
+      if (snackPlacementRef.current?.id !== placementId) return;
+      snackPlacementRef.current = null;
+      setSnackPlacement(null);
+      if (!consumed) {
+        setShells((current) => {
+          const next = current + SNACK_PRICE;
+          window.localStorage.setItem(SHELL_KEY, String(next));
+          return next;
+        });
+        setToast("받으러 올 수 있는 고양이가 없어 간식값 6조개를 돌려드렸어요.");
+        return;
+      }
+      const completed = completeSnack(snackLogRef.current, catId);
+      snackLogRef.current = completed.log;
+      setSnackLog(completed.log);
+      window.localStorage.setItem(
+        SNACK_LOG_KEY,
+        JSON.stringify(completed.log),
+      );
       const now = Date.now();
       setCatNeeds((current) => {
-        const before = ensureCatNeedState(current, focusedCatId, now);
+        const before = ensureCatNeedState(current, catId, now);
         const nextState = updateCatNeedState(
           before,
-          kind === "meal"
-            ? { hunger: 0, happiness: before.happiness + 4 }
-            : {
-                hunger: Math.max(0, before.hunger - 20),
-                happiness: before.happiness + 8,
-              },
+          { happiness: before.happiness + completed.happinessGain },
           now,
         );
-        const next = { ...current, [focusedCatId]: nextState };
+        const next = { ...current, [catId]: nextState };
         catNeedsRef.current = next;
         window.localStorage.setItem(NEEDS_KEY, JSON.stringify(next));
         return next;
       });
-      worldAudioRef.current?.playCat(kind === "meal" ? "greet" : "purr");
-      worldAudioRef.current?.playUi(kind === "meal" ? "feedBowl" : "itemEquip");
-      setToast(kind === "meal" ? "밥그릇을 채웠어요." : "간식을 건넸어요.");
+      worldAudioRef.current?.playCat("purr");
+      setToast(
+        `간식을 먹고 행복도가 ${completed.happinessGain} 올랐어요. 오늘 ${completed.count}/8회`,
+      );
     },
-    [focusedCatId],
+    [],
   );
 
-  const refillFoodBowl = useCallback(() => {
-    if (foodAvailable) {
-      setToast("밥그릇에 사료가 가득 차 있어요.");
+  const beginLaserPlay = useCallback(() => {
+    const targetCat = seatViews[0];
+    if (!targetCat || !AUTONOMOUS_AGENT_STATUSES.has(targetCat.status as AgentStatus)) {
+      worldAudioRef.current?.playUi("purchaseFail");
+      setToast("작업 중인 고양이는 방해하지 않아요. 쉬는 시간에 놀아 주세요.");
       return;
     }
-    setFoodAvailable(true);
-    window.localStorage.setItem(FOOD_BOWL_KEY, "full");
+    if (snackPlacementRef.current || worldPlacementMode === "snack") {
+      setToast("간식 상호작용이 끝난 뒤 레이저 놀이를 시작할 수 있어요.");
+      return;
+    }
+    const availability = playAvailability(
+      playLogRef.current,
+      targetCat.catId,
+      "laser",
+    );
+    if (!availability.available) {
+      setToast(
+        availability.reason === "daily-cap"
+          ? `오늘 레이저 놀이는 ${PLAY_DAILY_CAP_PER_CAT}회를 모두 마쳤어요.`
+          : `레이저 놀이는 ${Math.ceil(availability.waitMs / 1_000)}초 뒤에 다시 할 수 있어요.`,
+      );
+      return;
+    }
+    setWorldPlacementMode("laser");
+    setRadioOpen(false);
+    worldAudioRef.current?.playUi("itemEquip");
+    setToast(
+      `월드 바닥을 누른 채 움직여 주세요. ${LASER_DURATION_MS / 1_000}초 동안 고양이가 레이저를 쫓아요.`,
+    );
+  }, [seatViews, worldPlacementMode]);
+
+  const resolveLaserPlay = useCallback(
+    ({ catId, completed }: { catId: string; completed: boolean }) => {
+      setWorldPlacementMode(null);
+      if (!completed) {
+        setToast("고양이 업무가 시작되어 레이저 놀이를 안전하게 멈췄어요.");
+        return;
+      }
+      const result = completePlay(playLogRef.current, catId, "laser");
+      playLogRef.current = result.log;
+      setPlayLog(result.log);
+      window.localStorage.setItem(PLAY_LOG_KEY, JSON.stringify(result.log));
+      const now = Date.now();
+      setCatNeeds((current) => {
+        const before = ensureCatNeedState(current, catId, now);
+        const nextState = updateCatNeedState(
+          before,
+          { happiness: before.happiness + result.happinessGain },
+          now,
+        );
+        const next = { ...current, [catId]: nextState };
+        catNeedsRef.current = next;
+        window.localStorage.setItem(NEEDS_KEY, JSON.stringify(next));
+        return next;
+      });
+      worldAudioRef.current?.playCat("purr");
+      setToast(
+        `레이저 놀이 완료! 행복도 +${result.happinessGain} · 오늘 ${result.count}/${PLAY_DAILY_CAP_PER_CAT}회`,
+      );
+    },
+    [],
+  );
+
+  const beginToyHunt = useCallback(() => {
+    const targetCat = seatViews[0];
+    if (
+      !targetCat ||
+      !AUTONOMOUS_AGENT_STATUSES.has(targetCat.status as AgentStatus)
+    ) {
+      worldAudioRef.current?.playUi("purchaseFail");
+      setToast("작업 중인 고양이는 방해하지 않아요. 쉬는 시간에 놀아 주세요.");
+      return;
+    }
+    if (snackPlacementRef.current || worldPlacementMode !== null) {
+      setToast("진행 중인 월드 상호작용을 먼저 끝내 주세요.");
+      return;
+    }
+    const availability = playAvailability(
+      playLogRef.current,
+      targetCat.catId,
+      "toy",
+    );
+    if (!availability.available) {
+      setToast(
+        availability.reason === "daily-cap"
+          ? `오늘 장난감 사냥은 ${PLAY_DAILY_CAP_PER_CAT}회를 모두 마쳤어요.`
+          : `장난감 사냥은 ${Math.ceil(availability.waitMs / 1_000)}초 뒤에 다시 할 수 있어요.`,
+      );
+      return;
+    }
+    setWorldPlacementMode("toy");
+    setRadioOpen(false);
+    worldAudioRef.current?.playUi("itemEquip");
+    setToast("해변 바닥을 눌러 깃털 장난감을 던져 주세요.");
+  }, [seatViews, worldPlacementMode]);
+
+  const resolveToyHunt = useCallback(
+    ({ catId, completed }: { catId: string; completed: boolean }) => {
+      setWorldPlacementMode(null);
+      if (!completed) {
+        setToast("고양이 업무가 시작되어 장난감 사냥을 안전하게 멈췄어요.");
+        return;
+      }
+      const result = completePlay(playLogRef.current, catId, "toy");
+      playLogRef.current = result.log;
+      setPlayLog(result.log);
+      window.localStorage.setItem(PLAY_LOG_KEY, JSON.stringify(result.log));
+      const now = Date.now();
+      setCatNeeds((current) => {
+        const before = ensureCatNeedState(current, catId, now);
+        const nextState = updateCatNeedState(
+          before,
+          { happiness: before.happiness + result.happinessGain },
+          now,
+        );
+        const next = { ...current, [catId]: nextState };
+        catNeedsRef.current = next;
+        window.localStorage.setItem(NEEDS_KEY, JSON.stringify(next));
+        return next;
+      });
+      worldAudioRef.current?.playCat("purr");
+      setToast(
+        `장난감 사냥 완료! 행복도 +${result.happinessGain} · 오늘 ${result.count}/${PLAY_DAILY_CAP_PER_CAT}회`,
+      );
+    },
+    [],
+  );
+
+  const refillFoodBowl = useCallback((grade: FoodGrade = "Basic") => {
+    const current = foodBowlStateRef.current;
+    if (current.portionsRemaining > 0) {
+      setToast(
+        `${FOOD_PROFILES[current.grade ?? "Basic"].label}가 ${current.portionsRemaining}/${FOOD_PORTIONS_PER_FILL}인분 남아 있어요.`,
+      );
+      return;
+    }
+    const profile = FOOD_PROFILES[grade];
+    if (shells < profile.price) {
+      worldAudioRef.current?.playUi("purchaseFail");
+      setToast(`${profile.label}를 채우려면 조개 ${profile.price}개가 필요해요.`);
+      return;
+    }
+    const next = fillFoodBowl(grade);
+    const nextShells = shells - profile.price;
+    foodBowlStateRef.current = next;
+    setFoodBowlState(next);
+    setShells(nextShells);
+    window.localStorage.setItem(FOOD_BOWL_KEY, serializeFoodBowlState(next));
+    window.localStorage.setItem(SHELL_KEY, String(nextShells));
     worldAudioRef.current?.playUi("feedBowl");
-    setToast("밥그릇에 사료를 가득 채웠어요.");
-  }, [foodAvailable]);
+    setToast(
+      `${profile.label} 4인분을 조개 ${profile.price}개로 채웠어요. 포만감 ${profile.satiationMinutes}분`,
+    );
+  }, [shells]);
+
+  const upgradeLitterFacility = useCallback(() => {
+    if (litterTier >= 3) {
+      setToast("화장실 용량을 모두 확장했어요.");
+      return;
+    }
+    const nextTier = (litterTier + 1) as 2 | 3;
+    const price = Number(LITTER_TIER_PRICE[nextTier]);
+    if (shells < price) {
+      worldAudioRef.current?.playUi("purchaseFail");
+      setToast(`화장실 ${nextTier}단계 확장에는 조개 ${price}개가 필요해요.`);
+      return;
+    }
+    const nextShells = shells - price;
+    setShells(nextShells);
+    setLitterTier(nextTier);
+    litterTierRef.current = nextTier;
+    litterMaxLevelRef.current = litterCapacityForTier(nextTier);
+    window.localStorage.setItem(SHELL_KEY, String(nextShells));
+    window.localStorage.setItem(LITTER_TIER_STORAGE_KEY, String(nextTier));
+    worldAudioRef.current?.playUi("purchaseSuccess");
+    setToast(
+      `화장실 ${nextTier}단계 확장 완료 · 오염도 한도 ${litterCapacityForTier(nextTier)}`,
+    );
+  }, [litterTier, shells]);
 
   const cleanLitterFacility = useCallback(() => {
     if (litterLevelRef.current <= 0) {
@@ -1331,7 +1794,17 @@ export default function Home() {
       const now = Date.now();
       setCatNeeds((current) => {
         const before = ensureCatNeedState(current, event.catId, now);
-        const nextState = applyCatCareOutcome(before, event.outcome, now);
+        const mealProfile =
+          FOOD_PROFILES[foodBowlStateRef.current.grade ?? "Basic"];
+        const nextState = applyCatCareOutcome(
+          before,
+          event.outcome,
+          now,
+          {
+            satiationMinutes: mealProfile.satiationMinutes,
+            happinessGain: mealProfile.happinessGain,
+          },
+        );
         const next = { ...current, [event.catId]: nextState };
         catNeedsRef.current = next;
         window.localStorage.setItem(NEEDS_KEY, JSON.stringify(next));
@@ -1340,14 +1813,28 @@ export default function Home() {
 
       if (event.outcome === "meal-completed") {
         worldAudioRef.current?.playUi("catEat");
-        setFoodAvailable(false);
-        window.localStorage.setItem(FOOD_BOWL_KEY, "empty");
+        const nextFoodBowl = consumeFoodPortion(foodBowlStateRef.current);
+        foodBowlStateRef.current = nextFoodBowl;
+        setFoodBowlState(nextFoodBowl);
+        window.localStorage.setItem(
+          FOOD_BOWL_KEY,
+          serializeFoodBowlState(nextFoodBowl),
+        );
+        setToast(
+          nextFoodBowl.portionsRemaining > 0
+            ? `고양이가 밥을 먹었어요. 사료 ${nextFoodBowl.portionsRemaining}/${FOOD_PORTIONS_PER_FILL}인분 남음`
+            : "고양이가 마지막 사료를 먹었어요. 밥그릇이 비었어요.",
+        );
       } else if (event.outcome === "meal-missed") {
         worldAudioRef.current?.playCat("demand");
         setToast("밥그릇이 비어서 고양이의 행복도가 줄었어요.");
       } else if (event.outcome === "toilet-completed") {
         worldAudioRef.current?.playUi("toiletDone");
-        const nextLevel = addLitterWaste(litterLevelRef.current);
+        const nextLevel = addLitterWaste(
+          litterLevelRef.current,
+          undefined,
+          litterMaxLevelRef.current,
+        );
         litterLevelRef.current = nextLevel;
         setLitterLevel(nextLevel);
         window.localStorage.setItem(
@@ -1355,7 +1842,7 @@ export default function Home() {
           String(nextLevel),
         );
         setToast(
-          isLitterBoxFull(nextLevel)
+          isLitterBoxFull(nextLevel, litterMaxLevelRef.current)
             ? "화장실이 가득 찼어요. 눌러서 배변을 치워주세요."
             : "화장실에 배변이 쌓였어요.",
         );
@@ -1363,6 +1850,25 @@ export default function Home() {
         worldAudioRef.current?.playCat("demand");
         setToast("화장실이 가득 차서 사용할 수 없어요. 행복도가 줄었어요.");
       }
+    },
+    [],
+  );
+
+  const handleKneadingCompleted = useCallback(
+    (event: { catId: string; seatId: SeatId }) => {
+      const now = Date.now();
+      setCatNeeds((current) => {
+        const before = ensureCatNeedState(current, event.catId, now);
+        const nextState = updateCatNeedState(
+          before,
+          { happiness: before.happiness + 1 },
+          now,
+        );
+        const next = { ...current, [event.catId]: nextState };
+        catNeedsRef.current = next;
+        window.localStorage.setItem(NEEDS_KEY, JSON.stringify(next));
+        return next;
+      });
     },
     [],
   );
@@ -1803,15 +2309,29 @@ export default function Home() {
       x: number;
       y: number;
     }) => {
+      const claim = claimWorldShells(
+        worldShellDailyRef.current,
+        amount,
+      );
+      worldShellDailyRef.current = claim.counter;
+      setWorldShellDaily(claim.counter);
+      window.localStorage.setItem(
+        WORLD_SHELL_DAILY_KEY,
+        JSON.stringify(claim.counter),
+      );
+      if (claim.reward <= 0) {
+        setToast("오늘 해변에서 주울 수 있는 조개 40개를 모두 모았어요.");
+        return;
+      }
       const id = ++shellFlyIdRef.current;
       setShells((current) => {
-        const next = current + amount;
+        const next = current + claim.reward;
         window.localStorage.setItem(SHELL_KEY, String(next));
         return next;
       });
       setShellCollectTokens((current) => [
         ...current,
-        { id, x, y, amount },
+        { id, x, y, amount: claim.reward },
       ]);
       worldAudioRef.current?.playUi("shellPickup");
       window.setTimeout(() => {
@@ -1866,8 +2386,76 @@ export default function Home() {
 
   async function startTask(event: FormEvent) {
     event.preventDefault();
-    if (!prompt.trim() || !selectedThreadId || isSubmitting) return;
+    if (!prompt.trim() || isSubmitting) return;
+    if (selectedCompanionBackend?.available === "server-pending") {
+      setToast("이 서비스 실행기는 아직 서버 배포가 필요해요.");
+      return;
+    }
+    if (companionBackend === "local-session" && !selectedThreadId) {
+      setToast("먼저 사용할 Codex 세션을 선택해 주세요.");
+      return;
+    }
     setIsSubmitting(true);
+    if (companionBackend === "puter") {
+      const taskId = `puter-${crypto.randomUUID()}`;
+      const threadId = "puter-browser-session";
+      const emitPuterEvent = (partial: Partial<BridgeEvent>) =>
+        consumeBridgeEvent({
+          id: `${taskId}-${partial.type ?? "event"}-${Date.now()}`,
+          type: partial.type ?? "agent.status",
+          occurredAt: new Date().toISOString(),
+          taskId,
+          threadId,
+          department,
+          mode: "simulation",
+          ...partial,
+        });
+      emitPuterEvent({
+        type: "task.queued",
+        status: "queued",
+        location: "general",
+        prompt: prompt.trim(),
+        title: "무료 AI에게 질문을 전달했어요",
+        detail: "Puter AI 응답을 기다리고 있어요.",
+      });
+      emitPuterEvent({
+        type: "agent.status",
+        status: "working",
+        location: department,
+        title: "무료 AI가 답변을 작성하고 있어요",
+        detail: "이 연결은 파일 수정과 명령 실행을 하지 않아요.",
+      });
+      setRadioOpen(false);
+      try {
+        const result = await submitPuterTask(prompt.trim());
+        emitPuterEvent({
+          type: "task.completed",
+          status: "completed",
+          location: "queue",
+          title: "무료 AI 답변이 도착했어요",
+          detail: "STATUS+LOG에서 전체 답변을 확인할 수 있어요.",
+          result,
+        });
+        setToast("무료 AI 답변이 도착했어요.");
+      } catch (error) {
+        emitPuterEvent({
+          type: "task.failed",
+          status: "failed",
+          location: "queue",
+          title: "무료 AI 연결에 실패했어요",
+          detail:
+            error instanceof Error
+              ? error.message
+              : "잠시 후 다시 시도해 주세요.",
+        });
+        setToast(
+          error instanceof Error ? error.message : "무료 AI 연결에 실패했어요.",
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
     try {
       const response = await apiFetch(
         `/v2/sessions/${encodeURIComponent(selectedThreadId)}/turns`,
@@ -1944,6 +2532,60 @@ export default function Home() {
     setDecorChoice(value);
     window.localStorage.setItem(DECOR_KEY, value);
     worldAudioRef.current?.playUi("itemEquip");
+  }
+
+  function chooseWorkstationDecor(itemId: string) {
+    const seatId = (selectedSeat ?? "seat-1") as WorkstationSeatId;
+    const result = purchaseOrEquipWorkstationDecor({
+      state: workstationDecor,
+      seatId,
+      itemId,
+      shells,
+      unlockedSeatCount: activeSeatCount,
+    });
+    if (!result.ok) {
+      worldAudioRef.current?.playUi("purchaseFail");
+      setToast(
+        result.reason === "locked"
+          ? `자리 ${result.required}개를 열면 구매할 수 있어요.`
+          : result.reason === "insufficient-shells"
+            ? `이 소품을 구매하려면 조개 ${result.required}개가 필요해요.`
+            : "소품 정보를 찾지 못했어요.",
+      );
+      return;
+    }
+    setWorkstationDecor(result.state);
+    setShells(result.balance);
+    window.localStorage.setItem(
+      WORKSTATION_DECOR_KEY,
+      JSON.stringify(result.state),
+    );
+    window.localStorage.setItem(SHELL_KEY, String(result.balance));
+    worldAudioRef.current?.playUi(
+      result.charged > 0 ? "purchaseSuccess" : "itemEquip",
+    );
+    setToast(
+      result.equipped
+        ? `${result.charged > 0 ? "구매하고 " : ""}자리 ${seatId.slice(-1)}에 소품을 배치했어요.`
+        : `자리 ${seatId.slice(-1)}에서 소품을 치웠어요.`,
+    );
+  }
+
+  function chooseCompanionBackend(backendId: CompanionBackendId) {
+    const backend = companionBackendOptions.find(
+      (candidate) => candidate.id === backendId,
+    );
+    if (!backend) return;
+    setCompanionBackend(backend.id);
+    window.localStorage.setItem(COMPANION_BACKEND_KEY, backend.id);
+    worldAudioRef.current?.playUi("tabSwitch");
+    setToast(
+      backend.available === "server-pending"
+        ? "서비스 실행기는 아직 서버 배포가 필요해요. 다른 연결을 선택할 수 있어요."
+        : backend.id === "puter"
+          ? "무료 AI 대화가 선택됐어요. 파일 수정과 명령 실행은 지원하지 않아요."
+          : "내 PC Codex 세션 연결이 선택됐어요.",
+    );
   }
 
   function pressRadioMenuKey(page: RadioPage) {
@@ -2045,15 +2687,82 @@ export default function Home() {
             }
             completionSignal={completionSignal}
             foodAvailable={foodAvailable}
+            foodGrade={foodBowlState.grade}
             litterLevel={litterLevel}
+            litterMaxLevel={litterMaxLevel}
+            workstationDecor={workstationDecorBySeat}
             onFoodBowlClick={refillFoodBowl}
             onLitterBoxClick={cleanLitterFacility}
             onCatCareEvent={handleCatCareEvent}
+            onKneadingCompleted={handleKneadingCompleted}
             onShellCollect={collectBeachShell}
+            worldShellSpawningEnabled={
+              worldShellDaily.count < WORLD_SHELL_DAILY_CAP
+            }
+            placementMode={worldPlacementMode}
+            snackPlacement={snackPlacement}
+            onWorldPlacement={placeWorldInteraction}
+            onSnackResolved={resolveSnackPlacement}
+            onLaserResolved={resolveLaserPlay}
+            onToyResolved={resolveToyHunt}
             onSeatClick={(seatId) => {
               // 쓰다듬는 반응 — 짧게 인사하고 잠깐 골골거린다.
               worldAudioRef.current?.playCat("greet");
               worldAudioRef.current?.playCat("purr");
+              const targetCat = seatViews.find(
+                (seat) => seat.seatId === seatId,
+              );
+              if (targetCat) {
+                const now = Date.now();
+                const petting = completePetting(
+                  pettingLogRef.current,
+                  targetCat.catId,
+                  now,
+                );
+                if (petting.accepted) {
+                  pettingLogRef.current = petting.log;
+                  window.localStorage.setItem(
+                    PETTING_LOG_KEY,
+                    JSON.stringify(petting.log),
+                  );
+                  setCatNeeds((current) => {
+                    const before = ensureCatNeedState(
+                      current,
+                      targetCat.catId,
+                      now,
+                    );
+                    const nextState = updateCatNeedState(
+                      before,
+                      {
+                        happiness:
+                          before.happiness + petting.happinessGain,
+                      },
+                      now,
+                    );
+                    const next = {
+                      ...current,
+                      [targetCat.catId]: nextState,
+                    };
+                    catNeedsRef.current = next;
+                    window.localStorage.setItem(
+                      NEEDS_KEY,
+                      JSON.stringify(next),
+                    );
+                    return next;
+                  });
+                  setToast(
+                    `${targetCat.label}를 쓰다듬었어요. 행복도 +${petting.happinessGain}`,
+                  );
+                } else {
+                  const waitMinutes = Math.max(
+                    1,
+                    Math.ceil(petting.waitMs / 60_000),
+                  );
+                  setToast(
+                    `${targetCat.label}는 만족해 보여요. ${waitMinutes}분 뒤에 다시 쓰다듬을 수 있어요.`,
+                  );
+                }
+              }
               setSelectedSeat(seatId);
               setStatusLogTab("status");
               setRadioPage("status-log");
@@ -2337,7 +3046,11 @@ export default function Home() {
                   <div className="cat-roster-head cat-profile-head">
                     <span className="cat-card-avatar" aria-hidden="true" />
                     <span>
-                      <b>{focusedRuntime?.agentName ?? "코치 모모"}</b>
+                      <b>
+                        {catNames[focusedCatId] ??
+                          focusedRuntime?.agentName ??
+                          "코치 모모"}
+                      </b>
                       <small>
                         자리 {(selectedSeat ?? "seat-1").slice(-1)} ·{" "}
                         {focusedRuntime
@@ -2349,7 +3062,11 @@ export default function Home() {
                   </div>
                   <div
                     className="cat-needs-summary"
-                    aria-label={`${focusedRuntime?.agentName ?? "코치 모모"} 욕구 상태`}
+                    aria-label={`${
+                      catNames[focusedCatId] ??
+                      focusedRuntime?.agentName ??
+                      "코치 모모"
+                    } 욕구 상태`}
                   >
                     {(
                       [
@@ -2391,6 +3108,68 @@ export default function Home() {
                     </div>
                   </div>
 
+                  <div
+                    className="radio-subtabs cat-detail-subtabs"
+                    role="tablist"
+                    aria-label="고양이 상세 메뉴"
+                  >
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={catDetailTab === "style"}
+                      className={catDetailTab === "style" ? "selected" : ""}
+                      onClick={() => {
+                        worldAudioRef.current?.playUi("tabSwitch");
+                        setCatDetailTab("style");
+                      }}
+                    >
+                      스타일
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={catDetailTab === "care"}
+                      className={catDetailTab === "care" ? "selected" : ""}
+                      onClick={() => {
+                        worldAudioRef.current?.playUi("tabSwitch");
+                        setCatDetailTab("care");
+                      }}
+                    >
+                      케어
+                    </button>
+                  </div>
+
+                  {catDetailTab === "style" && (
+                    <>
+                  <label className="cat-name-editor">
+                    <span>고양이 이름</span>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={
+                        catNames[focusedCatId] ??
+                        focusedRuntime?.agentName ??
+                        "코치 모모"
+                      }
+                      onChange={(event) => {
+                        const nextName = event.target.value
+                          .replace(/[\u0000-\u001f\u007f]/g, "")
+                          .slice(0, 6);
+                        const nextNames = {
+                          ...catNames,
+                          [focusedCatId]: nextName,
+                        };
+                        setCatNames(nextNames);
+                        window.localStorage.setItem(
+                          CAT_NAME_KEY,
+                          JSON.stringify(nextNames),
+                        );
+                      }}
+                      aria-label="고양이 이름, 최대 6글자"
+                    />
+                    <small>최대 6글자</small>
+                  </label>
+
                   <label className="cat-field-label">털 색 · 무늬</label>
                   <div className="cat-style-grid" role="radiogroup" aria-label="고양이 스타일">
                     {CAT_STYLES.map((style) => {
@@ -2430,23 +3209,88 @@ export default function Home() {
                       );
                     })}
                   </div>
+                    </>
+                  )}
 
+                  {catDetailTab === "care" && (
+                    <>
+                  <div className="care-facility-summary">
+                    <span>
+                      <strong>밥그릇</strong>
+                      <small>
+                        {foodBowlState.grade
+                          ? `${FOOD_PROFILES[foodBowlState.grade].label} · ${foodBowlState.portionsRemaining}/${FOOD_PORTIONS_PER_FILL}인분`
+                          : "비어 있음"}
+                      </small>
+                    </span>
+                    <span>
+                      <strong>화장실 {litterTier}단계</strong>
+                      <small>
+                        오염도 {Math.round(litterLevel)}/{litterMaxLevel}
+                      </small>
+                    </span>
+                  </div>
+                  <div className="food-grade-actions">
+                    {(Object.keys(FOOD_PROFILES) as FoodGrade[]).map((grade) => {
+                      const profile = FOOD_PROFILES[grade];
+                      return (
+                        <button
+                          type="button"
+                          className="game-button secondary"
+                          key={grade}
+                          onClick={() => refillFoodBowl(grade)}
+                        >
+                          <span>{profile.buttonLabel}</span>
+                          <small>{profile.price} 조개 · {profile.satiationMinutes}분</small>
+                        </button>
+                      );
+                    })}
+                  </div>
                   <div className="cat-care-actions">
                     <button
                       type="button"
-                      className="game-button secondary"
-                      onClick={refillFoodBowl}
+                      className="game-button primary"
+                      onClick={beginSnackPlacement}
                     >
-                      사료 주기
+                      간식 놓기 · {SNACK_PRICE} 조개
                     </button>
                     <button
                       type="button"
                       className="game-button primary"
-                      onClick={() => feedFocusedCat("snack")}
+                      onClick={beginLaserPlay}
                     >
-                      간식 주기
+                      레이저 포인터 · {LASER_DURATION_MS / 1_000}초
+                      <small>
+                        오늘 {playLog[focusedCatId]?.laser?.count ?? 0}/
+                        {PLAY_DAILY_CAP_PER_CAT}회
+                      </small>
+                    </button>
+                    <button
+                      type="button"
+                      className="game-button primary"
+                      onClick={beginToyHunt}
+                    >
+                      깃털 장난감 사냥
+                      <small>
+                        오늘 {playLog[focusedCatId]?.toy?.count ?? 0}/
+                        {PLAY_DAILY_CAP_PER_CAT}회
+                      </small>
+                    </button>
+                    <button
+                      type="button"
+                      className="game-button secondary"
+                      disabled={litterTier >= 3}
+                      onClick={upgradeLitterFacility}
+                    >
+                      {litterTier >= 3
+                        ? "화장실 최대 확장"
+                        : `화장실 ${litterTier + 1}호기 확장 · ${
+                            LITTER_TIER_PRICE[(litterTier + 1) as 2 | 3]
+                          } 조개`}
                     </button>
                   </div>
+                    </>
+                  )}
                 </div>
               </section>
             )}
@@ -2549,8 +3393,65 @@ export default function Home() {
                     );
                   })}
                 </div>
+                <div className="decor-catalog-heading">
+                  <strong>
+                    자리 {(selectedSeat ?? "seat-1").slice(-1)} 소품
+                  </strong>
+                  <small>소품 종류마다 한 개씩 배치할 수 있어요.</small>
+                </div>
+                <div
+                  className="desk-item-grid workstation-decor-grid"
+                  role="group"
+                  aria-label="자리 꾸미기 소품 12종"
+                >
+                  {WORKSTATION_DECOR_CATALOG.map((item) => {
+                    const seatId = (selectedSeat ??
+                      "seat-1") as WorkstationSeatId;
+                    const owned = workstationDecor.owned.includes(item.id);
+                    const equipped =
+                      workstationDecor.equipped[seatId]?.[item.slot] === item.id;
+                    const locked = activeSeatCount < item.unlockSeatCount;
+                    return (
+                      <button
+                        type="button"
+                        className={[
+                          "desk-item-card",
+                          "decor-catalog-card",
+                          equipped ? "equipped" : "",
+                          locked ? "locked" : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        key={item.id}
+                        onClick={() => chooseWorkstationDecor(item.id)}
+                        aria-pressed={equipped}
+                      >
+                        <span
+                          className="desk-item-preview"
+                          style={{
+                            backgroundImage: `url("${item.preview}")`,
+                            backgroundPosition: "center",
+                          }}
+                          aria-hidden="true"
+                        />
+                        <strong>{item.title}</strong>
+                        <small>{item.description}</small>
+                        <em>
+                          {locked
+                            ? `자리 ${item.unlockSeatCount}개 필요`
+                            : equipped
+                              ? "사용 중 · 누르면 해제"
+                              : owned
+                                ? "보유 · 배치하기"
+                                : `${item.price} 조개`}
+                        </em>
+                      </button>
+                    );
+                  })}
+                </div>
                 <p className="desk-safety-note">
-                  자리 하나마다 업무 객체 하나만 배치됩니다.
+                  구매한 소품은 모든 자리에서 함께 사용할 수 있고, 좌석별 배치는
+                  따로 저장됩니다.
                 </p>
               </section>
             )}
@@ -2593,10 +3494,20 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="selected-session-line">
-                  <span className={selectedSession ? "ready" : ""} />
-                  {selectedSession
-                    ? `${selectedSession.title} · ${selectedSession.projectName}`
-                    : "WORK의 세션 연결에서 사용할 Codex 세션을 선택해 주세요"}
+                  <span
+                    className={
+                      companionBackend === "puter" || selectedSession
+                        ? "ready"
+                        : ""
+                    }
+                  />
+                  {companionBackend === "puter"
+                    ? "무료 AI 대화 · 파일 수정과 명령 실행 없음"
+                    : companionBackend === "local-session"
+                      ? selectedSession
+                        ? `${selectedSession.title} · ${selectedSession.projectName}`
+                        : "WORK의 세션 연결에서 사용할 Codex 세션을 선택해 주세요"
+                      : "서비스 실행기 배포 대기 중"}
                 </div>
                 <div className="department-tabs" role="radiogroup" aria-label="담당 부서">
                   {(Object.entries(DEPARTMENTS) as [
@@ -2627,22 +3538,34 @@ export default function Home() {
                     placeholder="Codex에게 맡길 작업을 입력하세요"
                   />
                   <div className="composer-meta">
-                    <span>현재 PC 세션의 보안 설정 사용</span>
+                    <span>
+                      {companionBackend === "puter"
+                        ? "대화형 답변 전용 · 프로젝트 변경 없음"
+                        : "현재 PC 세션의 보안 설정 사용"}
+                    </span>
                     <span>{prompt.length}/2,000</span>
                   </div>
                   <button
                     className="run-button"
                     type="submit"
                     disabled={
-                      bridgeState !== "connected" ||
-                      !codexAvailable ||
-                      !companionToken ||
-                      !selectedThreadId ||
+                      selectedCompanionBackend?.available === "server-pending" ||
+                      (companionBackend === "local-session" &&
+                        (bridgeState !== "connected" ||
+                          !codexAvailable ||
+                          !companionToken ||
+                          !selectedThreadId)) ||
                       isSubmitting ||
                       !prompt.trim()
                     }
                   >
-                    {isSubmitting ? "작업 진행 중" : "선택한 Codex 세션에서 실행"}
+                    {isSubmitting
+                      ? "작업 진행 중"
+                      : companionBackend === "puter"
+                        ? "무료 AI에게 질문하기"
+                        : companionBackend === "local-session"
+                          ? "선택한 Codex 세션에서 실행"
+                          : "서비스 실행기 준비 중"}
                   </button>
                   <button
                     className="simulate-button"
@@ -2660,14 +3583,84 @@ export default function Home() {
 
             {radioPage === "work" && workTab === "connect" && (
               <section className="panel-section session-browser">
+                <div
+                  className="companion-backend-grid"
+                  role="radiogroup"
+                  aria-label="AI 연결 방식"
+                >
+                  {companionBackendOptions.map((backend) => {
+                    const selected = companionBackend === backend.id;
+                    const connectionTone =
+                      backend.id === "local-session"
+                        ? bridgeState
+                        : backend.available === "ready" && selected
+                          ? "connected"
+                          : "disconnected";
+                    return (
+                      <button
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        className={`companion-backend-card ${
+                          selected ? "selected" : ""
+                        }`}
+                        key={backend.id}
+                        onClick={() => chooseCompanionBackend(backend.id)}
+                      >
+                        <span className={`connection-dot ${connectionTone}`} />
+                        <strong>{backend.title}</strong>
+                        <small>{backend.description}</small>
+                        <em>{backend.badge}</em>
+                        <span className="backend-capabilities" aria-label="지원 기능">
+                          <b className={backend.capabilities.fileEdit ? "yes" : "no"}>
+                            파일
+                          </b>
+                          <b className={backend.capabilities.shellExec ? "yes" : "no"}>
+                            명령
+                          </b>
+                          <b
+                            className={
+                              backend.capabilities.approvalFlow ? "yes" : "no"
+                            }
+                          >
+                            승인
+                          </b>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
                 <div className="section-heading compact">
                   <div>
-                    <span className="section-kicker">CODEX SESSIONS</span>
-                    <h2>내 PC 세션 연결</h2>
+                    <span className="section-kicker">
+                      {APP_EDITION === "service" ? "SERVICE AI" : "PUBLIC AI"}
+                    </span>
+                    <h2>{selectedCompanionBackend?.title ?? "AI 연결"}</h2>
                   </div>
-                  <span className={`connection-dot ${bridgeState}`} />
+                  <span
+                    className={`connection-dot ${
+                      companionBackend === "puter" ? "connected" : bridgeState
+                    }`}
+                  />
                 </div>
-                {!companionToken ? (
+                {companionBackend === "puter" ? (
+                  <div className="install-letter backend-ready-note">
+                    <strong>바로 사용할 수 있는 무료 대화형 AI예요</strong>
+                    <p>
+                      업무 지시 탭에서 질문하면 고양이가 답변을 가져옵니다. 실제
+                      파일 수정이나 터미널 명령은 내 PC Codex 세션을 선택해 주세요.
+                    </p>
+                  </div>
+                ) : selectedCompanionBackend?.available === "server-pending" ? (
+                  <div className="ui-empty-state state-error">
+                    <span className="ui-empty-icon offline" aria-hidden="true" />
+                    <strong>서비스 실행기 준비 중</strong>
+                    <p>
+                      서버 실행기가 배포되기 전까지 무료 AI 또는 내 PC Codex
+                      세션을 선택해 주세요.
+                    </p>
+                  </div>
+                ) : !companionToken ? (
                   <>
                     <div className="install-letter">
                       <strong>내 AI에게 이 한 줄만 전하세요</strong>
@@ -2819,6 +3812,16 @@ export default function Home() {
                     }`}
                   >
                     {STATUS_COPY[focusedRuntime?.status ?? "idle"]}
+                  </span>
+                </div>
+                <div className="daily-economy-summary" aria-label="오늘의 조개 획득 현황">
+                  <span>
+                    <strong>해변 조개</strong>
+                    <small>{worldShellDaily.count}/{WORLD_SHELL_DAILY_CAP}</small>
+                  </span>
+                  <span>
+                    <strong>업무 보상</strong>
+                    <small>{taskRewardDaily.count}/20건 · {taskRewardDaily.reward}/145</small>
                   </span>
                 </div>
                 {uiPreview === "s11" ? (

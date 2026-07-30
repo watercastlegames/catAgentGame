@@ -18,6 +18,7 @@ import {
   type CatCareOutcome,
   selectCatCareIntent,
 } from "./cat-needs";
+import { FOOD_PROFILES, type FoodGrade } from "./food-bowl-state";
 import {
   addLitterWaste,
   isLitterBoxFull,
@@ -58,6 +59,14 @@ export type SeatView = {
   happiness?: number;
 };
 
+export type WorldPlacementMode = "snack" | "laser" | "toy" | null;
+
+export type SnackPlacement = {
+  id: number;
+  x: number;
+  z: number;
+};
+
 type AgentWorld3DProps = {
   seats: SeatView[];
   activeSeatCount: number;
@@ -74,14 +83,38 @@ type AgentWorld3DProps = {
     x: number;
     y: number;
   }) => void;
+  worldShellSpawningEnabled: boolean;
+  placementMode: WorldPlacementMode;
+  snackPlacement: SnackPlacement | null;
+  onWorldPlacement?: (position: { x: number; z: number }) => void;
+  onSnackResolved?: (event: {
+    placementId: number;
+    catId: string;
+    consumed: boolean;
+  }) => void;
+  onLaserResolved?: (event: {
+    catId: string;
+    completed: boolean;
+  }) => void;
+  onToyResolved?: (event: {
+    catId: string;
+    completed: boolean;
+  }) => void;
   foodAvailable: boolean;
+  foodGrade: FoodGrade | null;
   litterLevel: number;
+  litterMaxLevel: number;
+  workstationDecor?: Partial<Record<SeatId, string[]>>;
   onFoodBowlClick?: () => void;
   onLitterBoxClick?: () => void;
   onCatCareEvent?: (event: {
     catId: string;
     seatId: SeatId;
     outcome: CatCareOutcome;
+  }) => void;
+  onKneadingCompleted?: (event: {
+    catId: string;
+    seatId: SeatId;
   }) => void;
 };
 
@@ -199,6 +232,8 @@ const AMBIENT_ARRIVAL_DISTANCE = 0.045;
 const TASK_ARRIVAL_DISTANCE = 0.025;
 const CARE_ARRIVAL_DISTANCE = 0.075;
 const CARE_MOVE_SPEED = 0.62;
+const LASER_CHASE_DURATION_SECONDS = 20;
+const LASER_CHASE_MOVE_SPEED = 0.88;
 const FOOD_USE_SECONDS = 5.2;
 const TOILET_USE_SECONDS = 5.8;
 const CARE_RECOVERY_SECONDS = 1.4;
@@ -873,6 +908,207 @@ function createIllustratedMaterial(color: number) {
     visible: true,
   };
   return material;
+}
+
+const WORKSTATION_DECOR_SLOT_BY_ID: Record<
+  string,
+  "deskTop" | "inputDevice" | "seatCushion" | "floorAmbient"
+> = {
+  "shell-planter": "deskTop",
+  "enamel-mug": "deskTop",
+  "mini-palm": "deskTop",
+  "shell-frame": "deskTop",
+  "pastel-keycaps": "inputDevice",
+  "neon-keycaps": "inputDevice",
+  "wood-cushion": "seatCushion",
+  "quilt-cushion": "seatCushion",
+  "camping-stool": "seatCushion",
+  "round-rug": "floorAmbient",
+  "mini-lantern": "floorAmbient",
+  "shell-windchime": "floorAmbient",
+};
+
+function createWorkstationDecorVisual(itemId: string) {
+  const group = new THREE.Group();
+  group.name = `workstation-decor-${itemId}`;
+  const cream = createIllustratedMaterial(0xf4ead6);
+  const brown = createIllustratedMaterial(0x8e6753);
+  const coral = createIllustratedMaterial(0xe79b87);
+  const mint = createIllustratedMaterial(0x79aa87);
+  const yellow = createIllustratedMaterial(0xf0c36c);
+  const teal = createIllustratedMaterial(0x77bbb5);
+  const lavender = createIllustratedMaterial(0xb59abc);
+  const addRounded = (
+    size: [number, number, number],
+    position: [number, number, number],
+    material: THREE.Material,
+    radius = 0.025,
+  ) => {
+    const mesh = new THREE.Mesh(
+      new RoundedBoxGeometry(size[0], size[1], size[2], 3, radius),
+      material,
+    );
+    mesh.position.set(...position);
+    group.add(mesh);
+    return mesh;
+  };
+
+  if (itemId === "shell-planter" || itemId === "mini-palm") {
+    const pot = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.11, 0.14, 0.18, 16),
+      itemId === "mini-palm" ? yellow : coral,
+    );
+    pot.position.y = 0.09;
+    group.add(pot);
+    const stem = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.018, 0.025, 0.22, 10),
+      brown,
+    );
+    stem.position.y = 0.27;
+    group.add(stem);
+    const leafCount = itemId === "mini-palm" ? 5 : 3;
+    for (let index = 0; index < leafCount; index += 1) {
+      const leaf = new THREE.Mesh(
+        new THREE.SphereGeometry(0.095, 12, 8),
+        mint,
+      );
+      leaf.scale.set(0.48, 0.18, 1);
+      leaf.position.set(
+        Math.cos((index / leafCount) * Math.PI * 2) * 0.075,
+        0.37 + (index % 2) * 0.035,
+        Math.sin((index / leafCount) * Math.PI * 2) * 0.075,
+      );
+      leaf.rotation.y = (index / leafCount) * Math.PI * 2;
+      group.add(leaf);
+    }
+  } else if (itemId === "enamel-mug") {
+    const cup = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1, 0.085, 0.2, 18),
+      cream,
+    );
+    cup.position.y = 0.1;
+    group.add(cup);
+    const handle = new THREE.Mesh(
+      new THREE.TorusGeometry(0.075, 0.018, 8, 18, Math.PI * 1.55),
+      cream,
+    );
+    handle.position.set(0.095, 0.12, 0);
+    handle.rotation.y = Math.PI / 2;
+    group.add(handle);
+  } else if (itemId === "shell-frame") {
+    const frame = addRounded([0.27, 0.28, 0.055], [0, 0.2, 0], brown);
+    frame.rotation.x = -0.13;
+    const center = addRounded([0.2, 0.2, 0.02], [0, 0.2, -0.038], cream);
+    center.rotation.x = -0.13;
+    const shell = new THREE.Mesh(
+      new THREE.SphereGeometry(0.065, 14, 10),
+      coral,
+    );
+    shell.scale.set(1, 0.18, 0.75);
+    shell.position.set(0, 0.2, -0.065);
+    group.add(shell);
+  } else if (
+    itemId === "pastel-keycaps" ||
+    itemId === "neon-keycaps"
+  ) {
+    addRounded([0.58, 0.07, 0.2], [0, 0.035, 0], cream, 0.025);
+    const materials =
+      itemId === "neon-keycaps"
+        ? [teal, lavender, yellow, coral]
+        : [coral, yellow, lavender, teal];
+    [-0.21, -0.07, 0.07, 0.21].forEach((x, index) => {
+      addRounded([0.11, 0.09, 0.14], [x, 0.105, 0], materials[index], 0.025);
+    });
+  } else if (itemId === "camping-stool") {
+    addRounded([0.44, 0.1, 0.34], [0, 0.32, 0], coral, 0.05);
+    [-0.16, 0.16].forEach((x) => {
+      [-0.1, 0.1].forEach((z) => {
+        const leg = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.025, 0.035, 0.32, 10),
+          brown,
+        );
+        leg.position.set(x, 0.16, z);
+        leg.rotation.z = x < 0 ? -0.08 : 0.08;
+        group.add(leg);
+      });
+    });
+  } else if (itemId === "wood-cushion" || itemId === "quilt-cushion") {
+    const cushion = addRounded(
+      [0.46, 0.13, 0.4],
+      [0, 0.12, 0],
+      itemId === "quilt-cushion" ? teal : yellow,
+      0.065,
+    );
+    if (itemId === "quilt-cushion") {
+      const button = new THREE.Mesh(
+        new THREE.SphereGeometry(0.025, 10, 8),
+        cream,
+      );
+      button.scale.y = 0.35;
+      button.position.y = 0.19;
+      group.add(button);
+    }
+    cushion.rotation.y = 0.08;
+  } else if (itemId === "round-rug") {
+    const rug = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.58, 0.58, 0.035, 36),
+      teal,
+    );
+    rug.position.y = 0.018;
+    rug.scale.z = 0.72;
+    group.add(rug);
+  } else if (itemId === "mini-lantern") {
+    const base = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.15, 0.1, 16),
+      coral,
+    );
+    base.position.y = 0.05;
+    group.add(base);
+    const glowMaterial = createIllustratedMaterial(0xffd98a);
+    const glow = new THREE.Mesh(
+      new THREE.SphereGeometry(0.11, 14, 10),
+      glowMaterial,
+    );
+    glow.scale.y = 1.2;
+    glow.position.y = 0.2;
+    group.add(glow);
+    const cap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.08, 0.1, 0.06, 14),
+      brown,
+    );
+    cap.position.y = 0.34;
+    group.add(cap);
+  } else if (itemId === "shell-windchime") {
+    const top = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.22, 0.15, 0.08, 16),
+      yellow,
+    );
+    top.position.y = 0.48;
+    group.add(top);
+    [-0.12, 0, 0.12].forEach((x, index) => {
+      const cord = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.006, 0.006, 0.28, 6),
+        brown,
+      );
+      cord.position.set(x, 0.32 - index * 0.025, 0);
+      group.add(cord);
+      const shell = new THREE.Mesh(
+        new THREE.SphereGeometry(0.065, 12, 8),
+        index % 2 ? cream : coral,
+      );
+      shell.scale.set(1, 0.25, 0.75);
+      shell.position.set(x, 0.16 - index * 0.05, 0);
+      group.add(shell);
+    });
+  }
+
+  const slot = WORKSTATION_DECOR_SLOT_BY_ID[itemId] ?? "deskTop";
+  if (slot === "deskTop") group.position.set(-0.5, 0.72, -0.05);
+  if (slot === "inputDevice") group.position.set(0.12, 0.72, 0.18);
+  if (slot === "seatCushion") group.position.set(0.1, 0.04, 0.83);
+  if (slot === "floorAmbient") group.position.set(0.75, 0.015, 0.68);
+  group.scale.setScalar(slot === "floorAmbient" ? 0.9 : 0.82);
+  return group;
 }
 
 function createCoveredCatLitterBox() {
@@ -2516,7 +2752,7 @@ function createAgentMarker(initialSeat: SeatView) {
   return { marker, label, beacon, texture, update };
 }
 
-function createLitterLevelGauge(initialLevel: number) {
+function createLitterLevelGauge(initialLevel: number, initialMaxLevel = 100) {
   const canvas = document.createElement("canvas");
   canvas.width = 320;
   canvas.height = 112;
@@ -2524,9 +2760,10 @@ function createLitterLevelGauge(initialLevel: number) {
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   let signature = -1;
-  const update = (level: number) => {
+  const update = (level: number, maxLevel = initialMaxLevel) => {
+    const safeMaxLevel = Math.max(1, maxLevel);
     const nextSignature = Math.round(
-      THREE.MathUtils.clamp(level, 0, 100),
+      THREE.MathUtils.clamp((level / safeMaxLevel) * 100, 0, 100),
     );
     if (!context || signature === nextSignature) return;
     signature = nextSignature;
@@ -2625,11 +2862,22 @@ export default function AgentWorld3D({
   onSeatClick,
   onRadioClick,
   onShellCollect,
+  worldShellSpawningEnabled,
+  placementMode,
+  snackPlacement,
+  onWorldPlacement,
+  onSnackResolved,
+  onLaserResolved,
+  onToyResolved,
   foodAvailable,
+  foodGrade,
   litterLevel,
+  litterMaxLevel,
+  workstationDecor = {},
   onFoodBowlClick,
   onLitterBoxClick,
   onCatCareEvent,
+  onKneadingCompleted,
 }: AgentWorld3DProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const primarySeat = seats[0] ?? DEFAULT_SEAT_VIEW;
@@ -2644,26 +2892,38 @@ export default function AgentWorld3D({
   const onRadioClickRef = useRef(onRadioClick);
   const activeSeatCountRef = useRef(activeSeatCount);
   const onShellCollectRef = useRef(onShellCollect);
+  const worldShellSpawningEnabledRef = useRef(worldShellSpawningEnabled);
+  const placementModeRef = useRef<WorldPlacementMode>(placementMode);
+  const snackPlacementRef = useRef<SnackPlacement | null>(snackPlacement);
+  const onWorldPlacementRef = useRef(onWorldPlacement);
+  const onSnackResolvedRef = useRef(onSnackResolved);
+  const onLaserResolvedRef = useRef(onLaserResolved);
+  const onToyResolvedRef = useRef(onToyResolved);
   const foodAvailableRef = useRef(foodAvailable);
+  const foodGradeRef = useRef<FoodGrade | null>(foodGrade);
   const litterLevelRef = useRef(litterLevel);
+  const litterMaxLevelRef = useRef(litterMaxLevel);
+  const workstationDecorRef =
+    useRef<Partial<Record<SeatId, string[]>>>(workstationDecor);
   const onFoodBowlClickRef = useRef(onFoodBowlClick);
   const onLitterBoxClickRef = useRef(onLitterBoxClick);
   const onCatCareEventRef = useRef(onCatCareEvent);
+  const onKneadingCompletedRef = useRef(onKneadingCompleted);
   const layoutEditorRuntimeRef = useRef<WorldLayoutEditorRuntime | null>(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [failed, setFailed] = useState(false);
   const [ready, setReady] = useState(false);
   const [ambientLabel, setAmbientLabel] = useState("주변을 구경하는 중");
   const [layoutEditMode, setLayoutEditMode] = useState(false);
-  const [layoutAdminEnabled, setLayoutAdminEnabled] = useState(false);
+  const [layoutAdminEnabled] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      isWorldLayoutAdminHost(window.location.hostname),
+  );
   const [layoutSaveRevision, setLayoutSaveRevision] = useState(0);
   const [selectedLayoutObjectLabel, setSelectedLayoutObjectLabel] = useState<
     string | null
   >(null);
-
-  useEffect(() => {
-    setLayoutAdminEnabled(isWorldLayoutAdminHost(window.location.hostname));
-  }, []);
 
   useEffect(() => {
     const currentPrimary = seats[0] ?? DEFAULT_SEAT_VIEW;
@@ -2678,11 +2938,22 @@ export default function AgentWorld3D({
     onRadioClickRef.current = onRadioClick;
     activeSeatCountRef.current = activeSeatCount;
     onShellCollectRef.current = onShellCollect;
+    worldShellSpawningEnabledRef.current = worldShellSpawningEnabled;
+    placementModeRef.current = placementMode;
+    snackPlacementRef.current = snackPlacement;
+    onWorldPlacementRef.current = onWorldPlacement;
+    onSnackResolvedRef.current = onSnackResolved;
+    onLaserResolvedRef.current = onLaserResolved;
+    onToyResolvedRef.current = onToyResolved;
     foodAvailableRef.current = foodAvailable;
+    foodGradeRef.current = foodGrade;
     litterLevelRef.current = litterLevel;
+    litterMaxLevelRef.current = litterMaxLevel;
+    workstationDecorRef.current = workstationDecor;
     onFoodBowlClickRef.current = onFoodBowlClick;
     onLitterBoxClickRef.current = onLitterBoxClick;
     onCatCareEventRef.current = onCatCareEvent;
+    onKneadingCompletedRef.current = onKneadingCompleted;
   }, [
     activeSeatCount,
     companionConnected,
@@ -2690,11 +2961,22 @@ export default function AgentWorld3D({
     onRadioClick,
     onSeatClick,
     onShellCollect,
+    worldShellSpawningEnabled,
+    placementMode,
+    snackPlacement,
+    onWorldPlacement,
+    onSnackResolved,
+    onLaserResolved,
+    onToyResolved,
     foodAvailable,
+    foodGrade,
     litterLevel,
+    litterMaxLevel,
+    workstationDecor,
     onFoodBowlClick,
     onLitterBoxClick,
     onCatCareEvent,
+    onKneadingCompleted,
     seats,
   ]);
 
@@ -2788,6 +3070,31 @@ export default function AgentWorld3D({
     const clickableObjects: THREE.Object3D[] = [];
     const billboardObjects: THREE.Object3D[] = [];
     const workstationGroups = new Map<SeatId, THREE.Group>();
+    const workstationDecorGroups = new Map<SeatId, THREE.Group>();
+    const workstationDecorSignatures = new Map<SeatId, string>();
+    const disposeDecorGroup = (group: THREE.Group) => {
+      group.traverse((object) => {
+        if (!(object instanceof THREE.Mesh)) return;
+        object.geometry.dispose();
+        const materials = Array.isArray(object.material)
+          ? object.material
+          : [object.material];
+        materials.forEach(disposeMaterial);
+      });
+      group.clear();
+    };
+    const syncWorkstationDecorGroups = () => {
+      workstationDecorGroups.forEach((group, seatId) => {
+        const itemIds = workstationDecorRef.current[seatId] ?? [];
+        const signature = itemIds.join("|");
+        if (workstationDecorSignatures.get(seatId) === signature) return;
+        disposeDecorGroup(group);
+        itemIds.forEach((itemId) => {
+          group.add(createWorkstationDecorVisual(itemId));
+        });
+        workstationDecorSignatures.set(seatId, signature);
+      });
+    };
 
     const camera = new THREE.OrthographicCamera(-5, 5, 6, -6, 0.1, 50);
     const cameraBase = new THREE.Vector3(0, 9.2, 12.9);
@@ -3528,6 +3835,84 @@ float shoreOverlayWaterSignal( vec3 color ) {
       createMeshyPropShadow("cat-food-bowl", 0.19, 0.1),
       foodBowlProxy,
     );
+    const foodSparkleCanvas = document.createElement("canvas");
+    foodSparkleCanvas.width = 64;
+    foodSparkleCanvas.height = 64;
+    const foodSparkleContext = foodSparkleCanvas.getContext("2d");
+    if (foodSparkleContext) {
+      const gradient = foodSparkleContext.createRadialGradient(
+        32,
+        32,
+        1,
+        32,
+        32,
+        30,
+      );
+      gradient.addColorStop(0, "rgba(255,255,230,1)");
+      gradient.addColorStop(0.2, "rgba(255,236,120,.95)");
+      gradient.addColorStop(1, "rgba(255,220,80,0)");
+      foodSparkleContext.fillStyle = gradient;
+      foodSparkleContext.fillRect(0, 0, 64, 64);
+    }
+    const foodSparkleTexture = new THREE.CanvasTexture(foodSparkleCanvas);
+    foodSparkleTexture.colorSpace = THREE.SRGBColorSpace;
+    const premiumFoodSparkles = Array.from({ length: 4 }, (_, index) => {
+      const material = new THREE.SpriteMaterial({
+        map: foodSparkleTexture,
+        color: 0xffef9d,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      });
+      disableOutline(material);
+      const sprite = new THREE.Sprite(material);
+      sprite.name = `premium-food-sparkle-${index + 1}`;
+      sprite.position.set(
+        ((index % 2) * 2 - 1) * 0.12,
+        0.16 + Math.floor(index / 2) * 0.12,
+        index % 2 ? 0.05 : -0.04,
+      );
+      sprite.scale.setScalar(0.09);
+      foodBowlGroup.add(sprite);
+      return { sprite, material, phase: index * 1.7 };
+    });
+    let appliedFoodGrade: FoodGrade | null | undefined;
+    const applyFoodGradeAppearance = () => {
+      const nextGrade = foodGradeRef.current;
+      if (nextGrade === appliedFoodGrade) return;
+      appliedFoodGrade = nextGrade;
+      const tint = new THREE.Color(
+        FOOD_PROFILES[nextGrade ?? "Basic"].tint,
+      );
+      fullBowlVisual.traverse((object) => {
+        if (!(object instanceof THREE.Mesh)) return;
+        const materials = Array.isArray(object.material)
+          ? object.material
+          : [object.material];
+        materials.forEach((material) => {
+          if (
+            !(
+              material instanceof THREE.MeshStandardMaterial ||
+              material instanceof THREE.MeshPhysicalMaterial ||
+              material instanceof THREE.MeshBasicMaterial ||
+              material instanceof THREE.MeshToonMaterial
+            )
+          ) {
+            return;
+          }
+          const storedBase = material.userData.foodBaseColor;
+          if (typeof storedBase !== "number") {
+            material.userData.foodBaseColor = material.color.getHex();
+          }
+          material.color
+            .setHex(material.userData.foodBaseColor as number)
+            .multiply(tint);
+          material.needsUpdate = true;
+        });
+      });
+    };
+    applyFoodGradeAppearance();
     scene.add(foodBowlGroup);
     clickableObjects.push(foodBowlProxy);
     registerEditableWorldObject({
@@ -3548,6 +3933,173 @@ float shoreOverlayWaterSignal( vec3 color ) {
         );
       },
     });
+
+    const snackGroup = new THREE.Group();
+    snackGroup.name = "placed-cat-snack";
+    snackGroup.visible = false;
+    const snackBase = new THREE.Mesh(
+      new RoundedBoxGeometry(0.24, 0.07, 0.16, 3, 0.035),
+      createIllustratedMaterial(0xeaa66f),
+    );
+    snackBase.position.y = 0.055;
+    snackBase.rotation.y = 0.35;
+    const snackTop = new THREE.Mesh(
+      new RoundedBoxGeometry(0.15, 0.045, 0.11, 3, 0.028),
+      createIllustratedMaterial(0xf7d89e),
+    );
+    snackTop.position.set(0.02, 0.105, 0);
+    snackTop.rotation.y = -0.18;
+    snackGroup.add(
+      snackBase,
+      snackTop,
+      createMeshyPropShadow("placed-cat-snack", 0.2, 0.075),
+    );
+    scene.add(snackGroup);
+    const snackTarget = new THREE.Vector3();
+    let activeSnackId = 0;
+    let activeSnackTimer = 0;
+    let activeSnackEatingTimer = 0;
+    let activeSnackCatId = "";
+    let activeSnackPhase: "none" | "approaching" | "eating" = "none";
+    const resolveActiveSnack = (consumed: boolean) => {
+      if (activeSnackPhase === "none") return;
+      const placementId = activeSnackId;
+      const catId = activeSnackCatId;
+      activeSnackPhase = "none";
+      activeSnackTimer = 0;
+      activeSnackEatingTimer = 0;
+      snackGroup.visible = false;
+      onSnackResolvedRef.current?.({ placementId, catId, consumed });
+    };
+
+    const laserPointerGroup = new THREE.Group();
+    laserPointerGroup.name = "cat-laser-pointer";
+    laserPointerGroup.visible = false;
+    const laserGlowMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff5f66,
+      transparent: true,
+      opacity: 0.28,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      toneMapped: false,
+    });
+    const laserCoreMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff2838,
+      transparent: true,
+      opacity: 0.96,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const laserGlow = new THREE.Mesh(
+      new THREE.CircleGeometry(0.13, 28),
+      laserGlowMaterial,
+    );
+    laserGlow.rotation.x = -Math.PI / 2;
+    laserGlow.position.y = 0.012;
+    const laserCore = new THREE.Mesh(
+      new THREE.CircleGeometry(0.045, 24),
+      laserCoreMaterial,
+    );
+    laserCore.rotation.x = -Math.PI / 2;
+    laserCore.position.y = 0.018;
+    laserPointerGroup.add(laserGlow, laserCore);
+    scene.add(laserPointerGroup);
+    const laserTarget = new THREE.Vector3();
+    let laserActive = false;
+    let laserElapsed = 0;
+    let laserCatId = "";
+    const setLaserTargetFromPointer = (clientX: number, clientY: number) => {
+      updatePointerRay(clientX, clientY);
+      if (!raycaster.ray.intersectPlane(objectDragPlane, objectDragHit)) {
+        return false;
+      }
+      const normalizedIslandDistance =
+        (objectDragHit.x * objectDragHit.x) / (4.15 * 4.15) +
+        (objectDragHit.z * objectDragHit.z) / (3.25 * 3.25);
+      if (normalizedIslandDistance > 1) return false;
+      laserTarget.set(objectDragHit.x, 0, objectDragHit.z);
+      laserPointerGroup.position.copy(laserTarget);
+      laserPointerGroup.position.y = 0.025;
+      return true;
+    };
+    const resolveLaserPlay = (completed: boolean) => {
+      if (!laserActive) return;
+      const catId = laserCatId;
+      laserActive = false;
+      laserElapsed = 0;
+      laserCatId = "";
+      laserPointerGroup.visible = false;
+      onLaserResolvedRef.current?.({ catId, completed });
+    };
+
+    const toyHuntGroup = new THREE.Group();
+    toyHuntGroup.name = "cat-toy-hunt";
+    toyHuntGroup.visible = false;
+    const toyBallMaterial = new THREE.MeshToonMaterial({
+      color: 0xf4a56e,
+    });
+    const toyFeatherMaterial = new THREE.MeshToonMaterial({
+      color: 0x76a991,
+    });
+    for (const material of [toyBallMaterial, toyFeatherMaterial]) {
+      material.userData.outlineParameters = {
+        thickness: ILLUSTRATION_OUTLINE_THICKNESS,
+        color: ILLUSTRATION_OUTLINE_COLOR.toArray(),
+        alpha: ILLUSTRATION_OUTLINE_ALPHA,
+      };
+    }
+    const toyBall = new THREE.Mesh(
+      new THREE.SphereGeometry(0.115, 18, 12),
+      toyBallMaterial,
+    );
+    toyBall.position.y = 0.12;
+    toyHuntGroup.add(toyBall);
+    for (let index = 0; index < 3; index += 1) {
+      const feather = new THREE.Mesh(
+        new THREE.ConeGeometry(0.055, 0.22, 10),
+        toyFeatherMaterial,
+      );
+      feather.position.set(
+        (index - 1) * 0.055,
+        0.27 + Math.abs(index - 1) * 0.02,
+        0,
+      );
+      feather.rotation.z = (index - 1) * -0.34;
+      toyHuntGroup.add(feather);
+    }
+    scene.add(toyHuntGroup);
+    const toyTarget = new THREE.Vector3();
+    let toyActive = false;
+    let toyAttackElapsed = 0;
+    let toyCatId = "";
+    const startToyHuntFromPointer = (clientX: number, clientY: number) => {
+      updatePointerRay(clientX, clientY);
+      if (!raycaster.ray.intersectPlane(objectDragPlane, objectDragHit)) {
+        return false;
+      }
+      const normalizedIslandDistance =
+        (objectDragHit.x * objectDragHit.x) / (4.15 * 4.15) +
+        (objectDragHit.z * objectDragHit.z) / (3.25 * 3.25);
+      if (normalizedIslandDistance > 1) return false;
+      toyTarget.set(objectDragHit.x, 0, objectDragHit.z);
+      toyHuntGroup.position.copy(toyTarget);
+      toyHuntGroup.visible = true;
+      toyActive = true;
+      toyAttackElapsed = 0;
+      toyCatId = (seatsRef.current[0] ?? DEFAULT_SEAT_VIEW).catId;
+      avoidanceWaypoints.length = 0;
+      setAmbientLabel("깃털 장난감을 발견했어요");
+      return true;
+    };
+    const resolveToyHunt = (completed: boolean) => {
+      if (!toyActive) return;
+      const catId = toyCatId;
+      toyActive = false;
+      toyAttackElapsed = 0;
+      toyCatId = "";
+      toyHuntGroup.visible = false;
+      onToyResolvedRef.current?.({ catId, completed });
+    };
 
     void Promise.all([
       meshyPropLoader.loadAsync(FOOD_BOWL_EMPTY_MODEL_URL),
@@ -3576,6 +4128,8 @@ float shoreOverlayWaterSignal( vec3 color ) {
         foodBowlGroup.remove(emptyBowlVisual, fullBowlVisual);
         emptyBowlVisual = nextEmpty;
         fullBowlVisual = nextFull;
+        appliedFoodGrade = undefined;
+        applyFoodGradeAppearance();
         emptyBowlVisual.visible = !hasFoodAvailable();
         fullBowlVisual.visible = hasFoodAvailable();
         foodBowlGroup.add(emptyBowlVisual, fullBowlVisual);
@@ -3594,7 +4148,10 @@ float shoreOverlayWaterSignal( vec3 color ) {
     litterBoxVisual.scale.setScalar(0.86);
     const litterBoxProxy = createInteractionProxy("litter-box", 0.62);
     litterBoxProxy.position.y = 0.31;
-    const litterLevelGauge = createLitterLevelGauge(litterLevelRef.current);
+    const litterLevelGauge = createLitterLevelGauge(
+      litterLevelRef.current,
+      litterMaxLevelRef.current,
+    );
     litterLevelGauge.label.position.set(
       litterBoxGroup.position.x,
       1.12,
@@ -3788,6 +4345,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
             0.1,
           ),
         );
+        const decorOverlay = new THREE.Group();
+        decorOverlay.name = `workstation-decor-overlay-${seatId}`;
+        workstation.add(decorOverlay);
+        workstationDecorGroups.set(seatId, decorOverlay);
+        workstationDecorSignatures.delete(seatId);
         if (placement.id === DESK_OBSTACLE.id) {
           workstation.add(interactionGroup);
         }
@@ -3811,6 +4373,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
         });
         scene.add(workstation);
       });
+      syncWorkstationDecorGroups();
 
       decorationResults.forEach((result, index) => {
         const asset = MESHY_DECORATION_ASSETS[index];
@@ -4329,7 +4892,13 @@ float shoreOverlayWaterSignal( vec3 color ) {
     };
 
     const spawnCollectibleShell = () => {
-      if (!collectibleShellTemplate || collectibleShells.size >= 3) return false;
+      if (
+        !worldShellSpawningEnabledRef.current ||
+        !collectibleShellTemplate ||
+        collectibleShells.size >= 3
+      ) {
+        return false;
+      }
       const occupiedPointIds = new Set(
         [...collectibleShells.values()].map(
           (entry) => entry.group.userData.spawnPointId as number,
@@ -4411,7 +4980,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
       food: { occupant: null, queue: [] },
       toilet: { occupant: null, queue: [] },
     };
-    const litterIsFull = () => isLitterBoxFull(litterLevelRef.current);
+    const litterIsFull = () =>
+      isLitterBoxFull(
+        litterLevelRef.current,
+        litterMaxLevelRef.current,
+      );
     const careApproachPosition = (intent: CatCareIntent) =>
       intent === "food"
         ? foodBowlApproachPosition
@@ -4789,8 +5362,13 @@ float shoreOverlayWaterSignal( vec3 color ) {
               } else {
                 litterLevelRef.current = addLitterWaste(
                   litterLevelRef.current,
+                  undefined,
+                  litterMaxLevelRef.current,
                 );
-                litterLevelGauge.update(litterLevelRef.current);
+                litterLevelGauge.update(
+                  litterLevelRef.current,
+                  litterMaxLevelRef.current,
+                );
                 onCatCareEventRef.current?.({
                   catId: entry.catId,
                   seatId: entry.seatId,
@@ -5142,6 +5720,16 @@ float shoreOverlayWaterSignal( vec3 color ) {
         kneadingAction.timeScale = 0.92;
         animationActions.set(DESK_KNEADING_ANIMATION_KEY, kneadingAction);
 
+        const toyAttackClip = animationSource.animations.find((candidate) =>
+          candidate.name.endsWith("|Attack_Left"),
+        );
+        if (toyAttackClip) {
+          const toyAttackAction = mixer.clipAction(toyAttackClip);
+          toyAttackAction.setLoop(THREE.LoopRepeat, Infinity);
+          toyAttackAction.timeScale = 1.12;
+          animationActions.set("toy-attack", toyAttackAction);
+        }
+
         playAnimation("idle-look", 0);
 
         animationSource.traverse((object) => {
@@ -5270,9 +5858,22 @@ float shoreOverlayWaterSignal( vec3 color ) {
         clickStart.copy(position);
         clickStartedAt = performance.now();
       }
-      renderer.domElement.style.cursor = "grabbing";
+      renderer.domElement.style.cursor =
+        placementModeRef.current === "laser" ||
+        placementModeRef.current === "toy"
+          ? "crosshair"
+          : "grabbing";
       renderer.domElement.setPointerCapture(event.pointerId);
 
+      if (placementModeRef.current === "laser") {
+        setLaserTargetFromPointer(event.clientX, event.clientY);
+        dragPointerId = null;
+        return;
+      }
+      if (placementModeRef.current === "toy") {
+        dragPointerId = null;
+        return;
+      }
       if (activePointers.size >= 2) {
         beginPinchZoom();
       } else {
@@ -5317,6 +5918,10 @@ float shoreOverlayWaterSignal( vec3 color ) {
       event.preventDefault();
       const position = new THREE.Vector2(event.clientX, event.clientY);
       activePointers.set(event.pointerId, position);
+      if (placementModeRef.current === "laser") {
+        setLaserTargetFromPointer(event.clientX, event.clientY);
+        return;
+      }
       const rect = host.getBoundingClientRect();
 
       if (activePointers.size >= 2) {
@@ -5393,11 +5998,37 @@ float shoreOverlayWaterSignal( vec3 color ) {
       } else {
         dragPointerId = null;
         pinchStartDistance = 0;
-        renderer.domElement.style.cursor = "grab";
+        renderer.domElement.style.cursor =
+          placementModeRef.current === "laser" ||
+          placementModeRef.current === "toy"
+            ? "crosshair"
+            : "grab";
       }
 
       if (shouldClick) {
         updatePointerRay(event.clientX, event.clientY);
+        if (placementModeRef.current === "laser") {
+          setLaserTargetFromPointer(event.clientX, event.clientY);
+          return;
+        }
+        if (placementModeRef.current === "toy") {
+          startToyHuntFromPointer(event.clientX, event.clientY);
+          return;
+        }
+        if (placementModeRef.current === "snack") {
+          if (raycaster.ray.intersectPlane(objectDragPlane, objectDragHit)) {
+            const normalizedIslandDistance =
+              (objectDragHit.x * objectDragHit.x) / (4.15 * 4.15) +
+              (objectDragHit.z * objectDragHit.z) / (3.25 * 3.25);
+            if (normalizedIslandDistance <= 1) {
+              onWorldPlacementRef.current?.({
+                x: objectDragHit.x,
+                z: objectDragHit.z,
+              });
+            }
+          }
+          return;
+        }
         const hit = raycaster.intersectObjects(clickableObjects, true)[0];
         let target: THREE.Object3D | null = hit?.object ?? null;
         while (target && !target.userData.clickTargetId) target = target.parent;
@@ -5478,11 +6109,26 @@ float shoreOverlayWaterSignal( vec3 color ) {
           layoutEditorEnabled ||
           Number(seatId.slice(-1)) <= activeSeatCountRef.current;
       });
+      syncWorkstationDecorGroups();
       fullBowlVisual.visible = hasFoodAvailable();
       emptyBowlVisual.visible = !hasFoodAvailable();
-      litterLevelGauge.update(litterLevelRef.current);
+      applyFoodGradeAppearance();
+      premiumFoodSparkles.forEach(({ sprite, material, phase }) => {
+        const premiumVisible =
+          hasFoodAvailable() && foodGradeRef.current === "Premium";
+        sprite.visible = premiumVisible;
+        const pulse = Math.sin(animationTime * 3.2 + phase) * 0.5 + 0.5;
+        sprite.scale.setScalar(0.055 + pulse * 0.085);
+        material.opacity = premiumVisible ? 0.28 + pulse * 0.72 : 0;
+        sprite.position.y =
+          0.14 + Math.floor(phase / 3) * 0.08 + pulse * 0.07;
+      });
+      litterLevelGauge.update(
+        litterLevelRef.current,
+        litterMaxLevelRef.current,
+      );
       const litterRatio = THREE.MathUtils.clamp(
-        litterLevelRef.current / 100,
+        litterLevelRef.current / litterMaxLevelRef.current,
         0,
         1,
       );
@@ -5702,6 +6348,70 @@ float shoreOverlayWaterSignal( vec3 color ) {
       let requestedWalkFadeSeconds: number | null = null;
       frameMovementStart.copy(currentPosition);
 
+      if (
+        placementModeRef.current === "laser" &&
+        !laserActive &&
+        isAutonomous
+      ) {
+        laserActive = true;
+        laserElapsed = 0;
+        laserCatId = primaryView.catId;
+        laserTarget.copy(currentPosition);
+        laserTarget.x = THREE.MathUtils.clamp(laserTarget.x + 0.65, -3.7, 3.7);
+        laserPointerGroup.position.copy(laserTarget);
+        laserPointerGroup.position.y = 0.025;
+        laserPointerGroup.visible = true;
+        avoidanceWaypoints.length = 0;
+        setAmbientLabel("빨간 레이저 점을 발견했어요");
+      }
+      if (laserActive) {
+        if (!isAutonomous || placementModeRef.current !== "laser") {
+          resolveLaserPlay(false);
+        } else {
+          laserElapsed += delta;
+          const pulse = Math.sin(animationTime * 8.5) * 0.5 + 0.5;
+          laserCore.scale.setScalar(0.84 + pulse * 0.24);
+          laserGlow.scale.setScalar(0.82 + pulse * 0.34);
+          laserGlowMaterial.opacity = 0.18 + pulse * 0.24;
+          if (laserElapsed >= LASER_CHASE_DURATION_SECONDS) {
+            resolveLaserPlay(true);
+            ambientPhase = "resting";
+            ambientTimer = randomBetween(1.5, 2.4);
+            playAnimation("sit-play", 0.22);
+            setAmbientLabel("신나게 놀고 앉아서 쉬는 중");
+          }
+        }
+      }
+      if (toyActive) {
+        if (!isAutonomous || placementModeRef.current !== "toy") {
+          resolveToyHunt(false);
+        } else {
+          const toyPulse = Math.sin(animationTime * 6.8) * 0.5 + 0.5;
+          toyHuntGroup.rotation.y += delta * 1.8;
+          toyHuntGroup.position.y = toyPulse * 0.035;
+        }
+      }
+
+      const requestedSnack = snackPlacementRef.current;
+      if (requestedSnack && requestedSnack.id !== activeSnackId) {
+        activeSnackId = requestedSnack.id;
+        activeSnackTimer = 5;
+        activeSnackEatingTimer = 0;
+        activeSnackCatId = primaryView.catId;
+        activeSnackPhase = "approaching";
+        snackTarget.set(requestedSnack.x, 0, requestedSnack.z);
+        snackGroup.position.copy(snackTarget);
+        snackGroup.visible = true;
+        avoidanceWaypoints.length = 0;
+        setAmbientLabel("간식을 발견하고 걸어가는 중");
+      }
+      if (activeSnackPhase !== "none") {
+        activeSnackTimer -= delta;
+        snackGroup.position.y =
+          0.012 + Math.sin(animationTime * 3.5) * 0.018;
+        if (activeSnackTimer <= 0) resolveActiveSnack(false);
+      }
+
       if (isAutonomous && !wasAutonomous) {
         ambientPhase = "resting";
         ambientTimer = randomBetween(2.5, 4.5);
@@ -5782,6 +6492,70 @@ float shoreOverlayWaterSignal( vec3 color ) {
         desiredPosition.copy(currentPosition);
         isMoving = false;
         playAnimation("sit", 0.2);
+      } else if (laserActive && isAutonomous) {
+        desiredPosition.copy(laserTarget);
+        movementSpeed = LASER_CHASE_MOVE_SPEED;
+        const distance = currentPosition.distanceTo(laserTarget);
+        if (distance > CARE_ARRIVAL_DISTANCE * 1.6) {
+          isMoving = true;
+          requestedWalkFadeSeconds = 0.18;
+          setAmbientLabel("레이저 점을 신나게 쫓는 중");
+        } else {
+          desiredPosition.copy(currentPosition);
+          isMoving = false;
+          playAnimation("sit-play", 0.18);
+          setAmbientLabel("레이저 점을 앞발로 잡아보는 중");
+        }
+      } else if (toyActive && isAutonomous) {
+        desiredPosition.copy(toyTarget);
+        movementSpeed = LASER_CHASE_MOVE_SPEED * 0.86;
+        const distance = currentPosition.distanceTo(toyTarget);
+        if (distance > CARE_ARRIVAL_DISTANCE * 1.7) {
+          isMoving = true;
+          requestedWalkFadeSeconds = 0.18;
+          setAmbientLabel("깃털 장난감으로 달려가는 중");
+        } else {
+          desiredPosition.copy(currentPosition);
+          isMoving = false;
+          toyAttackElapsed += delta;
+          playAnimation("toy-attack", 0.16);
+          setAmbientLabel("깃털 장난감을 톡톡 사냥하는 중");
+          if (toyAttackElapsed >= 3.2) {
+            resolveToyHunt(true);
+            ambientPhase = "resting";
+            ambientTimer = randomBetween(1.8, 2.8);
+            playAnimation("sit-play", 0.22);
+            setAmbientLabel("사냥 놀이를 마치고 쉬는 중");
+          }
+        }
+      } else if (activeSnackPhase !== "none" && isAutonomous) {
+        movementSpeed = CARE_MOVE_SPEED;
+        if (activeSnackPhase === "approaching") {
+          desiredPosition.copy(snackTarget);
+          const distance = currentPosition.distanceTo(snackTarget);
+          if (distance > CARE_ARRIVAL_DISTANCE) {
+            isMoving = true;
+            requestedWalkFadeSeconds = 0.28;
+            setAmbientLabel("놓아둔 간식으로 걸어가는 중");
+          } else {
+            currentPosition.copy(snackTarget);
+            desiredPosition.copy(currentPosition);
+            activeSnackPhase = "eating";
+            activeSnackEatingTimer = 1.35;
+            playAnimation("eat-drink", 0.2);
+            setAmbientLabel("간식을 맛있게 먹는 중");
+          }
+        } else {
+          desiredPosition.copy(currentPosition);
+          activeSnackEatingTimer -= delta;
+          playAnimation("eat-drink", 0.2);
+          if (activeSnackEatingTimer <= 0) {
+            resolveActiveSnack(true);
+            ambientPhase = "resting";
+            ambientTimer = randomBetween(1.2, 2);
+            setAmbientLabel("간식을 먹고 골골거리는 중");
+          }
+        }
       } else if (primaryCare) {
         movementSpeed = carePreviewMode
           ? CARE_MOVE_SPEED * 4
@@ -5846,8 +6620,13 @@ float shoreOverlayWaterSignal( vec3 color ) {
               carePreviewConsumed = true;
               litterLevelRef.current = addLitterWaste(
                 litterLevelRef.current,
+                undefined,
+                litterMaxLevelRef.current,
               );
-              litterLevelGauge.update(litterLevelRef.current);
+              litterLevelGauge.update(
+                litterLevelRef.current,
+                litterMaxLevelRef.current,
+              );
               onCatCareEventRef.current?.({
                 catId: primaryCareCatId,
                 seatId: primaryCareSeatId,
@@ -5994,6 +6773,13 @@ float shoreOverlayWaterSignal( vec3 color ) {
           playAnimation(DESK_KNEADING_ANIMATION_KEY, 0.24);
 
           if (ambientTimer <= 0) {
+            const currentPrimary = seatsRef.current[0];
+            if (currentPrimary && currentPrimary.seatId !== "queue") {
+              onKneadingCompletedRef.current?.({
+                catId: currentPrimary.catId,
+                seatId: currentPrimary.seatId,
+              });
+            }
             ambientPhase = "prewalking";
             ambientDestination = "wander";
             ambientTimer = randomBetween(0.8, 1.1);
@@ -6447,7 +7233,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
     <>
       <div
         ref={hostRef}
-        className="world-3d-host"
+        className={`world-3d-host ${
+          placementMode ? "is-placement-mode" : ""
+        }`}
         aria-label={`${primarySeat.agentName} 외 ${Math.max(
           0,
           seats.length - 1,

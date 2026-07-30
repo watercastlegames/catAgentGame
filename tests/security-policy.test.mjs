@@ -6,24 +6,24 @@ import { isSafeReadOnlyCommand } from "../bridge/security-policy.mjs";
 test("auto-approves only exact read-only command approvals", () => {
   assert.equal(
     isSafeReadOnlyCommand(
-      "item/commandExecution/requestApproval",
+      "command_execution",
       "git status",
     ),
     true,
   );
   assert.equal(
     isSafeReadOnlyCommand(
-      "item/commandExecution/requestApproval",
+      "command_execution",
       "git status && rm -rf /",
     ),
     false,
   );
   assert.equal(
-    isSafeReadOnlyCommand("item/fileChange/requestApproval", "git status"),
+    isSafeReadOnlyCommand("file_write", "git status"),
     false,
   );
   assert.equal(
-    isSafeReadOnlyCommand("item/permissions/requestApproval", "git status"),
+    isSafeReadOnlyCommand("permissions", "git status"),
     false,
   );
 });
