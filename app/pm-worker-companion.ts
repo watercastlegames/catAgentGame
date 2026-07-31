@@ -1,5 +1,7 @@
 "use client";
 
+import { normalizePmWorkerReply } from "./pm-worker-reply.mjs";
+
 export const PM_WORKER_CHAT_SHELL_COST = 5;
 const PM_WORKER_SESSION_KEY = "agent-forest-pm-worker-sessions-v1";
 
@@ -66,7 +68,7 @@ export async function submitPmWorkerTask(prompt: string, catId: string) {
   }
   savePmWorkerSession(catId, body.sessionId);
   return {
-    reply: body.reply.trim(),
+    reply: normalizePmWorkerReply(body.reply),
     sessionId: body.sessionId,
   };
 }

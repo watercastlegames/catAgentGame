@@ -146,6 +146,7 @@ import {
   submitPmWorkerTask,
   type PmWorkerConnectionState,
 } from "./pm-worker-companion";
+import { normalizePmWorkerReply } from "./pm-worker-reply.mjs";
 import {
   CAT_CHAT_TOPIC_MEMORY_KEY,
   buildCatChatSuggestions,
@@ -3764,9 +3765,12 @@ export default function Home() {
                               "task.failed",
                               "pm-chat.failed",
                             ].includes(event.type);
-                            const content = userMessage
+                            const rawContent = userMessage
                               ? event.prompt || event.detail
                               : event.result || event.detail;
+                            const content = userMessage
+                              ? rawContent
+                              : normalizePmWorkerReply(rawContent);
                             return (
                               <article
                                 className={[
