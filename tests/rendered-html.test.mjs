@@ -157,7 +157,7 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /hud-sound-off-v2\.png/);
   assert.match(page, /className=\{`world-currency-hud \$\{/);
   assert.match(page, /grantAdministratorShells/);
-  assert.match(page, /current \+ 5/);
+  assert.match(page, /grantShellReward\(5, "관리자 조개 보상"\)/);
   assert.match(page, /disabled=\{!layoutAdminEnabled\}/);
   assert.match(seatProgression, /agent-forest-active-seat-count-v1/);
   assert.match(seatProgression, /MAX_SEAT_COUNT = 4/);
@@ -461,17 +461,25 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /\|Idle_2/);
   assert.match(world3d, /\|Caress_sitting/);
   assert.match(world3d, /DESK_KNEADING_ANIMATION_KEY/);
-  assert.match(world3d, /DESK_KNEADING_DURATION_SECONDS = 7/);
   assert.match(world3d, /CODING_DESK_TARGET.*4\.12/);
   assert.match(world3d, /DESK_KNEADING_EXIT_POSITION/);
   assert.match(world3d, /DESK_CONTACT_MARGIN = 0\.2/);
   assert.match(world3d, /isTouchingObstacle/);
   assert.match(world3d, /DESK_KEYCAP_PRESS_DEPTH = 0\.052/);
-  assert.match(world3d, /ambientPhase === "kneading"/);
+  assert.doesNotMatch(world3d, /ambientPhase === "kneading"/);
+  assert.doesNotMatch(world3d, /ambientDestination.*"desk"/);
+  assert.match(
+    world3d,
+    /const wantsDeskInteraction = !isAutonomous && isPrimaryWorking/,
+  );
+  assert.match(
+    world3d,
+    /characterRoot\.position\.copy\(AMBIENT_WANDER_POINTS\[0\]\)/,
+  );
+  assert.match(world3d, /becameSecondaryAutonomous/);
   assert.match(world3d, /animatedDeskKeycaps/);
   assert.match(world3d, /workstation\.add\(interactionGroup\)/);
   assert.match(world3d, /monitorScreen\.visible = showDeskInteraction/);
-  assert.match(world3d, /책상 안쪽에 앉아 키캡 꾹꾹이 중/);
   assert.match(world3d, /\|Sitting_Idle/);
   assert.match(world3d, /\|Sitting_idle_2/);
   assert.match(world3d, /\|Sitting_idle_3/);
@@ -597,7 +605,10 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.doesNotMatch(world3d, /disableWorldOutline/);
   assert.match(world3d, /SkeletonUtils/);
   assert.match(world3d, /SeatView/);
-  assert.match(world3d, /function createAgentMarker\(initialSeat: SeatView\)/);
+  assert.match(
+    world3d,
+    /function createAgentMarker\(\s*initialSeat: SeatView,\s*replyReadyTexture: THREE\.Texture,/,
+  );
   assert.match(world3d, /seat\.hunger/);
   assert.match(world3d, /seat\.toilet/);
   assert.match(world3d, /seat\.happiness/);

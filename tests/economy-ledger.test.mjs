@@ -57,3 +57,46 @@ test("simulation tasks never count or pay and dates reset safely", () => {
     reward: 0,
   });
 });
+
+test("the first successful question each local day pays once", () => {
+  const dayOne = new Date(2026, 6, 30, 9, 0);
+  const dayTwo = new Date(2026, 6, 31, 9, 0);
+  let state = economy.createEngagementRewardState();
+
+  const first = economy.claimDailyFirstQuestionReward(state, dayOne);
+  state = first.state;
+  assert.equal(first.reward, 5);
+  assert.equal(
+    economy.claimDailyFirstQuestionReward(state, dayOne).reward,
+    0,
+  );
+  assert.equal(
+    economy.claimDailyFirstQuestionReward(state, dayTwo).reward,
+    5,
+  );
+});
+
+test("each purchase category pays its first-purchase milestone only once", () => {
+  let state = economy.createEngagementRewardState();
+  for (const kind of economy.FIRST_PURCHASE_KINDS) {
+    const first = economy.claimFirstPurchaseReward(state, kind);
+    state = first.state;
+    assert.equal(first.reward, 5, `${kind} should pay once`);
+    assert.equal(
+      economy.claimFirstPurchaseReward(state, kind).reward,
+      0,
+      `${kind} should not pay twice`,
+    );
+  }
+
+  const restored = economy.parseEngagementRewardState(
+    JSON.stringify({
+      dailyQuestionDate: "2026-07-30",
+      firstPurchases: ["seat", "seat", "unknown"],
+    }),
+  );
+  assert.deepEqual(restored, {
+    dailyQuestionDate: "2026-07-30",
+    firstPurchases: ["seat"],
+  });
+});

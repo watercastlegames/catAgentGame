@@ -36,4 +36,29 @@ test("finished replies light an exclamation beacon until the cat is opened", () 
     world,
     /beacon\.visible = seat\.blocked \|\| Boolean\(seat\.hasUnreadReply\)/,
   );
+  assert.match(world, /reply-ready-exclamation-v1\.png/);
+});
+
+test("a delivered reply releases the cat to autonomous movement immediately", () => {
+  assert.match(
+    page,
+    /\["task\.completed", "pm-chat\.completed"\]\.includes\(event\.type\)/,
+  );
+  assert.match(page, /status = "completed";\s+location = "general";/);
+  assert.match(world, /AUTONOMOUS_STATUSES\.has\(motionRef\.current\.status\)/);
+});
+
+test("idle cats leave workstations and only active commands use computers", () => {
+  assert.match(
+    world,
+    /const wantsDeskInteraction = !isAutonomous && isPrimaryWorking/,
+  );
+  assert.match(
+    world,
+    /characterRoot\.position\.copy\(AMBIENT_WANDER_POINTS\[0\]\)/,
+  );
+  assert.match(world, /becameSecondaryAutonomous/);
+  assert.match(world, /일을 마치고 해변으로 쉬러 나가는 중/);
+  assert.doesNotMatch(world, /ambientDestination.*"desk"/);
+  assert.doesNotMatch(world, /ambientPhase === "kneading"/);
 });

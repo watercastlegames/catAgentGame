@@ -98,14 +98,21 @@ import {
 import { preloadPopupAssets } from "./popup-assets.mjs";
 import { type PlayerCloudSync, createPlayerCloudSync } from "./storage";
 import {
+  ENGAGEMENT_REWARD_KEY,
   TASK_REWARD_DAILY_KEY,
   WORLD_SHELL_DAILY_CAP,
   WORLD_SHELL_DAILY_KEY,
+  claimDailyFirstQuestionReward,
+  claimFirstPurchaseReward,
   claimTaskReward,
   claimWorldShells,
   createDailyCounter,
+  createEngagementRewardState,
+  parseEngagementRewardState,
   parseDailyCounter,
   type DailyCounter,
+  type EngagementRewardState,
+  type FirstPurchaseKind,
 } from "./economy-ledger";
 import {
   LASER_DURATION_MS,
@@ -274,6 +281,13 @@ type ConfirmDialog =
       seatId: SeatId;
     }
   | null;
+type ShellRewardTier = 1 | 2 | 3;
+type ShellRewardBurst = {
+  id: number;
+  amount: number;
+  label: string;
+  tier: ShellRewardTier;
+};
 
 const BRIDGE_URL =
   process.env.NEXT_PUBLIC_AGENT_BRIDGE_URL ?? "http://127.0.0.1:4317";
@@ -529,6 +543,9 @@ export default function Home() {
   const [shellCollectTokens, setShellCollectTokens] = useState<
     Array<{ id: number; x: number; y: number; amount: number }>
   >([]);
+  const [shellRewardBursts, setShellRewardBursts] = useState<
+    ShellRewardBurst[]
+  >([]);
   const [shellHudPulse, setShellHudPulse] = useState(0);
   const [decorChoice, setDecorChoice] = useState("coral");
   const [selectedSeat, setSelectedSeat] = useState<SeatId | null>(null);
@@ -599,6 +616,9 @@ export default function Home() {
   const litterMaxLevelRef = useRef(litterCapacityForTier(1));
   const worldShellDailyRef = useRef<DailyCounter>(createDailyCounter());
   const taskRewardDailyRef = useRef<DailyCounter>(createDailyCounter());
+  const engagementRewardRef = useRef<EngagementRewardState>(
+    createEngagementRewardState(),
+  );
   const snackLogRef = useRef<CatInteractionLog>({});
   const playLogRef = useRef<CatPlayLog>({});
   const pettingLogRef = useRef<PettingLog>({});
@@ -984,6 +1004,64 @@ export default function Home() {
     [playBlockedChime],
   );
 
+  const grantShellReward = useCallback(
+    (amount: number, label: string) => {
+      const reward = Math.max(0, Math.trunc(amount));
+      if (reward <= 0) return 0;
+      const tier: ShellRewardTier = reward >= 10 ? 3 : reward >= 4 ? 2 : 1;
+      const duration = tier === 3 ? 1_400 : tier === 2 ? 750 : 520;
+      const id = ++shellFlyIdRef.current;
+
+      setShells((current) => {
+        const next = current + reward;
+        window.localStorage.setItem(SHELL_KEY, String(next));
+        return next;
+      });
+      setShellRewardBursts((current) => [
+        ...current.slice(-5),
+        { id, amount: reward, label, tier },
+      ]);
+      setShellHudPulse((current) => current + 1);
+      resetHudTimer();
+      worldAudioRef.current?.playUi(tier === 3 ? "milestone" : "shellPickup");
+      window.setTimeout(() => {
+        setShellRewardBursts((current) =>
+          current.filter((burst) => burst.id !== id),
+        );
+      }, duration);
+      return reward;
+    },
+    [resetHudTimer],
+  );
+
+  const claimDailyQuestionBonus = useCallback(() => {
+    const claim = claimDailyFirstQuestionReward(engagementRewardRef.current);
+    if (claim.reward <= 0) return 0;
+    engagementRewardRef.current = claim.state;
+    window.localStorage.setItem(
+      ENGAGEMENT_REWARD_KEY,
+      JSON.stringify(claim.state),
+    );
+    return grantShellReward(claim.reward, "오늘의 첫 질문 보상");
+  }, [grantShellReward]);
+
+  const claimFirstPurchaseBonus = useCallback(
+    (kind: FirstPurchaseKind, label: string) => {
+      const claim = claimFirstPurchaseReward(
+        engagementRewardRef.current,
+        kind,
+      );
+      if (claim.reward <= 0) return 0;
+      engagementRewardRef.current = claim.state;
+      window.localStorage.setItem(
+        ENGAGEMENT_REWARD_KEY,
+        JSON.stringify(claim.state),
+      );
+      return grantShellReward(claim.reward, `${label} 첫 구매 보상`);
+    },
+    [grantShellReward],
+  );
+
   const consumeBridgeEvent = useCallback(
     (event: BridgeEvent) => {
       if (event.version !== undefined) setCodexVersion(event.version ?? null);
@@ -1070,6 +1148,13 @@ export default function Home() {
           pendingApprovalId =
             pendingApprovalId === event.requestId ? null : pendingApprovalId;
         }
+        if (["task.completed", "pm-chat.completed"].includes(event.type)) {
+          // 답변이 도착한 즉시 작업 자세를 풀고 자율 배회로 복귀한다.
+          // 읽지 않은 답변은 머리 위 이미지 비콘으로만 유지한다.
+          status = "completed";
+          location = "general";
+          pendingApprovalId = null;
+        }
 
         const runtime: SessionRuntime = {
           threadId: runtimeKey,
@@ -1150,11 +1235,7 @@ export default function Home() {
             JSON.stringify(claim.counter),
           );
           if (claim.reward > 0) {
-            setShells((value) => {
-              const next = value + claim.reward;
-              window.localStorage.setItem(SHELL_KEY, String(next));
-              return next;
-            });
+            grantShellReward(claim.reward, "업무 완료 보상");
             setToast(`업무 완료 보상으로 조개 ${claim.reward}개를 받았어요.`);
           } else if (event.mode !== "simulation") {
             setToast(
@@ -1182,7 +1263,7 @@ export default function Home() {
         });
       }
     },
-    [raiseBlockedAlert],
+    [grantShellReward, raiseBlockedAlert],
   );
 
   const runFreeDemo = useCallback(
@@ -1291,6 +1372,9 @@ export default function Home() {
       );
       taskRewardDailyRef.current = restoredTaskRewardDaily;
       setTaskRewardDaily(restoredTaskRewardDaily);
+      engagementRewardRef.current = parseEngagementRewardState(
+        window.localStorage.getItem(ENGAGEMENT_REWARD_KEY),
+      );
       const restoredSnackLog = parseSnackLog(
         window.localStorage.getItem(SNACK_LOG_KEY),
       );
@@ -1695,17 +1779,27 @@ export default function Home() {
       CAT_STYLE_OWNERSHIP_KEY,
       JSON.stringify([...purchase.ownedStyles]),
     );
+    const firstPurchaseBonus =
+      purchase.charged > 0
+        ? claimFirstPurchaseBonus("cat-style", "고양이 스타일")
+        : 0;
     applyCatLook(pendingCatStyle);
     worldAudioRef.current?.playUi(
       purchase.charged ? "purchaseSuccess" : "itemEquip",
     );
     setToast(
       purchase.charged
-        ? `${pendingCatStyle} 스타일을 조개 ${purchase.charged}개로 구매했어요.`
+        ? `${pendingCatStyle} 스타일을 조개 ${purchase.charged}개로 구매했어요.${firstPurchaseBonus ? ` · 첫 구매 보상 +${firstPurchaseBonus}` : ""}`
         : `${pendingCatStyle} 스타일을 적용했어요.`,
     );
     setPendingCatStyle(null);
-  }, [applyCatLook, ownedCatStyles, pendingCatStyle, shells]);
+  }, [
+    applyCatLook,
+    claimFirstPurchaseBonus,
+    ownedCatStyles,
+    pendingCatStyle,
+    shells,
+  ]);
 
   const beginSnackPlacement = useCallback(() => {
     if (snackPlacementRef.current) {
@@ -1750,10 +1844,13 @@ export default function Home() {
       setWorldPlacementMode(null);
       setShells(nextShells);
       window.localStorage.setItem(SHELL_KEY, String(nextShells));
+      const firstPurchaseBonus = claimFirstPurchaseBonus("snack", "간식");
       worldAudioRef.current?.playUi("itemEquip");
-      setToast("간식을 놓았어요. 고양이가 먹으러 걸어갑니다.");
+      setToast(
+        `간식을 놓았어요. 고양이가 먹으러 걸어갑니다.${firstPurchaseBonus ? ` · 첫 구매 보상 +${firstPurchaseBonus}` : ""}`,
+      );
     },
-    [shells, worldPlacementMode],
+    [claimFirstPurchaseBonus, shells, worldPlacementMode],
   );
 
   const resolveSnackPlacement = useCallback(
@@ -1964,12 +2061,13 @@ export default function Home() {
       setShells(nextShells);
       window.localStorage.setItem(FOOD_BOWL_KEY, serializeFoodBowlState(next));
       window.localStorage.setItem(SHELL_KEY, String(nextShells));
+      const firstPurchaseBonus = claimFirstPurchaseBonus("food", "사료");
       worldAudioRef.current?.playUi("feedBowl");
       setToast(
-        `${profile.label} 4인분을 조개 ${profile.price}개로 채웠어요. 포만감 ${profile.satiationMinutes}분`,
+        `${profile.label} 4인분을 조개 ${profile.price}개로 채웠어요. 포만감 ${profile.satiationMinutes}분${firstPurchaseBonus ? ` · 첫 구매 보상 +${firstPurchaseBonus}` : ""}`,
       );
     },
-    [shells],
+    [claimFirstPurchaseBonus, shells],
   );
 
   const buySecondFoodBowl = useCallback(() => {
@@ -1993,9 +2091,15 @@ export default function Home() {
       FOOD_BOWL_COUNT_STORAGE_KEY,
       String(purchase.count),
     );
+    const firstPurchaseBonus = claimFirstPurchaseBonus(
+      "food-bowl",
+      "추가 밥그릇",
+    );
     worldAudioRef.current?.playUi("purchaseSuccess");
-    setToast("두 번째 밥그릇을 배치했어요.");
-  }, [foodBowlCount, shells]);
+    setToast(
+      `두 번째 밥그릇을 배치했어요.${firstPurchaseBonus ? ` · 첫 구매 보상 +${firstPurchaseBonus}` : ""}`,
+    );
+  }, [claimFirstPurchaseBonus, foodBowlCount, shells]);
 
   const upgradeLitterFacility = useCallback(() => {
     if (litterTier >= 3) {
@@ -2016,11 +2120,15 @@ export default function Home() {
     litterMaxLevelRef.current = litterCapacityForTier(nextTier);
     window.localStorage.setItem(SHELL_KEY, String(nextShells));
     window.localStorage.setItem(LITTER_TIER_STORAGE_KEY, String(nextTier));
+    const firstPurchaseBonus = claimFirstPurchaseBonus(
+      "litter",
+      "화장실 확장",
+    );
     worldAudioRef.current?.playUi("purchaseSuccess");
     setToast(
-      `화장실 ${nextTier}단계 확장 완료 · 오염도 한도 ${litterCapacityForTier(nextTier)}`,
+      `화장실 ${nextTier}단계 확장 완료 · 오염도 한도 ${litterCapacityForTier(nextTier)}${firstPurchaseBonus ? ` · 첫 구매 보상 +${firstPurchaseBonus}` : ""}`,
     );
-  }, [litterTier, shells]);
+  }, [claimFirstPurchaseBonus, litterTier, shells]);
 
   const cleanLitterFacility = useCallback(() => {
     if (litterLevelRef.current <= 0) {
@@ -2592,12 +2700,13 @@ export default function Home() {
       setSelectedSeat(pendingSeatSlot.seatId);
       window.localStorage.setItem(ACTIVE_SEAT_KEY, String(nextCount));
       window.localStorage.setItem(SHELL_KEY, String(nextShells));
+      const firstPurchaseBonus = claimFirstPurchaseBonus("seat", "새 자리");
       worldAudioRef.current?.playUi(
         nextCount === MAX_SEAT_COUNT ? "milestone" : "tierUpgrade",
       );
       setConfirmDialog(null);
       setToast(
-        `자리 ${pendingSeatSlot.seatId.slice(-1)}과 ${pendingSeatSlot.title}을 열었어요.`,
+        `자리 ${pendingSeatSlot.seatId.slice(-1)}과 ${pendingSeatSlot.title}을 열었어요.${firstPurchaseBonus ? ` · 첫 구매 보상 +${firstPurchaseBonus}` : ""}`,
       );
     } finally {
       window.setTimeout(() => {
@@ -2642,15 +2751,9 @@ export default function Home() {
 
   const grantAdministratorShells = useCallback(() => {
     if (!layoutAdminEnabled) return;
-    setShells((current) => {
-      const next = current + 5;
-      window.localStorage.setItem(SHELL_KEY, String(next));
-      return next;
-    });
-    setShellHudPulse((current) => current + 1);
-    worldAudioRef.current?.playUi("shellPickup");
+    grantShellReward(5, "관리자 조개 보상");
     setToast("관리자 조개 5개를 추가했어요.");
-  }, [layoutAdminEnabled]);
+  }, [grantShellReward, layoutAdminEnabled]);
 
   async function selectSession(threadId: string) {
     setSelectedThreadId(threadId);
@@ -2785,6 +2888,7 @@ export default function Home() {
       setRadioOpen(false);
       try {
         const result = await submitPuterTask(personaPrompt);
+        const firstQuestionBonus = claimDailyQuestionBonus();
         emitPuterEvent({
           type: "task.completed",
           status: "completed",
@@ -2793,7 +2897,9 @@ export default function Home() {
           detail: "STATUS+LOG에서 전체 답변을 확인할 수 있어요.",
           result,
         });
-        setToast("무료 AI 답변이 도착했어요.");
+        setToast(
+          `무료 AI 답변이 도착했어요.${firstQuestionBonus ? ` · 오늘 첫 질문 보상 +${firstQuestionBonus}` : ""}`,
+        );
       } catch (error) {
         emitPuterEvent({
           type: "task.failed",
@@ -2861,6 +2967,7 @@ export default function Home() {
       setRadioOpen(false);
       try {
         const result = await submitPmWorkerTask(personaPrompt, focusedCatId);
+        const firstQuestionBonus = claimDailyQuestionBonus();
         emitPmWorkerEvent({
           type: "pm-chat.completed",
           status: "completed",
@@ -2870,7 +2977,7 @@ export default function Home() {
           result: result.reply,
         });
         setToast(
-          `답변이 도착했어요 · 조개 ${PM_WORKER_CHAT_SHELL_COST}개 사용`,
+          `답변이 도착했어요 · 조개 ${PM_WORKER_CHAT_SHELL_COST}개 사용${firstQuestionBonus ? ` · 오늘 첫 질문 보상 +${firstQuestionBonus}` : ""}`,
         );
       } catch (error) {
         setShells((current) => {
@@ -2947,6 +3054,10 @@ export default function Home() {
       const body = (await response.json()) as { error?: string };
       if (!response.ok)
         throw new Error(body.error ?? "작업을 시작하지 못했어요.");
+      const firstQuestionBonus = claimDailyQuestionBonus();
+      if (firstQuestionBonus > 0) {
+        setToast(`오늘 첫 질문 보상으로 조개 ${firstQuestionBonus}개를 받았어요.`);
+      }
     } catch (error) {
       emitLocalEvent({
         type: "task.failed",
@@ -3046,12 +3157,16 @@ export default function Home() {
       JSON.stringify(result.state),
     );
     window.localStorage.setItem(SHELL_KEY, String(result.balance));
+    const firstPurchaseBonus =
+      result.charged > 0
+        ? claimFirstPurchaseBonus("workstation-decor", "자리 소품")
+        : 0;
     worldAudioRef.current?.playUi(
       result.charged > 0 ? "purchaseSuccess" : "itemEquip",
     );
     setToast(
       result.equipped
-        ? `${result.charged > 0 ? "구매하고 " : ""}자리 ${seatId.slice(-1)}에 소품을 배치했어요.`
+        ? `${result.charged > 0 ? "구매하고 " : ""}자리 ${seatId.slice(-1)}에 소품을 배치했어요.${firstPurchaseBonus ? ` · 첫 구매 보상 +${firstPurchaseBonus}` : ""}`
         : `자리 ${seatId.slice(-1)}에서 소품을 치웠어요.`,
     );
   }
@@ -3313,6 +3428,30 @@ export default function Home() {
               <img src="/art/ui/hud-shell-v2.png" alt="" />
               <b>+{token.amount}</b>
             </span>
+          ))}
+
+          {shellRewardBursts.map((burst) => (
+            <div
+              className={`shell-reward-burst shell-reward-tier-${burst.tier}`}
+              key={burst.id}
+              role="status"
+              aria-live="polite"
+            >
+              <span className="shell-reward-label">{burst.label}</span>
+              <span className="shell-reward-value">
+                <img src="/art/ui/hud-shell-v2.png" alt="" aria-hidden="true" />
+                <strong>+{burst.amount}</strong>
+              </span>
+              <span className="shell-reward-sparks" aria-hidden="true">
+                {Array.from({ length: Math.min(6, burst.amount) }).map(
+                  (_, index) => (
+                    <i key={index}>
+                      <img src="/art/ui/hud-shell-v2.png" alt="" />
+                    </i>
+                  ),
+                )}
+              </span>
+            </div>
           ))}
 
           <button

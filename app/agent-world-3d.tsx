@@ -254,7 +254,6 @@ const EMPTY_BOWL_RETRY_SECONDS = 24;
 const LITTER_FULL_RETRY_SECONDS = 30;
 const DESK_KNEADING_ANIMATION_KEY = "desk-knead";
 const DESK_KNEADING_ANIMATION_SUFFIX = "|Caress_sitting";
-const DESK_KNEADING_DURATION_SECONDS = 7;
 const DESK_CONTACT_MARGIN = 0.2;
 const DESK_KEYCAP_PRESS_DEPTH = 0.052;
 const DESK_KEYCAP_PRESS_HZ = 1.05;
@@ -2654,7 +2653,10 @@ function createInteractionProxy(clickTargetId: string, radius = 0.5) {
   return proxy;
 }
 
-function createAgentMarker(initialSeat: SeatView) {
+function createAgentMarker(
+  initialSeat: SeatView,
+  replyReadyTexture: THREE.Texture,
+) {
   const marker = new THREE.Group();
   marker.name = `agent-marker-${initialSeat.agentName}`;
   const canvas = document.createElement("canvas");
@@ -2729,38 +2731,28 @@ function createAgentMarker(initialSeat: SeatView) {
   const beacon = new THREE.Group();
   beacon.name = `blocked-beacon-${initialSeat.agentName}`;
   const beaconMaterial = new THREE.MeshBasicMaterial({
-    color: 0xd86c5f,
+    map: replyReadyTexture,
+    color: 0xffffff,
+    transparent: true,
+    alphaTest: 0.03,
     depthTest: false,
     depthWrite: false,
     toneMapped: false,
   });
   disableOutline(beaconMaterial);
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.12, 0.17, 28),
+  const icon = new THREE.Mesh(
+    new THREE.PlaneGeometry(0.44, 0.44),
     beaconMaterial,
   );
-  const bar = new THREE.Mesh(
-    new THREE.BoxGeometry(0.045, 0.13, 0.025),
-    beaconMaterial,
-  );
-  bar.position.y = 0.04;
-  const dot = new THREE.Mesh(
-    new THREE.CircleGeometry(0.024, 16),
-    beaconMaterial,
-  );
-  dot.position.y = -0.065;
-  dot.position.z = 0.01;
-  beacon.add(ring, bar, dot);
+  beacon.add(icon);
   beacon.position.y = 1.45;
   const updateBeacon = (seat: SeatView) => {
     beacon.visible = seat.blocked || Boolean(seat.hasUnreadReply);
-    beaconMaterial.color.setHex(seat.blocked ? 0xd86c5f : 0xe5a942);
+    beaconMaterial.color.setHex(seat.blocked ? 0xf2b3ac : 0xffffff);
   };
   updateBeacon(initialSeat);
   beacon.renderOrder = MARKER_BEACON_RENDER_ORDER;
-  ring.renderOrder = MARKER_BEACON_RENDER_ORDER;
-  bar.renderOrder = MARKER_BEACON_RENDER_ORDER;
-  dot.renderOrder = MARKER_BEACON_RENDER_ORDER;
+  icon.renderOrder = MARKER_BEACON_RENDER_ORDER;
   marker.add(beacon);
   // 마커 전체를 오버레이 레이어로 옮긴다 — 본편·외곽선 패스에서는 아예 빠지고
   // 외곽선이 다 칠해진 뒤의 마지막 패스에서만 그려진다.
@@ -3560,6 +3552,14 @@ export default function AgentWorld3D({
     scene.add(fillLight);
 
     const textureLoader = new THREE.TextureLoader();
+    const replyReadyTexture = textureLoader.load(
+      "/art/ui/reply-ready-exclamation-v1.png",
+    );
+    replyReadyTexture.colorSpace = THREE.SRGBColorSpace;
+    replyReadyTexture.anisotropy = Math.min(
+      4,
+      renderer.capabilities.getMaxAnisotropy(),
+    );
     const catPaletteTexture = textureLoader.load(
       "/models/PolyArt/Animals/Cats/Texture/PolyArt_Cats_color.png",
     );
@@ -4845,7 +4845,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
     const characterRoot = new THREE.Group();
     const characterVisual = new THREE.Group();
     characterRoot.add(characterVisual);
-    characterRoot.position.copy(worldTargets.general);
+    // 첫 로드가 유휴 상태라면 좌석이 아니라 해변 휴게 지점에서 시작한다.
+    // 실제 명령이 들어온 뒤에만 아래 작업 분기가 컴퓨터 앞으로 이동시킨다.
+    characterRoot.position.copy(AMBIENT_WANDER_POINTS[0]);
     const primarySeatId =
       seatsRef.current[0]?.seatId === "queue"
         ? "seat-1"
@@ -4856,6 +4858,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
     );
     const primaryMarker = createAgentMarker(
       seatsRef.current[0] ?? DEFAULT_SEAT_VIEW,
+      replyReadyTexture,
     );
     const primaryMarkerAnchorTarget = new THREE.Vector3();
     characterRoot.add(primaryClickProxy, primaryMarker.marker);
@@ -5470,6 +5473,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       ambientTimer: number;
       ambientPointIndex: number;
       ambientTarget: THREE.Vector3;
+      wasAutonomous: boolean;
     };
     const secondaryAgents = new Map<string, SecondaryAgent>();
     let characterYaw = DEFAULT_CHARACTER_YAW;
@@ -5477,11 +5481,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       | "resting"
       | "prewalking"
       | "walking"
-      | "settling"
-      | "kneading" = "resting";
-    let ambientDestination: "wander" | "desk" = "wander";
-    let shouldKneadAtDeskNext = true;
-    let wanderStopsSinceKneading = 0;
+      | "settling" = "resting";
     let ambientTimer = 4;
     let ambientAnimationIndex = 0;
     let ambientPointIndex = -1;
@@ -5532,7 +5532,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       shadow.rotation.x = -Math.PI / 2;
       shadow.position.y = 0.012;
       root.add(shadow);
-      const marker = createAgentMarker(seat);
+      const marker = createAgentMarker(seat, replyReadyTexture);
       marker.updateBeacon(seat);
       root.add(marker.marker);
       billboardObjects.push(marker.label, marker.beacon);
@@ -5586,6 +5586,10 @@ float shoreOverlayWaterSignal( vec3 color ) {
         ambientTimer: randomBetween(3.5, 7.5),
         ambientPointIndex: -1,
         ambientTarget: root.position.clone(),
+        wasAutonomous:
+          seat.seatId !== "queue" &&
+          !seat.blocked &&
+          AUTONOMOUS_STATUSES.has(seat.status),
       };
       scene.add(root);
       secondaryAgents.set(String(seat.seatId), entry);
@@ -5685,6 +5689,8 @@ float shoreOverlayWaterSignal( vec3 color ) {
           seat.seatId !== "queue" &&
           !seat.blocked &&
           AUTONOMOUS_STATUSES.has(seat.status);
+        const becameSecondaryAutonomous =
+          isSecondaryAutonomous && !entry.wasAutonomous;
         if (!isSecondaryAutonomous && entry.care) {
           leaveCareQueue(entry.care.intent, entry.catId);
           releaseCareFacility(entry.care.intent, entry.catId);
@@ -5733,7 +5739,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
             : undefined;
         let navigationObstacles = getRuntimeSceneObstacles(
           activeSeatCountRef.current,
-        ).filter((obstacle) => obstacle !== ownObstacle);
+        ).filter(
+          (obstacle) => isSecondaryAutonomous || obstacle !== ownObstacle,
+        );
         if (entry.care?.intent === "toilet") {
           navigationObstacles = navigationObstacles.filter(
             (obstacle) =>
@@ -5806,16 +5814,22 @@ float shoreOverlayWaterSignal( vec3 color ) {
             if (care.timer <= 0) care.phase = "returning";
           } else if (care.phase === "returning") {
             careAnimation = "walk";
+            const restTarget = AMBIENT_WANDER_POINTS[
+              (index + 2) % AMBIENT_WANDER_POINTS.length
+            ];
             if (
               moveSecondaryTowards(
                 entry,
-                homeTarget,
+                restTarget,
                 navigationObstacles,
               )
             ) {
               entry.care = null;
               entry.careWaypoints.length = 0;
-              entry.ambientInitialized = false;
+              entry.ambientTarget.copy(restTarget);
+              entry.ambientPhase = "resting";
+              entry.ambientTimer = randomBetween(3.5, 7.5);
+              entry.ambientInitialized = true;
               careAnimation = "idle";
             }
           } else {
@@ -5880,13 +5894,26 @@ float shoreOverlayWaterSignal( vec3 color ) {
         let ambientAnimation: string | null = null;
         if (!entry.care) {
           if (!entry.ambientInitialized) {
-            entry.root.position.copy(homeTarget);
-            entry.ambientTarget.copy(homeTarget);
-            entry.careLastTarget.copy(homeTarget);
+            const initialTarget = isSecondaryAutonomous
+              ? AMBIENT_WANDER_POINTS[
+                  (index + 1) % AMBIENT_WANDER_POINTS.length
+                ]
+              : homeTarget;
+            entry.root.position.copy(initialTarget);
+            entry.ambientTarget.copy(initialTarget);
+            entry.careLastTarget.copy(initialTarget);
             entry.careWaypoints.length = 0;
             entry.ambientPhase = "resting";
             entry.ambientTimer = randomBetween(3.5, 7.5) + index * 0.8;
             entry.ambientInitialized = true;
+          }
+
+          if (becameSecondaryAutonomous) {
+            // 작업이 끝난 고양이는 책상 앞에 머물지 않고 바로 휴게 공간으로 나온다.
+            entry.ambientPhase = "prewalking";
+            entry.ambientTimer = 0;
+            entry.ambientTarget.copy(entry.root.position);
+            entry.careWaypoints.length = 0;
           }
 
           if (!isSecondaryAutonomous) {
@@ -5977,6 +6004,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
             }
           }
         }
+        entry.wasAutonomous = isSecondaryAutonomous;
         entry.marker.update(seat);
         entry.marker.updateBeacon(seat);
         // 책상에서 일하는 동안에는 머리 위가 아니라 모니터 위쪽에 뜬다.
@@ -6895,16 +6923,17 @@ float shoreOverlayWaterSignal( vec3 color ) {
       }
 
       if (isAutonomous && !wasAutonomous) {
-        ambientPhase = "resting";
-        ambientTimer = randomBetween(2.5, 4.5);
+        // 작업 종료 직후 컴퓨터 앞에 앉아 있지 않고 곧바로 해변 휴게 공간으로 나온다.
+        ambientPhase = "prewalking";
+        ambientTimer = 0;
         ambientTarget.copy(currentPosition);
-        playAnimation("idle-look");
+        playAnimation("idle-look", 0.24);
         setAmbientLabel(
           motionRef.current.status === "completed"
-            ? "일을 마치고 잠시 쉬는 중"
+            ? "일을 마치고 해변으로 쉬러 나가는 중"
             : motionRef.current.status === "failed"
-              ? "기분 전환을 위해 쉬는 중"
-              : "주변을 구경하는 중",
+              ? "기분 전환을 위해 해변으로 나가는 중"
+              : "해변을 산책하러 나가는 중",
         );
       } else if (!isAutonomous && wasAutonomous) {
         ambientPhase = "resting";
@@ -7157,7 +7186,6 @@ float shoreOverlayWaterSignal( vec3 color ) {
             ambientPhase = "prewalking";
             ambientTimer = randomBetween(0.65, 1);
             ambientTarget.copy(currentPosition);
-            shouldKneadAtDeskNext = false;
             setAmbientLabel("다시 해변을 돌아다닐 준비를 하는 중");
           }
         } else {
@@ -7253,61 +7281,30 @@ float shoreOverlayWaterSignal( vec3 color ) {
           ambientTimer -= delta;
 
           if (ambientTimer <= 0) {
-            if (shouldKneadAtDeskNext) {
-              ambientDestination = "desk";
-              ambientTarget.copy(codingDeskTarget);
-              shouldKneadAtDeskNext = false;
-              wanderStopsSinceKneading = 0;
-              setAmbientLabel("책상으로 꾹꾹이를 하러 가는 중");
-            } else {
-              ambientDestination = "wander";
-              let nextPointIndex = ambientPointIndex;
-              for (let attempt = 0; attempt < 8; attempt += 1) {
-                const candidateIndex = Math.floor(
-                  Math.random() * AMBIENT_WANDER_POINTS.length,
-                );
-                const candidate = AMBIENT_WANDER_POINTS[candidateIndex];
-                if (
-                  candidateIndex !== ambientPointIndex &&
-                  currentPosition.distanceTo(candidate) > 1.1
-                ) {
-                  nextPointIndex = candidateIndex;
-                  break;
-                }
+            let nextPointIndex = ambientPointIndex;
+            for (let attempt = 0; attempt < 8; attempt += 1) {
+              const candidateIndex = Math.floor(
+                Math.random() * AMBIENT_WANDER_POINTS.length,
+              );
+              const candidate = AMBIENT_WANDER_POINTS[candidateIndex];
+              if (
+                candidateIndex !== ambientPointIndex &&
+                currentPosition.distanceTo(candidate) > 1.1
+              ) {
+                nextPointIndex = candidateIndex;
+                break;
               }
-
-              if (nextPointIndex < 0) nextPointIndex = 0;
-              ambientPointIndex = nextPointIndex;
-              ambientTarget.copy(AMBIENT_WANDER_POINTS[ambientPointIndex]);
-              wanderStopsSinceKneading += 1;
-              shouldKneadAtDeskNext = wanderStopsSinceKneading >= 2;
-              setAmbientLabel("해변을 천천히 산책하는 중");
             }
+
+            if (nextPointIndex < 0) nextPointIndex = 0;
+            ambientPointIndex = nextPointIndex;
+            ambientTarget.copy(AMBIENT_WANDER_POINTS[ambientPointIndex]);
+            setAmbientLabel("해변을 천천히 산책하는 중");
 
             ambientPhase = "walking";
             desiredPosition.copy(ambientTarget);
             isMoving = true;
             requestedWalkFadeSeconds = 0.32;
-          }
-        } else if (ambientPhase === "kneading") {
-          desiredPosition.copy(currentPosition);
-          ambientTimer -= delta;
-          isKneading = true;
-          playAnimation(DESK_KNEADING_ANIMATION_KEY, 0.24);
-
-          if (ambientTimer <= 0) {
-            const currentPrimary = seatsRef.current[0];
-            if (currentPrimary && currentPrimary.seatId !== "queue") {
-              onKneadingCompletedRef.current?.({
-                catId: currentPrimary.catId,
-                seatId: currentPrimary.seatId,
-              });
-            }
-            ambientPhase = "prewalking";
-            ambientDestination = "wander";
-            ambientTimer = randomBetween(0.8, 1.1);
-            playAnimation("idle-look", 0.36);
-            setAmbientLabel("꾹꾹이를 마치고 산책을 준비하는 중");
           }
         } else if (ambientPhase === "settling") {
           desiredPosition.copy(currentPosition);
@@ -7339,19 +7336,10 @@ float shoreOverlayWaterSignal( vec3 color ) {
           if (ambientDistance <= AMBIENT_ARRIVAL_DISTANCE) {
             currentPosition.copy(ambientTarget);
             desiredPosition.copy(currentPosition);
-            if (ambientDestination === "desk") {
-              ambientPhase = "kneading";
-              ambientTimer = DESK_KNEADING_DURATION_SECONDS;
-              kneadingElapsed = 0;
-              isKneading = true;
-              playAnimation(DESK_KNEADING_ANIMATION_KEY, 0.24);
-              setAmbientLabel("책상 키캡을 번갈아 꾹꾹 누르는 중");
-            } else {
-              ambientPhase = "settling";
-              ambientTimer = randomBetween(1.1, 1.8);
-              playAnimation("idle-look", 0.36);
-              setAmbientLabel("걸음을 멈추고 주변을 살피는 중");
-            }
+            ambientPhase = "settling";
+            ambientTimer = randomBetween(1.1, 1.8);
+            playAnimation("idle-look", 0.36);
+            setAmbientLabel("걸음을 멈추고 주변을 살피는 중");
           } else {
             isMoving = true;
             requestedWalkFadeSeconds = 0.32;
@@ -7387,11 +7375,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
         avoidanceWaypoints.length = 0;
         lastNavigationTarget.copy(currentPosition);
       }
-      const wantsDeskInteraction =
-        (isAutonomous &&
-          ambientDestination === "desk" &&
-          ambientPhase === "walking") ||
-        (!isAutonomous && isPrimaryWorking);
+      const wantsDeskInteraction = !isAutonomous && isPrimaryWorking;
       const wantsLitterInteraction = primaryCare?.intent === "toilet";
       const activeSceneObstacles = getRuntimeSceneObstacles(
         activeSeatCountRef.current,
@@ -7578,11 +7562,6 @@ float shoreOverlayWaterSignal( vec3 color ) {
           isKneading = true;
           kneadingElapsed = 0;
           playAnimation(DESK_KNEADING_ANIMATION_KEY, 0.24);
-          if (isAutonomous) {
-            ambientPhase = "kneading";
-            ambientTimer = DESK_KNEADING_DURATION_SECONDS;
-            setAmbientLabel("책상 안쪽에 앉아 키캡 꾹꾹이 중");
-          }
         } else {
           const wouldCollide = navigationObstacles.some((obstacle) =>
             isInsideObstacle(nextPosition, obstacle),
@@ -7653,7 +7632,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
         });
       }
       // 실제 키캡 애니메이션이 재생되는 동안만 이름표를 모니터 위에 고정한다.
-      // 자율 꾹꾹이와 실제 작업 상태 모두 같은 타건 판정을 사용한다.
+      // 컴퓨터 타건은 실제 명령을 수행하는 작업 상태에서만 켠다.
       primaryMarker.marker.position.lerp(
         typingMonitorAnchorFor(
           characterRoot,
