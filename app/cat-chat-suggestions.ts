@@ -12,131 +12,158 @@ export type CatSuggestionEvent = {
   threadId?: string | null;
 };
 
-type SuggestionTheme =
-  | "debug"
-  | "feature"
-  | "design"
-  | "performance"
-  | "planning"
-  | "ai"
-  | "general";
+export type CatChatTopic =
+  | "market"
+  | "news"
+  | "fortune"
+  | "travel"
+  | "food"
+  | "entertainment"
+  | "sports"
+  | "tech"
+  | "wellbeing"
+  | "learning"
+  | "creative"
+  | "daily";
+
+export type CatChatTopicMemoryEntry = {
+  catId: string;
+  prompt: string;
+  topic: CatChatTopic;
+  createdAt: number;
+};
+
+export type CatChatTopicMemory = {
+  version: 1;
+  entries: CatChatTopicMemoryEntry[];
+};
+
+export const CAT_CHAT_TOPIC_MEMORY_KEY =
+  "agent-forest-cat-chat-topic-memory-v1";
 
 const LEGACY_CONNECTION_PROMPT =
   "도구를 사용하지 말고 현재 Codex와 연결되었다는 사실을 한 문장으로 알려줘.";
 const USER_PROMPT_EVENTS = new Set(["task.queued", "pm-chat.queued"]);
+const MAX_MEMORY_ENTRIES = 80;
 
-const LOCAL_CAPABILITY_SUGGESTIONS: Record<
-  CatSuggestionDepartment,
-  readonly string[]
-> = {
-  general: [
-    "현재 진행 상황을 확인하고 다음 할 일 3가지를 정리해줘.",
-    "최근 변경사항을 검토하고 빠진 작업이 있는지 찾아줘.",
-    "지금 프로젝트에서 가장 먼저 해결할 일을 골라 진행해줘.",
-  ],
-  coding: [
-    "현재 프로젝트에서 오류가 나는 부분을 찾아 수정해줘.",
-    "원하는 기능을 구현하고 관련 테스트까지 실행해줘.",
-    "최근 코드를 검토하고 안전하게 개선할 부분 3가지를 찾아줘.",
-  ],
-  design: [
-    "현재 화면을 확인하고 어색한 UI를 개선해줘.",
-    "PC와 모바일에서 글자·정렬·버튼 상태를 점검해줘.",
-    "기존 그림체와 색감을 유지하며 화면 완성도를 높여줘.",
-  ],
-  music: [
-    "현재 장면에 필요한 효과음과 재생 조건을 정리해줘.",
-    "고양이 행동별로 어울리는 소리를 연결해줘.",
-    "배경음과 효과음의 크기·반복·전환을 점검해줘.",
-  ],
-};
+const FUN_STARTER_SUGGESTIONS = [
+  "오늘 꼭 알아야 할 뉴스 3가지를 짧고 재미있게 브리핑해줘.",
+  "오늘 주식시장의 분위기와 눈여겨볼 이슈를 쉽게 알려줘.",
+  "오늘 내 운세를 재미로 봐주고 행운 포인트도 알려줘.",
+] as const;
 
-const CHAT_CAPABILITY_SUGGESTIONS: Record<
-  CatSuggestionDepartment,
-  readonly string[]
-> = {
-  general: [
-    "내 아이디어를 정리하고 다음 할 일 3가지를 제안해줘.",
-    "현재 고민의 장단점을 비교해서 가장 좋은 방향을 골라줘.",
-    "내가 놓치고 있을 가능성이 큰 부분을 질문으로 확인해줘.",
-  ],
-  coding: [
-    "구현하려는 기능의 구조와 개발 순서를 정리해줘.",
-    "이 오류의 가능한 원인과 확인 순서를 알려줘.",
-    "PC와 모바일을 함께 고려한 테스트 항목을 만들어줘.",
-  ],
-  design: [
-    "이 화면을 더 보기 편하게 만드는 개선안을 제안해줘.",
-    "귀여운 게임 UI에 맞는 배치와 색상 방향을 정리해줘.",
-    "버튼·팝업·글자 크기를 점검할 체크리스트를 만들어줘.",
-  ],
-  music: [
-    "이 장면에 어울리는 배경음과 효과음 아이디어를 제안해줘.",
-    "고양이 행동별 사운드 연출표를 만들어줘.",
-    "소리가 반복돼도 피곤하지 않게 만드는 방법을 알려줘.",
-  ],
-};
-
-const THEME_KEYWORDS: Array<{
-  theme: SuggestionTheme;
+const TOPIC_KEYWORDS: Array<{
+  topic: CatChatTopic;
   keywords: RegExp;
 }> = [
   {
-    theme: "debug",
+    topic: "market",
     keywords:
-      /오류|에러|버그|안\s*돼|안되|깨지|이상|문제|충돌|실패|원인|수정/,
+      /주식|증시|코스피|코스닥|나스닥|환율|투자|종목|시장|금리|비트코인|코인/,
   },
   {
-    theme: "design",
+    topic: "news",
+    keywords: /뉴스|브리핑|오늘의\s*이슈|정치|경제|사회|국제|시사|속보/,
+  },
+  {
+    topic: "fortune",
+    keywords: /운세|사주|타로|행운|별자리|궁합|점괘|오늘의\s*점/,
+  },
+  {
+    topic: "travel",
+    keywords: /날씨|여행|나들이|지역|휴가|바다|캠핑|산책|드라이브/,
+  },
+  {
+    topic: "food",
+    keywords: /음식|맛집|메뉴|저녁|점심|아침|요리|간식|커피|먹을/,
+  },
+  {
+    topic: "entertainment",
+    keywords: /영화|드라마|게임|웹툰|음악|노래|책|콘텐츠|유튜브|공연/,
+  },
+  {
+    topic: "sports",
+    keywords: /축구|야구|농구|스포츠|경기|선수|리그|월드컵/,
+  },
+  {
+    topic: "tech",
     keywords:
-      /디자인|화면|UI|팝업|버튼|이미지|색상|색감|아웃라인|정렬|폰트|크기|배치/,
+      /AI|Codex|Puter|Worker|에이전트|기술|컴퓨터|앱|웹|코딩|개발|로봇/i,
   },
   {
-    theme: "performance",
-    keywords: /느리|로딩|성능|최적화|렉|프레임|렌더|메모리|속도/,
+    topic: "wellbeing",
+    keywords: /건강|운동|마음|기분|스트레스|수면|습관|휴식|명상/,
   },
   {
-    theme: "planning",
-    keywords: /기획|계획|목록|체크리스트|순서|정리|진행\s*상황|다음\s*작업/,
+    topic: "learning",
+    keywords: /영어|공부|배우|지식|상식|역사|과학|퀴즈|알려줘/,
   },
   {
-    theme: "ai",
-    keywords: /AI|Codex|Puter|Worker|세션|연결|프롬프트|대화|에이전트/i,
-  },
-  {
-    theme: "feature",
-    keywords: /기능|구현|추가|적용|연동|만들|변경|개선|개발/,
+    topic: "creative",
+    keywords: /아이디어|상상|이야기|창작|그림|디자인|만들어|캐릭터/,
   },
 ];
 
-const THEME_FOLLOW_UPS: Record<SuggestionTheme, readonly string[]> = {
-  debug: [
-    "같은 증상이 생길 수 있는 다른 부분도 함께 점검해줘.",
-    "원인·재현 방법·수정 우선순위를 순서대로 정리해줘.",
+const TOPIC_SUGGESTIONS: Record<CatChatTopic, readonly string[]> = {
+  market: [
+    "오늘 주식시장을 ‘맑음·흐림·비’로 표현하고 이유도 알려줘.",
+    "오늘 시장에서 눈여겨볼 업종 하나를 골라 쉽게 설명해줘.",
+    "오늘 시장 뉴스가 내일 어떤 변수로 이어질지 이야기해줘.",
   ],
-  feature: [
-    "이 기능과 자연스럽게 이어질 다음 기능도 제안해줘.",
-    "PC와 모바일에서 모두 잘 작동하는지 검증해줘.",
+  news: [
+    "오늘 꼭 알아야 할 뉴스 3개를 고양이 브리핑처럼 들려줘.",
+    "오늘 뉴스 중 가장 흥미로운 이야기 하나를 쉽게 풀어줘.",
+    "오늘의 좋은 뉴스와 걱정되는 뉴스를 하나씩 골라줘.",
   ],
-  design: [
-    "같은 스타일을 유지하면서 화면 완성도를 더 높여줘.",
-    "글자 크기·정렬·눌림 상태까지 함께 점검해줘.",
+  fortune: [
+    "오늘 운세를 재미로 보고 행운의 색과 행동도 알려줘.",
+    "오늘 돈·일·사람 운을 별 다섯 개로 평가해줘.",
+    "지금 내 기분에 어울리는 한 문장 타로 메시지를 만들어줘.",
   ],
-  performance: [
-    "느려지는 구간을 나눠서 가장 큰 원인부터 찾아줘.",
-    "화질을 유지하면서 가볍게 만들 수 있는 방법을 제안해줘.",
+  travel: [
+    "오늘 가볍게 떠나기 좋은 나들이 콘셉트 3개를 추천해줘.",
+    "바다·숲·도시 중 오늘 내 기분에 맞는 곳을 골라줘.",
+    "주말 반나절 여행을 상상해서 귀여운 일정표를 만들어줘.",
   ],
-  planning: [
-    "지금까지 끝난 일과 남은 일을 우선순위대로 정리해줘.",
-    "다음 단계에서 놓치기 쉬운 항목 3가지를 알려줘.",
+  food: [
+    "오늘 뭐 먹을지 질문 세 번만 하고 메뉴를 골라줘.",
+    "지금 기분에 어울리는 간식과 음료 조합을 추천해줘.",
+    "냉장고에 있을 법한 재료로 간단한 한 끼를 상상해줘.",
   ],
-  ai: [
-    "각 AI 연결 방식의 역할과 제한을 다시 비교해줘.",
-    "이 대화 흐름을 더 편하게 만들 개선안을 제안해줘.",
+  entertainment: [
+    "오늘 보기 좋은 영화·드라마·유튜브 주제를 하나씩 추천해줘.",
+    "내 취향을 알아볼 수 있는 콘텐츠 취향 질문 3개를 해줘.",
+    "요즘 즐길 만한 게임이나 이야기 소재를 재미있게 소개해줘.",
   ],
-  general: [
-    "같은 주제로 다음에 하면 좋은 일 3가지를 제안해줘.",
-    "이 요청에서 아직 확인하지 않은 부분이 있는지 찾아줘.",
+  sports: [
+    "오늘 주목할 스포츠 경기나 이야기를 짧게 브리핑해줘.",
+    "내가 좋아할 만한 선수 한 명을 골라 매력을 소개해줘.",
+    "최근 경기 흐름을 초보자도 알기 쉽게 이야기해줘.",
+  ],
+  tech: [
+    "오늘 나온 흥미로운 AI·기술 이야기를 쉽게 들려줘.",
+    "내 일상에서 AI를 재미있게 써볼 방법 3가지를 제안해줘.",
+    "앞으로 생길 법한 귀여운 미래 기술 하나를 상상해줘.",
+  ],
+  wellbeing: [
+    "지금 기분을 확인할 질문 3개를 하고 작은 휴식을 추천해줘.",
+    "오늘 5분 안에 할 수 있는 기분 전환을 골라줘.",
+    "잠들기 전에 하기 좋은 짧은 루틴을 만들어줘.",
+  ],
+  learning: [
+    "오늘 알아두면 재미있는 상식 하나를 이야기처럼 알려줘.",
+    "내 수준에 맞는 짧은 퀴즈 3개를 내줘.",
+    "평소 궁금했지만 잘 몰랐던 주제를 하나 골라 설명해줘.",
+  ],
+  creative: [
+    "나와 고양이가 주인공인 짧고 재미있는 이야기를 만들어줘.",
+    "오늘 떠올려볼 만한 엉뚱한 아이디어 3개를 던져줘.",
+    "내 취향을 물어보고 새로운 캐릭터 하나를 상상해줘.",
+  ],
+  daily: [
+    "오늘 기분을 한 단어로 물어보고 어울리는 이야기를 들려줘.",
+    "지금 심심할 때 5분 동안 해볼 재미있는 일을 골라줘.",
+    "내 취향을 알아볼 수 있는 가벼운 질문 3개를 해줘.",
   ],
 };
 
@@ -146,76 +173,158 @@ function normalizePrompt(value: string | null | undefined) {
     .trim();
 }
 
-function promptTopic(prompt: string) {
-  if (prompt.length <= 34) return prompt;
-  return `${prompt.slice(0, 33).trim()}…`;
-}
-
-function detectTheme(prompts: readonly string[]): SuggestionTheme {
-  const scores = new Map<SuggestionTheme, number>();
-  prompts.slice(0, 8).forEach((prompt, index) => {
-    const weight = Math.max(1, 8 - index);
-    for (const entry of THEME_KEYWORDS) {
-      if (entry.keywords.test(prompt)) {
-        scores.set(entry.theme, (scores.get(entry.theme) ?? 0) + weight);
-      }
-    }
-  });
+function isTopic(value: unknown): value is CatChatTopic {
   return (
-    [...scores.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] ??
-    "general"
+    typeof value === "string" &&
+    Object.prototype.hasOwnProperty.call(TOPIC_SUGGESTIONS, value)
   );
 }
 
-function uniqueSuggestions(values: readonly string[]) {
-  const seen = new Set<string>();
-  return values.filter((value) => {
-    const normalized = normalizePrompt(value);
-    if (!normalized || seen.has(normalized)) return false;
-    seen.add(normalized);
-    return true;
-  });
+function isMeaningfulPrompt(prompt: string) {
+  return (
+    prompt.length >= 8 &&
+    prompt !== LEGACY_CONNECTION_PROMPT &&
+    !/(연결\s*확인|현재\s*Codex와\s*연결)/i.test(prompt) &&
+    !/^(연결\s*확인|테스트|test|hello|안녕)[.!?\s]*$/i.test(prompt)
+  );
 }
 
-export function buildCatChatSuggestions({
-  events,
-  focusedCatId,
-  department,
-  backend,
-}: {
+function detectTopic(prompt: string): CatChatTopic {
+  return (
+    TOPIC_KEYWORDS.find((entry) => entry.keywords.test(prompt))?.topic ?? "daily"
+  );
+}
+
+export function createEmptyCatChatTopicMemory(): CatChatTopicMemory {
+  return { version: 1, entries: [] };
+}
+
+export function parseCatChatTopicMemory(
+  raw: string | null | undefined,
+): CatChatTopicMemory {
+  if (!raw) return createEmptyCatChatTopicMemory();
+  try {
+    const parsed = JSON.parse(raw) as {
+      version?: unknown;
+      entries?: unknown;
+    };
+    if (!Array.isArray(parsed.entries)) {
+      return createEmptyCatChatTopicMemory();
+    }
+    const entries = parsed.entries
+      .filter(
+        (entry): entry is Record<string, unknown> =>
+          Boolean(entry) && typeof entry === "object",
+      )
+      .map((entry) => ({
+        catId: normalizePrompt(String(entry.catId ?? "")),
+        prompt: normalizePrompt(String(entry.prompt ?? "")),
+        topic: entry.topic,
+        createdAt: Number(entry.createdAt),
+      }))
+      .filter(
+        (entry): entry is CatChatTopicMemoryEntry =>
+          Boolean(entry.catId) &&
+          isMeaningfulPrompt(entry.prompt) &&
+          isTopic(entry.topic) &&
+          Number.isFinite(entry.createdAt) &&
+          entry.createdAt > 0,
+      )
+      .slice(0, MAX_MEMORY_ENTRIES);
+    return { version: 1, entries };
+  } catch {
+    return createEmptyCatChatTopicMemory();
+  }
+}
+
+export function rememberCatChatTopic(
+  memory: CatChatTopicMemory,
+  {
+    catId,
+    prompt,
+    createdAt = Date.now(),
+  }: {
+    catId: string;
+    prompt: string;
+    createdAt?: number;
+  },
+) {
+  const normalized = normalizePrompt(prompt);
+  if (!catId || !isMeaningfulPrompt(normalized)) return memory;
+  const nextEntry: CatChatTopicMemoryEntry = {
+    catId,
+    prompt: normalized,
+    topic: detectTopic(normalized),
+    createdAt,
+  };
+  const entries = [
+    nextEntry,
+    ...memory.entries.filter(
+      (entry) =>
+        entry.catId !== catId ||
+        entry.prompt.toLocaleLowerCase() !== normalized.toLocaleLowerCase(),
+    ),
+  ].slice(0, MAX_MEMORY_ENTRIES);
+  return { version: 1 as const, entries };
+}
+
+function dominantTopic(entries: readonly CatChatTopicMemoryEntry[]) {
+  const scores = new Map<CatChatTopic, number>();
+  entries.slice(0, 30).forEach((entry, index) => {
+    const recencyWeight = Math.max(1, 12 - Math.floor(index / 2));
+    scores.set(entry.topic, (scores.get(entry.topic) ?? 0) + recencyWeight);
+  });
+  return (
+    [...scores.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] ??
+    null
+  );
+}
+
+export function seedCatChatTopicMemoryFromEvents(
+  events: readonly CatSuggestionEvent[],
+  fallbackCatId: string,
+) {
+  return {
+    version: 1 as const,
+    entries: events
+      .filter(
+        (event) =>
+          USER_PROMPT_EVENTS.has(event.type) &&
+          isMeaningfulPrompt(normalizePrompt(event.prompt)),
+      )
+      .map((event, index) => ({
+        catId: event.threadId || fallbackCatId,
+        prompt: normalizePrompt(event.prompt),
+        topic: detectTopic(normalizePrompt(event.prompt)),
+        createdAt: Date.now() - index,
+      }))
+      .slice(0, MAX_MEMORY_ENTRIES),
+  };
+}
+
+export function buildCatChatSuggestions(options: {
   events: readonly CatSuggestionEvent[];
+  memory?: CatChatTopicMemory;
   focusedCatId: string;
   department: CatSuggestionDepartment;
   backend: CompanionBackendId;
 }) {
-  const promptEvents = events.filter(
-    (event) =>
-      USER_PROMPT_EVENTS.has(event.type) &&
-      normalizePrompt(event.prompt) !== LEGACY_CONNECTION_PROMPT,
+  const {
+    events,
+    memory = createEmptyCatChatTopicMemory(),
+    focusedCatId,
+  } = options;
+  const rememberedEntries =
+    memory.entries.length > 0
+      ? memory.entries
+      : seedCatChatTopicMemoryFromEvents(events, focusedCatId).entries;
+  const catEntries = rememberedEntries.filter(
+    (entry) => entry.catId === focusedCatId,
   );
-  const catPrompts = promptEvents
-    .filter((event) => event.threadId === focusedCatId)
-    .map((event) => normalizePrompt(event.prompt))
-    .filter(Boolean);
-  const otherPrompts = promptEvents
-    .filter((event) => event.threadId !== focusedCatId)
-    .map((event) => normalizePrompt(event.prompt))
-    .filter(Boolean);
-  const recentPrompts = uniqueSuggestions([...catPrompts, ...otherPrompts]);
-  const capabilitySuggestions =
-    backend === "local-session"
-      ? LOCAL_CAPABILITY_SUGGESTIONS[department]
-      : CHAT_CAPABILITY_SUGGESTIONS[department];
+  const topic = dominantTopic(
+    catEntries.length > 0 ? catEntries : rememberedEntries,
+  );
 
-  if (recentPrompts.length === 0) {
-    return [...capabilitySuggestions].slice(0, 3);
-  }
-
-  const topic = promptTopic(recentPrompts[0]);
-  const theme = detectTheme(recentPrompts);
-  return uniqueSuggestions([
-    `“${topic}”에서 아직 놓친 부분이 있는지 확인해줘.`,
-    ...THEME_FOLLOW_UPS[theme],
-    ...capabilitySuggestions,
-  ]).slice(0, 3);
+  if (!topic) return [...FUN_STARTER_SUGGESTIONS];
+  return [...TOPIC_SUGGESTIONS[topic]].slice(0, 3);
 }

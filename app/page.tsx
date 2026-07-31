@@ -146,7 +146,14 @@ import {
   submitPmWorkerTask,
   type PmWorkerConnectionState,
 } from "./pm-worker-companion";
-import { buildCatChatSuggestions } from "./cat-chat-suggestions";
+import {
+  CAT_CHAT_TOPIC_MEMORY_KEY,
+  buildCatChatSuggestions,
+  createEmptyCatChatTopicMemory,
+  parseCatChatTopicMemory,
+  rememberCatChatTopic,
+  seedCatChatTopicMemoryFromEvents,
+} from "./cat-chat-suggestions";
 import { isWorldLayoutAdminHost } from "./world-object-layout.mjs";
 
 type Department = "general" | "coding" | "design" | "music";
@@ -478,6 +485,9 @@ export default function Home() {
   const [codexAvailable, setCodexAvailable] = useState(false);
   const [department, setDepartment] = useState<Department>("coding");
   const [prompt, setPrompt] = useState("");
+  const [catChatTopicMemory, setCatChatTopicMemory] = useState(
+    createEmptyCatChatTopicMemory,
+  );
   const [runtimes, setRuntimes] = useState<Record<string, SessionRuntime>>({});
   const [events, setEvents] = useState<BridgeEvent[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -667,12 +677,14 @@ export default function Home() {
     () =>
       buildCatChatSuggestions({
         events,
+        memory: catChatTopicMemory,
         focusedCatId,
         department: focusedRuntime?.department ?? department,
         backend: companionBackend,
       }),
     [
       companionBackend,
+      catChatTopicMemory,
       department,
       events,
       focusedCatId,
@@ -1303,13 +1315,32 @@ export default function Home() {
       } catch {
         window.localStorage.removeItem(CAT_NAME_KEY);
       }
+      let savedEventsForTopicMemory: BridgeEvent[] = [];
       try {
         const savedEvents = JSON.parse(
           window.localStorage.getItem(EVENT_HISTORY_KEY) ?? "[]",
         ) as BridgeEvent[];
-        setEvents(savedEvents.slice(0, 40));
+        savedEventsForTopicMemory = savedEvents.slice(0, 40);
+        setEvents(savedEventsForTopicMemory);
       } catch {
         window.localStorage.removeItem(EVENT_HISTORY_KEY);
+      }
+      const restoredTopicMemory = parseCatChatTopicMemory(
+        window.localStorage.getItem(CAT_CHAT_TOPIC_MEMORY_KEY),
+      );
+      const topicMemory =
+        restoredTopicMemory.entries.length > 0
+          ? restoredTopicMemory
+          : seedCatChatTopicMemoryFromEvents(
+              savedEventsForTopicMemory,
+              DEMO_CAT_ID,
+            );
+      setCatChatTopicMemory(topicMemory);
+      if (topicMemory.entries.length > 0) {
+        window.localStorage.setItem(
+          CAT_CHAT_TOPIC_MEMORY_KEY,
+          JSON.stringify(topicMemory),
+        );
       }
       const savedToken = window.localStorage.getItem(COMPANION_TOKEN_KEY);
       const savedTransport = window.localStorage.getItem(
@@ -2630,6 +2661,17 @@ export default function Home() {
       );
       return;
     }
+    setCatChatTopicMemory((current) => {
+      const next = rememberCatChatTopic(current, {
+        catId: focusedCatId,
+        prompt: prompt.trim(),
+      });
+      window.localStorage.setItem(
+        CAT_CHAT_TOPIC_MEMORY_KEY,
+        JSON.stringify(next),
+      );
+      return next;
+    });
     setIsSubmitting(true);
     if (companionBackend === "puter") {
       const taskId = `puter-${crypto.randomUUID()}`;
@@ -3637,7 +3679,10 @@ export default function Home() {
                         className="cat-chat-suggestions"
                         aria-label="추천 대화"
                       >
-                        <strong>이런 일을 맡겨보세요</strong>
+                        <header>
+                          <strong>오늘은 이런 얘기 어때요?</strong>
+                          <small>대화할수록 좋아하는 주제를 기억해요</small>
+                        </header>
                         <div>
                           {catChatSuggestions.map((suggestion) => (
                             <button

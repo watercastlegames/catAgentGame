@@ -4415,10 +4415,23 @@ button {
   gap: 7px;
 }
 
-.cat-chat-suggestions > strong {
+.cat-chat-suggestions > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cat-chat-suggestions > header strong {
   color: #654b42;
   font-size: 13px;
   font-weight: 900;
+}
+
+.cat-chat-suggestions > header small {
+  color: #967b6f;
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .cat-chat-suggestions > div {
