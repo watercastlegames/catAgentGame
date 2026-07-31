@@ -1,13 +1,24 @@
 # Project communication preferences
 
-- PNG, JPG, HTML, PDF, source code, and other files must always be reported and delivered using a Windows absolute path that includes the drive letter, such as `D:\project\file.png`.
-- Never give the user only a relative path when reporting or delivering a file.
-- A clickable local-file Markdown link may be visually shortened to only the basename by the client. Therefore, never rely on the link alone when reporting a file.
-- For every reported file, print the complete Windows absolute path again as non-link plain text inside a fenced `text` block, wrapped in single quotes. This plain-text path is mandatory even when a clickable link is also provided.
-- Required output contains both forms: a clickable link such as
-  `['D:\project\output\result.png'](D:/project/output/result.png)`, followed by
-  a separate fenced `text` block whose only content is
-  `'D:\project\output\result.png'`.
+## 최종 응답에는 중요한 결과만 표시
+
+- 기본 보고 대상은 사용자가 직접 열어 확인할 **대표 결과물**뿐이다. 예: 최종 PNG/JPG, HTML/PDF 문서, 사용자가 내려받을 파일, 실행 주소, 배포 주소.
+- 구현에 사용한 소스 코드(`app/**`, `src/**`, `worker/**`), 테스트 코드(`tests/**`), 로그, PID 파일, 임시 검증 파일, 중간 생성물, 배포용 TAR/ZIP 패키지는 최종 응답에 나열하지 않는다.
+- 위 내부 파일들은 사용자가 경로·변경 목록·디버깅 자료를 명시적으로 요청한 경우에만 보고한다.
+- 대표 결과물이 여러 개여도 사용자가 실제로 확인할 핵심 파일만 우선하여 간결하게 나열한다. 같은 이미지의 원본·미리보기·알파 미리보기·작업 JSON이 함께 있으면 기본적으로 최종 사용본 하나만 보고한다.
+- 운영 배포까지 완료한 경우에는 공개 주소를 가장 먼저 제공한다. 로컬 주소는 사용자가 로컬 확인을 필요로 할 때만 함께 제공한다.
+- 새로 전달할 대표 결과 파일이 없고 코드만 변경한 작업이면 `새로 전달할 결과 파일 없음`이라고 적고, 구현 파일 목록은 생략한다.
+
+## 대표 결과 파일의 경로 표기
+
+- 보고하기로 선택한 대표 결과 파일은 반드시 드라이브 문자를 포함한 Windows 절대경로로 전달한다. 상대경로나 파일명만 제공하지 않는다.
+- 클릭 가능한 링크의 라벨에도 작은따옴표로 묶은 전체 절대경로를 사용한다.
+- 링크 바로 아래에는 같은 전체 절대경로를 작은따옴표로 묶어 `text` 코드 블록에 한 번 더 출력한다.
+- 예시:
+  `['D:\project\output\result.png'](D:/project/output/result.png)`
+  ```text
+  'D:\project\output\result.png'
+  ```
 
 # Agent Forest 설치·연결 절차 (AI가 읽고 그대로 실행)
 
