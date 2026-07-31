@@ -3254,7 +3254,7 @@ export default function Home() {
                     return next;
                   });
                   setToast(
-                    `${targetCat.label}를 쓰다듬었어요. 행복도 +${petting.happinessGain}`,
+                    `${targetCat.agentName}를 쓰다듬었어요. 행복도 +${petting.happinessGain}`,
                   );
                 } else {
                   const waitMinutes = Math.max(
@@ -3262,14 +3262,14 @@ export default function Home() {
                     Math.ceil(petting.waitMs / 60_000),
                   );
                   setToast(
-                    `${targetCat.label}는 만족해 보여요. ${waitMinutes}분 뒤에 다시 쓰다듬을 수 있어요.`,
+                    `${targetCat.agentName}는 만족해 보여요. ${waitMinutes}분 뒤에 다시 쓰다듬을 수 있어요.`,
                   );
                 }
               }
-              setSelectedSeat(seatId);
-              setStatusLogTab("status");
-              setRadioPage("status-log");
-              setRadioOpen(true);
+              // 월드의 고양이를 누르는 기본 목적은 해당 고양이와의 대화다.
+              // 쓰다듬기 보상은 함께 처리하되, 답변 유무나 AI 백엔드와 관계없이
+              // 동일한 고양이 상세 대화 탭을 연다.
+              openCatDetail(seatId);
             }}
             onRadioClick={() => setRadioOpen(true)}
           />
