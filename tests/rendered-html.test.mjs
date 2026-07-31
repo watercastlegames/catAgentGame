@@ -277,9 +277,9 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(css, /\.cat-list-grid\s*\{[\s\S]*?repeat\(2,/m);
   assert.match(css, /@media \(max-width: 820px\)[\s\S]*?width:\s*calc\(100% - 28px\)/m);
   // 1번 키캡 아트만 고양이 버전으로 갈아끼웠다(2~4번 키는 원본 그대로).
-  assert.match(css, /menu-keycaps-base-v5\.png/);
-  assert.match(css, /menu-keycaps-pressed-1-v2\.png/);
-  assert.match(css, /menu-keycaps-pressed-2-v2\.png/);
+  assert.match(css, /menu-keycaps-base-v6\.png/);
+  assert.match(css, /menu-keycaps-pressed-1-v3\.png/);
+  assert.match(css, /menu-keycaps-pressed-2-v3\.png/);
   // 해변 앰비언스 3종 + 타건 루프 + 고양이 4종 + 배경음악, 하악질은 제외.
   assert.match(worldAudio, /AMB_Beach_LowKey_Gull_Loop_01\.mp3/);
   assert.match(worldAudio, /AMB_Beach_LowKey_Gull_Loop_02\.mp3/);
@@ -481,11 +481,11 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /AUTONOMOUS_STATUSES/);
   assert.match(world3d, /ambientPhase/);
   assert.match(world3d, /"settling"/);
-  assert.match(css, /menu-keycaps-base-v5\.png/);
-  assert.match(css, /menu-keycaps-pressed-1-v2\.png/);
-  assert.match(css, /menu-keycaps-pressed-2-v2\.png/);
-  assert.match(css, /menu-keycaps-pressed-3-v2\.png/);
-  assert.match(css, /menu-keycaps-pressed-4-v2\.png/);
+  assert.match(css, /menu-keycaps-base-v6\.png/);
+  assert.match(css, /menu-keycaps-pressed-1-v3\.png/);
+  assert.match(css, /menu-keycaps-pressed-2-v3\.png/);
+  assert.match(css, /menu-keycaps-pressed-3-v3\.png/);
+  assert.match(css, /menu-keycaps-pressed-4-v3\.png/);
   assert.match(css, /\.keycap-menu-layer-normal[\s\S]*opacity:\s*1/);
   assert.match(
     css,
@@ -1008,16 +1008,16 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
       new URL("../public/art/menu-keycaps-base-v4.png", import.meta.url),
     ),
     access(
-      new URL("../public/art/menu-keycaps-pressed-1-v2.png", import.meta.url),
+      new URL("../public/art/menu-keycaps-pressed-1-v3.png", import.meta.url),
     ),
     access(
-      new URL("../public/art/menu-keycaps-pressed-2-v2.png", import.meta.url),
+      new URL("../public/art/menu-keycaps-pressed-2-v3.png", import.meta.url),
     ),
     access(
-      new URL("../public/art/menu-keycaps-pressed-3-v2.png", import.meta.url),
+      new URL("../public/art/menu-keycaps-pressed-3-v3.png", import.meta.url),
     ),
     access(
-      new URL("../public/art/menu-keycaps-pressed-4-v2.png", import.meta.url),
+      new URL("../public/art/menu-keycaps-pressed-4-v3.png", import.meta.url),
     ),
     access(new URL("../public/audio/keycap-click-1.mp3", import.meta.url)),
     access(new URL("../public/audio/keycap-click-2.mp3", import.meta.url)),
@@ -1050,9 +1050,9 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     access(new URL("../public/audio/CAT_Meow_Demand_01.mp3", import.meta.url)),
     access(new URL("../public/audio/CAT_Purr_Loop_01.mp3", import.meta.url)),
     access(new URL("../public/audio/TY_Dusk_alt01.mp3", import.meta.url)),
-    access(new URL("../public/art/menu-keycaps-base-v5.png", import.meta.url)),
+    access(new URL("../public/art/menu-keycaps-base-v6.png", import.meta.url)),
     access(
-      new URL("../public/art/menu-keycaps-pressed-1-v2.png", import.meta.url),
+      new URL("../public/art/menu-keycaps-pressed-1-v3.png", import.meta.url),
     ),
     access(new URL("../public/concept-approval.jpg", import.meta.url)),
     ...[

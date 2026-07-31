@@ -3114,7 +3114,7 @@ button {
 /* v5 = v4 에서 1번 키 아이콘만 클립보드 → 고양이 얼굴로 교체(다른 키·패드는 원본 픽셀 그대로). */
 .keycap-menu-layer-normal {
   z-index: 0;
-  background-image: url("/art/menu-keycaps-base-v5.png");
+  background-image: url("/art/menu-keycaps-base-v6.png");
   opacity: 1;
 }
 
@@ -3126,19 +3126,19 @@ button {
 }
 
 .keycap-menu-layer-pressed-1 {
-  background-image: url("/art/menu-keycaps-pressed-1-v2.png");
+  background-image: url("/art/menu-keycaps-pressed-1-v3.png");
 }
 
 .keycap-menu-layer-pressed-2 {
-  background-image: url("/art/menu-keycaps-pressed-2-v2.png");
+  background-image: url("/art/menu-keycaps-pressed-2-v3.png");
 }
 
 .keycap-menu-layer-pressed-3 {
-  background-image: url("/art/menu-keycaps-pressed-3-v2.png");
+  background-image: url("/art/menu-keycaps-pressed-3-v3.png");
 }
 
 .keycap-menu-layer-pressed-4 {
-  background-image: url("/art/menu-keycaps-pressed-4-v2.png");
+  background-image: url("/art/menu-keycaps-pressed-4-v3.png");
 }
 
 .keycap-menu-pressed-1 .keycap-menu-layer-pressed-1,
