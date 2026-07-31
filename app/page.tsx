@@ -96,10 +96,7 @@ import {
   type WorkstationSeatId,
 } from "./workstation-decor";
 import { preloadPopupAssets } from "./popup-assets.mjs";
-import {
-  type PlayerCloudSync,
-  createPlayerCloudSync,
-} from "./storage";
+import { type PlayerCloudSync, createPlayerCloudSync } from "./storage";
 import {
   TASK_REWARD_DAILY_KEY,
   WORLD_SHELL_DAILY_CAP,
@@ -143,6 +140,12 @@ import {
   submitPuterTask,
   type PuterConnectionState,
 } from "./puter-companion";
+import {
+  PM_WORKER_CHAT_SHELL_COST,
+  inspectPmWorkerConnection,
+  submitPmWorkerTask,
+  type PmWorkerConnectionState,
+} from "./pm-worker-companion";
 import { isWorldLayoutAdminHost } from "./world-object-layout.mjs";
 
 type Department = "general" | "coding" | "design" | "music";
@@ -251,7 +254,7 @@ type BridgeHealth = {
 type CompanionTransport = "local" | "cloud";
 type RadioPage = "cats" | "desk" | "work" | "status-log";
 type CatPage = "list" | "detail";
-type CatDetailTab = "style" | "care";
+type CatDetailTab = "chat" | "style" | "care";
 type WorkTab = "connect" | "task";
 type StatusLogTab = "status" | "log";
 type ConfirmDialog =
@@ -339,7 +342,11 @@ function triggerUiButtonPress(target: EventTarget | null) {
   if (!(target instanceof Element)) return;
 
   const button = target.closest<HTMLButtonElement>("button");
-  if (!button || button.disabled || button.classList.contains("keycap-menu-button")) {
+  if (
+    !button ||
+    button.disabled ||
+    button.classList.contains("keycap-menu-button")
+  ) {
     return;
   }
 
@@ -364,7 +371,12 @@ const CAT_SHAPE_PRESETS: Array<{
   note: string;
   shape: CatShape;
 }> = [
-  { id: "slim", label: "원래대로", note: "팩 기본 체형", shape: { belly: 1, sag: 0, legs: 1 } },
+  {
+    id: "slim",
+    label: "원래대로",
+    note: "팩 기본 체형",
+    shape: { belly: 1, sag: 0, legs: 1 },
+  },
   {
     id: "slight",
     label: "살짝",
@@ -479,6 +491,8 @@ export default function Home() {
   const [pairingBusy, setPairingBusy] = useState(false);
   const [puterConnectionState, setPuterConnectionState] =
     useState<PuterConnectionState>("loading");
+  const [pmWorkerConnectionState, setPmWorkerConnectionState] =
+    useState<PmWorkerConnectionState>("loading");
   const [sessions, setSessions] = useState<CodexSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -523,16 +537,13 @@ export default function Home() {
   const [foodBowlState, setFoodBowlState] = useState<FoodBowlState>(
     createDefaultFoodBowlState,
   );
-  const [foodBowlCount, setFoodBowlCount] =
-    useState<OwnedFoodBowlCount>(1);
+  const [foodBowlCount, setFoodBowlCount] = useState<OwnedFoodBowlCount>(1);
   const [litterLevel, setLitterLevel] = useState(0);
   const [litterTier, setLitterTier] = useState(1);
-  const [worldShellDaily, setWorldShellDaily] = useState<DailyCounter>(
-    createDailyCounter,
-  );
-  const [taskRewardDaily, setTaskRewardDaily] = useState<DailyCounter>(
-    createDailyCounter,
-  );
+  const [worldShellDaily, setWorldShellDaily] =
+    useState<DailyCounter>(createDailyCounter);
+  const [taskRewardDaily, setTaskRewardDaily] =
+    useState<DailyCounter>(createDailyCounter);
   const [snackLog, setSnackLog] = useState<CatInteractionLog>({});
   const [playLog, setPlayLog] = useState<CatPlayLog>({});
   const [workstationDecor, setWorkstationDecor] =
@@ -542,8 +553,9 @@ export default function Home() {
   );
   const [worldPlacementMode, setWorldPlacementMode] =
     useState<WorldPlacementMode>(null);
-  const [snackPlacement, setSnackPlacement] =
-    useState<SnackPlacement | null>(null);
+  const [snackPlacement, setSnackPlacement] = useState<SnackPlacement | null>(
+    null,
+  );
 
   const relayEventCursor = useRef(0);
   const taskToThreadRef = useRef(new Map<string, string>());
@@ -567,9 +579,7 @@ export default function Home() {
   const modalAudioPrimedRef = useRef(false);
   const previousModalOpenRef = useRef(false);
   const catNeedsRef = useRef<CatNeedsStore>({});
-  const foodBowlStateRef = useRef<FoodBowlState>(
-    createDefaultFoodBowlState(),
-  );
+  const foodBowlStateRef = useRef<FoodBowlState>(createDefaultFoodBowlState());
   const litterLevelRef = useRef(0);
   const litterTierRef = useRef(1);
   const litterMaxLevelRef = useRef(litterCapacityForTier(1));
@@ -634,8 +644,26 @@ export default function Home() {
     );
   }, [runtimeList, selectedSeat, selectedThreadId]);
   const focusedCatId = focusedRuntime?.threadId ?? DEMO_CAT_ID;
-  const focusedCatNeeds =
-    catNeeds[focusedCatId] ?? createDefaultCatNeedState();
+  const focusedCatNeeds = catNeeds[focusedCatId] ?? createDefaultCatNeedState();
+  const focusedConversation = useMemo(
+    () =>
+      events
+        .filter(
+          (event) =>
+            event.threadId === focusedCatId &&
+            [
+              "task.queued",
+              "task.completed",
+              "task.failed",
+              "pm-chat.queued",
+              "pm-chat.completed",
+              "pm-chat.failed",
+            ].includes(event.type),
+        )
+        .slice(0, 16)
+        .reverse(),
+    [events, focusedCatId],
+  );
   const foodAvailable = foodBowlState.portionsRemaining > 0;
   const litterMaxLevel = litterCapacityForTier(litterTier);
   const litterBoxCount = Math.min(2, litterTier) as 1 | 2;
@@ -647,10 +675,10 @@ export default function Home() {
       : null;
   const modalOpen = Boolean(
     pendingCatStyle ||
-      onboardingOpen ||
-      pendingSeatSlot ||
-      confirmDialog?.kind === "disconnect" ||
-      visibleApprovalEvent,
+    onboardingOpen ||
+    pendingSeatSlot ||
+    confirmDialog?.kind === "disconnect" ||
+    visibleApprovalEvent,
   );
   const nextSeatSlot = nextWorkstationSlot(activeSeatCount);
   const unlockedSeatIds = useMemo(
@@ -671,8 +699,38 @@ export default function Home() {
     [],
   );
   const selectedCompanionBackend =
-    companionBackendOptions.find((backend) => backend.id === companionBackend) ??
-    companionBackendOptions[0];
+    companionBackendOptions.find(
+      (backend) => backend.id === companionBackend,
+    ) ?? companionBackendOptions[0];
+  const selectedBackendReady =
+    companionBackend === "puter"
+      ? puterConnectionState === "ready"
+      : companionBackend === "pm-worker"
+        ? pmWorkerConnectionState === "ready"
+        : companionBackend === "local-session"
+          ? Boolean(
+              bridgeState === "connected" &&
+              codexAvailable &&
+              companionToken &&
+              selectedThreadId,
+            )
+          : false;
+  const selectedBackendStatus =
+    companionBackend === "puter"
+      ? puterConnectionState === "ready"
+        ? "Puter 무료 AI 연결됨"
+        : "Puter 로그인이 필요해요"
+      : companionBackend === "pm-worker"
+        ? pmWorkerConnectionState === "ready"
+          ? `PM Worker AI 연결됨 · 대화당 조개 ${PM_WORKER_CHAT_SHELL_COST}개`
+          : pmWorkerConnectionState === "loading"
+            ? "PM Worker AI 연결 확인 중"
+            : "PM Worker AI 연결을 확인해 주세요"
+        : companionBackend === "local-session"
+          ? selectedSession
+            ? `${selectedSession.title} · ${selectedSession.projectName}`
+            : "사용할 내 PC Codex 세션을 연결해 주세요"
+          : "서비스 실행기 배포 대기 중";
   const pressedRadioIndex = pressedRadioKey
     ? RADIO_MENU.findIndex((item) => item.key === pressedRadioKey) + 1
     : 0;
@@ -684,9 +742,11 @@ export default function Home() {
   useEffect(() => {
     if (
       !radioOpen ||
-      radioPage !== "work" ||
-      workTab !== "connect" ||
-      companionBackend !== "puter"
+      companionBackend !== "puter" ||
+      !(
+        (radioPage === "work" && workTab === "connect") ||
+        (radioPage === "cats" && catPage === "detail")
+      )
     ) {
       return;
     }
@@ -701,7 +761,24 @@ export default function Home() {
     return () => {
       disposed = true;
     };
-  }, [companionBackend, radioOpen, radioPage, workTab]);
+  }, [catPage, companionBackend, radioOpen, radioPage, workTab]);
+  useEffect(() => {
+    if (
+      !radioOpen ||
+      companionBackend !== "pm-worker" ||
+      (radioPage === "work" && workTab !== "connect") ||
+      (radioPage === "cats" && catPage !== "detail")
+    ) {
+      return;
+    }
+    let disposed = false;
+    void inspectPmWorkerConnection().then((state) => {
+      if (!disposed) setPmWorkerConnectionState(state);
+    });
+    return () => {
+      disposed = true;
+    };
+  }, [catPage, companionBackend, radioOpen, radioPage, workTab]);
   useEffect(() => {
     foodBowlStateRef.current = foodBowlState;
   }, [foodBowlState]);
@@ -742,28 +819,27 @@ export default function Home() {
     const unlocked = new Set(unlockedSeatIds);
     const active = runtimeList
       .filter(
-        (runtime) =>
-          runtime.seatId !== "queue" && unlocked.has(runtime.seatId),
+        (runtime) => runtime.seatId !== "queue" && unlocked.has(runtime.seatId),
       )
       .slice(0, activeSeatCount)
       .map((runtime) => ({
-      ...(() => {
-        const needs =
-          catNeeds[runtime.threadId] ?? createDefaultCatNeedState();
-        return {
-          hunger: Math.round(needs.hunger),
-          toilet: Math.round(needs.toilet),
-          happiness: Math.round(needs.happiness),
-        };
-      })(),
-      seatId: runtime.seatId,
-      catId: runtime.threadId,
-      agentName: catNames[runtime.threadId] || runtime.agentName,
-      location: runtime.location,
-      status: runtime.status,
-      statusLabel: STATUS_COPY[runtime.status],
-      blocked: Boolean(runtime.pendingApprovalId),
-    }));
+        ...(() => {
+          const needs =
+            catNeeds[runtime.threadId] ?? createDefaultCatNeedState();
+          return {
+            hunger: Math.round(needs.hunger),
+            toilet: Math.round(needs.toilet),
+            happiness: Math.round(needs.happiness),
+          };
+        })(),
+        seatId: runtime.seatId,
+        catId: runtime.threadId,
+        agentName: catNames[runtime.threadId] || runtime.agentName,
+        location: runtime.location,
+        status: runtime.status,
+        statusLabel: STATUS_COPY[runtime.status],
+        blocked: Boolean(runtime.pendingApprovalId),
+      }));
     return active.length
       ? active
       : [
@@ -791,9 +867,9 @@ export default function Home() {
   const apiFetch = useCallback(
     (pathname: string, init: RequestInit = {}) => {
       const headers = new Headers(init.headers);
-      if (companionToken) headers.set("Authorization", `Bearer ${companionToken}`);
-      const base =
-        companionTransport === "cloud" ? "/api/relay" : BRIDGE_URL;
+      if (companionToken)
+        headers.set("Authorization", `Bearer ${companionToken}`);
+      const base = companionTransport === "cloud" ? "/api/relay" : BRIDGE_URL;
       return fetch(`${base}${pathname}`, { ...init, headers });
     },
     [companionToken, companionTransport],
@@ -816,10 +892,7 @@ export default function Home() {
       oscillator.frequency.value = frequency;
       gain.gain.setValueAtTime(0.0001, now + index * 0.16);
       gain.gain.exponentialRampToValueAtTime(0.08, now + index * 0.16 + 0.02);
-      gain.gain.exponentialRampToValueAtTime(
-        0.0001,
-        now + index * 0.16 + 0.22,
-      );
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + index * 0.16 + 0.22);
       oscillator.connect(gain).connect(context.destination);
       oscillator.start(now + index * 0.16);
       oscillator.stop(now + index * 0.16 + 0.24);
@@ -832,10 +905,7 @@ export default function Home() {
         return;
       }
       alreadyAlertedRef.current.add(event.requestId);
-      if (
-        document.visibilityState !== "visible" ||
-        !document.hasFocus()
-      ) {
+      if (document.visibilityState !== "visible" || !document.hasFocus()) {
         if ("Notification" in window && Notification.permission === "granted") {
           new Notification(event.title ?? "Agent Forest 승인 대기", {
             body: event.detail ?? "PC의 Codex가 확인을 기다리고 있어요.",
@@ -906,18 +976,16 @@ export default function Home() {
             activeSeatIds(activeSeatCountRef.current),
           );
         const taskId = event.taskId ?? existing?.taskId ?? null;
-        const activeTask: ActiveTask =
-          existing?.activeTask ??
-          {
-            taskId: taskId ?? "unknown",
-            threadId: event.threadId,
-            prompt: event.prompt ?? event.detail ?? "",
-            department: taskDepartment,
-            mode: event.mode ?? "codex",
-            title: event.title ?? "새 업무를 접수했어요",
-            detail: event.detail ?? "",
-            result: event.result ?? "",
-          };
+        const activeTask: ActiveTask = existing?.activeTask ?? {
+          taskId: taskId ?? "unknown",
+          threadId: event.threadId,
+          prompt: event.prompt ?? event.detail ?? "",
+          department: taskDepartment,
+          mode: event.mode ?? "codex",
+          title: event.title ?? "새 업무를 접수했어요",
+          detail: event.detail ?? "",
+          result: event.result ?? "",
+        };
 
         let status = event.status ?? existing?.status ?? "idle";
         let location = event.location ?? existing?.location ?? "general";
@@ -939,8 +1007,7 @@ export default function Home() {
           status,
           location,
           department: taskDepartment,
-          agentName:
-            existing?.agentName ?? DEPARTMENTS[taskDepartment].agent,
+          agentName: existing?.agentName ?? DEPARTMENTS[taskDepartment].agent,
           activeTask: {
             ...activeTask,
             taskId: taskId ?? activeTask.taskId,
@@ -953,7 +1020,7 @@ export default function Home() {
           usage:
             event.type === "session.usage"
               ? normalizeUsage(event.usage)
-              : existing?.usage ?? normalizeUsage(event.usage),
+              : (existing?.usage ?? normalizeUsage(event.usage)),
           pendingApprovalId,
           lastActivityAt: Date.now(),
         };
@@ -970,9 +1037,7 @@ export default function Home() {
       });
 
       if (event.type === "approval.required") {
-        setApprovalQueue((queue) => [
-          ...enqueueUniqueApproval(queue, event),
-        ]);
+        setApprovalQueue((queue) => [...enqueueUniqueApproval(queue, event)]);
         raiseBlockedAlert(event);
       }
       if (event.type === "approval.decided") {
@@ -1005,7 +1070,9 @@ export default function Home() {
             });
             setToast(`업무 완료 보상으로 조개 ${claim.reward}개를 받았어요.`);
           } else if (event.mode !== "simulation") {
-            setToast("오늘 업무 보상 20건을 모두 받았어요. 업무는 계속 맡길 수 있어요.");
+            setToast(
+              "오늘 업무 보상 20건을 모두 받았어요. 업무는 계속 맡길 수 있어요.",
+            );
           }
         }
       }
@@ -1092,7 +1159,8 @@ export default function Home() {
             status: "completed",
             location: "queue",
             title: "무료 시연을 마쳤어요",
-            detail: "내 PC의 Codex를 연결하면 같은 흐름으로 실제 업무를 맡길 수 있어요.",
+            detail:
+              "내 PC의 Codex를 연결하면 같은 흐름으로 실제 업무를 맡길 수 있어요.",
             result: example.result,
           },
         ],
@@ -1167,8 +1235,7 @@ export default function Home() {
       const restoredLitterTier = parseLitterTier(
         window.localStorage.getItem(LITTER_TIER_STORAGE_KEY),
       );
-      const restoredLitterMaxLevel =
-        litterCapacityForTier(restoredLitterTier);
+      const restoredLitterMaxLevel = litterCapacityForTier(restoredLitterTier);
       litterTierRef.current = restoredLitterTier;
       litterMaxLevelRef.current = restoredLitterMaxLevel;
       setLitterTier(restoredLitterTier);
@@ -1213,9 +1280,7 @@ export default function Home() {
             Object.entries(restoredNames)
               .filter(
                 ([id, name]) =>
-                  id &&
-                  typeof name === "string" &&
-                  name.trim().length > 0,
+                  id && typeof name === "string" && name.trim().length > 0,
               )
               .map(([id, name]) => [id, name.trim().slice(0, 6)]),
           ),
@@ -1297,16 +1362,12 @@ export default function Home() {
           }
           const mergedSeatCount = parseActiveSeatCount(
             String(
-              mergedState.decor?.seats?.activeSeatCount ??
-                restoredSeatCount,
+              mergedState.decor?.seats?.activeSeatCount ?? restoredSeatCount,
             ),
           );
           activeSeatCountRef.current = mergedSeatCount;
           setActiveSeatCount(mergedSeatCount);
-          window.localStorage.setItem(
-            ACTIVE_SEAT_KEY,
-            String(mergedSeatCount),
-          );
+          window.localStorage.setItem(ACTIVE_SEAT_KEY, String(mergedSeatCount));
           cloudSyncHydratedRef.current = true;
         });
     });
@@ -1389,7 +1450,13 @@ export default function Home() {
     const unlockAudio = () => {
       worldAudioRef.current?.unlock();
     };
-    const events = ["pointermove", "pointerdown", "keydown", "wheel", "touchstart"];
+    const events = [
+      "pointermove",
+      "pointerdown",
+      "keydown",
+      "wheel",
+      "touchstart",
+    ];
     events.forEach((name) => {
       window.addEventListener(name, resetHudTimer, { passive: true });
     });
@@ -1506,11 +1573,7 @@ export default function Home() {
 
   const confirmCatStylePurchase = useCallback(() => {
     if (!pendingCatStyle) return;
-    const purchase = purchaseCatStyle(
-      pendingCatStyle,
-      shells,
-      ownedCatStyles,
-    );
+    const purchase = purchaseCatStyle(pendingCatStyle, shells, ownedCatStyles);
     if (!purchase.ok) {
       worldAudioRef.current?.playUi("purchaseFail");
       if (purchase.reason === "insufficient-shells") {
@@ -1544,10 +1607,7 @@ export default function Home() {
       setToast("먼저 놓아둔 간식을 고양이가 먹을 때까지 기다려 주세요.");
       return;
     }
-    const availability = snackAvailability(
-      snackLogRef.current,
-      focusedCatId,
-    );
+    const availability = snackAvailability(snackLogRef.current, focusedCatId);
     if (!availability.available) {
       setToast(
         availability.reason === "daily-cap"
@@ -1610,16 +1670,15 @@ export default function Home() {
           window.localStorage.setItem(SHELL_KEY, String(next));
           return next;
         });
-        setToast("받으러 올 수 있는 고양이가 없어 간식값 6조개를 돌려드렸어요.");
+        setToast(
+          "받으러 올 수 있는 고양이가 없어 간식값 6조개를 돌려드렸어요.",
+        );
         return;
       }
       const completed = completeSnack(snackLogRef.current, catId);
       snackLogRef.current = completed.log;
       setSnackLog(completed.log);
-      window.localStorage.setItem(
-        SNACK_LOG_KEY,
-        JSON.stringify(completed.log),
-      );
+      window.localStorage.setItem(SNACK_LOG_KEY, JSON.stringify(completed.log));
       const now = Date.now();
       setCatNeeds((current) => {
         const before = ensureCatNeedState(current, catId, now);
@@ -1644,7 +1703,10 @@ export default function Home() {
   const beginLaserPlay = useCallback(() => {
     const targetCat =
       seatViews.find((seat) => seat.catId === focusedCatId) ?? seatViews[0];
-    if (!targetCat || !AUTONOMOUS_AGENT_STATUSES.has(targetCat.status as AgentStatus)) {
+    if (
+      !targetCat ||
+      !AUTONOMOUS_AGENT_STATUSES.has(targetCat.status as AgentStatus)
+    ) {
       worldAudioRef.current?.playUi("purchaseFail");
       setToast("작업 중인 고양이는 방해하지 않아요. 쉬는 시간에 놀아 주세요.");
       return;
@@ -1773,32 +1835,37 @@ export default function Home() {
     [],
   );
 
-  const refillFoodBowl = useCallback((grade: FoodGrade = "Basic") => {
-    const current = foodBowlStateRef.current;
-    if (current.portionsRemaining > 0) {
+  const refillFoodBowl = useCallback(
+    (grade: FoodGrade = "Basic") => {
+      const current = foodBowlStateRef.current;
+      if (current.portionsRemaining > 0) {
+        setToast(
+          `${FOOD_PROFILES[current.grade ?? "Basic"].label}가 ${current.portionsRemaining}/${FOOD_PORTIONS_PER_FILL}인분 남아 있어요.`,
+        );
+        return;
+      }
+      const profile = FOOD_PROFILES[grade];
+      if (shells < profile.price) {
+        worldAudioRef.current?.playUi("purchaseFail");
+        setToast(
+          `${profile.label}를 채우려면 조개 ${profile.price}개가 필요해요.`,
+        );
+        return;
+      }
+      const next = fillFoodBowl(grade);
+      const nextShells = shells - profile.price;
+      foodBowlStateRef.current = next;
+      setFoodBowlState(next);
+      setShells(nextShells);
+      window.localStorage.setItem(FOOD_BOWL_KEY, serializeFoodBowlState(next));
+      window.localStorage.setItem(SHELL_KEY, String(nextShells));
+      worldAudioRef.current?.playUi("feedBowl");
       setToast(
-        `${FOOD_PROFILES[current.grade ?? "Basic"].label}가 ${current.portionsRemaining}/${FOOD_PORTIONS_PER_FILL}인분 남아 있어요.`,
+        `${profile.label} 4인분을 조개 ${profile.price}개로 채웠어요. 포만감 ${profile.satiationMinutes}분`,
       );
-      return;
-    }
-    const profile = FOOD_PROFILES[grade];
-    if (shells < profile.price) {
-      worldAudioRef.current?.playUi("purchaseFail");
-      setToast(`${profile.label}를 채우려면 조개 ${profile.price}개가 필요해요.`);
-      return;
-    }
-    const next = fillFoodBowl(grade);
-    const nextShells = shells - profile.price;
-    foodBowlStateRef.current = next;
-    setFoodBowlState(next);
-    setShells(nextShells);
-    window.localStorage.setItem(FOOD_BOWL_KEY, serializeFoodBowlState(next));
-    window.localStorage.setItem(SHELL_KEY, String(nextShells));
-    worldAudioRef.current?.playUi("feedBowl");
-    setToast(
-      `${profile.label} 4인분을 조개 ${profile.price}개로 채웠어요. 포만감 ${profile.satiationMinutes}분`,
-    );
-  }, [shells]);
+    },
+    [shells],
+  );
 
   const buySecondFoodBowl = useCallback(() => {
     const purchase = purchaseSecondFoodBowl(shells, foodBowlCount);
@@ -1858,34 +1925,22 @@ export default function Home() {
     const nextLevel = resetLitterBoxState();
     litterLevelRef.current = nextLevel;
     setLitterLevel(nextLevel);
-    window.localStorage.setItem(
-      LITTER_BOX_STORAGE_KEY,
-      String(nextLevel),
-    );
+    window.localStorage.setItem(LITTER_BOX_STORAGE_KEY, String(nextLevel));
     worldAudioRef.current?.playUi("toiletDone");
     setToast("화장실의 배변을 깨끗하게 치웠어요.");
   }, []);
 
   const handleCatCareEvent = useCallback(
-    (event: {
-      catId: string;
-      seatId: SeatId;
-      outcome: CatCareOutcome;
-    }) => {
+    (event: { catId: string; seatId: SeatId; outcome: CatCareOutcome }) => {
       const now = Date.now();
       setCatNeeds((current) => {
         const before = ensureCatNeedState(current, event.catId, now);
         const mealProfile =
           FOOD_PROFILES[foodBowlStateRef.current.grade ?? "Basic"];
-        const nextState = applyCatCareOutcome(
-          before,
-          event.outcome,
-          now,
-          {
-            satiationMinutes: mealProfile.satiationMinutes,
-            happinessGain: mealProfile.happinessGain,
-          },
-        );
+        const nextState = applyCatCareOutcome(before, event.outcome, now, {
+          satiationMinutes: mealProfile.satiationMinutes,
+          happinessGain: mealProfile.happinessGain,
+        });
         const next = { ...current, [event.catId]: nextState };
         catNeedsRef.current = next;
         window.localStorage.setItem(NEEDS_KEY, JSON.stringify(next));
@@ -1918,10 +1973,7 @@ export default function Home() {
         );
         litterLevelRef.current = nextLevel;
         setLitterLevel(nextLevel);
-        window.localStorage.setItem(
-          LITTER_BOX_STORAGE_KEY,
-          String(nextLevel),
-        );
+        window.localStorage.setItem(LITTER_BOX_STORAGE_KEY, String(nextLevel));
         setToast(
           isLitterBoxFull(nextLevel, litterMaxLevelRef.current)
             ? "화장실이 가득 찼어요. 눌러서 배변을 치워주세요."
@@ -1961,10 +2013,7 @@ export default function Home() {
       return;
     }
     worldAudioRef.current?.setEnabled(audioEnabled);
-    window.localStorage.setItem(
-      AUDIO_ENABLED_KEY,
-      audioEnabled ? "on" : "off",
-    );
+    window.localStorage.setItem(AUDIO_ENABLED_KEY, audioEnabled ? "on" : "off");
   }, [audioEnabled]);
 
   // 키보드 루프는 "작업 중" 고양이 수를 따라가고, 고양이 울음은 상태 전이에서만 난다.
@@ -2073,9 +2122,9 @@ export default function Home() {
   useEffect(() => {
     let disposed = false;
     const authorization: Record<string, string> = {};
-    if (companionToken) authorization.Authorization = `Bearer ${companionToken}`;
-    const base =
-      companionTransport === "cloud" ? "/api/relay" : BRIDGE_URL;
+    if (companionToken)
+      authorization.Authorization = `Bearer ${companionToken}`;
+    const base = companionTransport === "cloud" ? "/api/relay" : BRIDGE_URL;
     fetch(`${base}/health`, { headers: authorization })
       .then((response) => response.json() as Promise<BridgeHealth>)
       .then((health) => {
@@ -2180,7 +2229,7 @@ export default function Home() {
           ? `data:image/svg+xml,${encodeURIComponent(
               '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect rx="16" width="64" height="64" fill="#f5e7c6"/><path d="M18 38c3-11 25-11 28 0 2 8-5 13-14 13S16 46 18 38Z" fill="#665043"/><circle cx="49" cy="15" r="11" fill="#d45f55"/></svg>',
             )}`
-          : originalIcon ?? "/favicon.svg";
+          : (originalIcon ?? "/favicon.svg");
       }
     };
     update();
@@ -2207,7 +2256,8 @@ export default function Home() {
         error?: string;
         data?: CodexSession[];
       };
-      if (!response.ok) throw new Error(body.error ?? "세션을 불러오지 못했어요.");
+      if (!response.ok)
+        throw new Error(body.error ?? "세션을 불러오지 못했어요.");
       const nextSessions = (body.data ?? []) as CodexSession[];
       setSessions(nextSessions);
       setSelectedThreadId((current) => {
@@ -2219,7 +2269,9 @@ export default function Home() {
         return next;
       });
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "세션을 불러오지 못했어요.");
+      setToast(
+        error instanceof Error ? error.message : "세션을 불러오지 못했어요.",
+      );
     } finally {
       setSessionsLoading(false);
     }
@@ -2271,8 +2323,7 @@ export default function Home() {
     relayEventCursor.current = Number(body.eventCursor ?? 0);
     setBridgeState("connected");
     const companion = body.companion as
-      | { pendingApprovals?: BridgeEvent[] }
-      | undefined;
+      { pendingApprovals?: BridgeEvent[] } | undefined;
     if (companion?.pendingApprovals?.length) {
       consumeBridgeEvent({
         id: `pair_snapshot_${Date.now()}`,
@@ -2319,7 +2370,11 @@ export default function Home() {
     try {
       await pairWithCode(pairingCode.trim());
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "PC Companion에 연결하지 못했어요.");
+      setToast(
+        error instanceof Error
+          ? error.message
+          : "PC Companion에 연결하지 못했어요.",
+      );
     } finally {
       setPairingBusy(false);
     }
@@ -2346,9 +2401,7 @@ export default function Home() {
     } catch (error) {
       setPuterConnectionState("signed-out");
       setToast(
-        error instanceof Error
-          ? error.message
-          : "무료 AI 로그인에 실패했어요.",
+        error instanceof Error ? error.message : "무료 AI 로그인에 실패했어요.",
       );
     }
   }
@@ -2365,6 +2418,34 @@ export default function Home() {
           ? error.message
           : "무료 AI 연결 모듈을 준비하지 못했어요.",
       );
+    }
+  }
+
+  async function retryPmWorkerConnection() {
+    setPmWorkerConnectionState("loading");
+    const state = await inspectPmWorkerConnection();
+    setPmWorkerConnectionState(state);
+    setToast(
+      state === "ready"
+        ? "PM Worker AI가 연결됐어요."
+        : "PM Worker AI 연결을 확인하지 못했어요.",
+    );
+  }
+
+  function openSelectedBackendConnection() {
+    worldAudioRef.current?.playUi("tabSwitch");
+    setRadioPage("work");
+    setWorkTab("connect");
+  }
+
+  function openCatDetail(seatId: SeatId) {
+    const runtime = runtimeList.find((item) => item.seatId === seatId);
+    setSelectedSeat(seatId);
+    setCatDetailTab("chat");
+    setCatPage("detail");
+    if (runtime?.threadId) {
+      setSelectedThreadId(runtime.threadId);
+      window.localStorage.setItem(SELECTED_SESSION_KEY, runtime.threadId);
     }
   }
 
@@ -2413,19 +2494,8 @@ export default function Home() {
   }
 
   const collectBeachShell = useCallback(
-    ({
-      amount,
-      x,
-      y,
-    }: {
-      amount: number;
-      x: number;
-      y: number;
-    }) => {
-      const claim = claimWorldShells(
-        worldShellDailyRef.current,
-        amount,
-      );
+    ({ amount, x, y }: { amount: number; x: number; y: number }) => {
+      const claim = claimWorldShells(worldShellDailyRef.current, amount);
       worldShellDailyRef.current = claim.counter;
       setWorldShellDaily(claim.counter);
       window.localStorage.setItem(
@@ -2484,7 +2554,9 @@ export default function Home() {
       if (!response.ok) throw new Error(body.error ?? "세션을 열지 못했어요.");
       setToast(`“${body.session?.title ?? "Codex 세션"}”을 연결했어요.`);
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "세션을 열지 못했어요.");
+      setToast(
+        error instanceof Error ? error.message : "세션을 열지 못했어요.",
+      );
     }
   }
 
@@ -2496,20 +2568,26 @@ export default function Home() {
         error?: string;
         session: CodexSession;
       };
-      if (!response.ok) throw new Error(body.error ?? "새 세션을 만들지 못했어요.");
+      if (!response.ok)
+        throw new Error(body.error ?? "새 세션을 만들지 못했어요.");
       const session = body.session as CodexSession;
       setSessions((current) => [session, ...current]);
       setSelectedThreadId(session.id);
       window.localStorage.setItem(SELECTED_SESSION_KEY, session.id);
       setToast("이 프로젝트의 새 Codex 세션을 만들었어요.");
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "새 세션을 만들지 못했어요.");
+      setToast(
+        error instanceof Error ? error.message : "새 세션을 만들지 못했어요.",
+      );
     } finally {
       setSessionsLoading(false);
     }
   }
 
-  async function startTask(event: FormEvent) {
+  async function startTask(
+    event: FormEvent,
+    options: { keepPanelOpen?: boolean } = {},
+  ) {
     event.preventDefault();
     if (!prompt.trim() || isSubmitting) return;
     if (selectedCompanionBackend?.available === "server-pending") {
@@ -2520,10 +2598,27 @@ export default function Home() {
       setToast("먼저 사용할 Codex 세션을 선택해 주세요.");
       return;
     }
+    if (
+      companionBackend === "pm-worker" &&
+      pmWorkerConnectionState !== "ready"
+    ) {
+      setToast("PM Worker AI 연결 화면에서 상태를 먼저 확인해 주세요.");
+      return;
+    }
+    if (
+      companionBackend === "pm-worker" &&
+      shells < PM_WORKER_CHAT_SHELL_COST
+    ) {
+      worldAudioRef.current?.playUi("purchaseFail");
+      setToast(
+        `PM Worker AI와 대화하려면 조개 ${PM_WORKER_CHAT_SHELL_COST}개가 필요해요.`,
+      );
+      return;
+    }
     setIsSubmitting(true);
     if (companionBackend === "puter") {
       const taskId = `puter-${crypto.randomUUID()}`;
-      const threadId = "puter-browser-session";
+      const threadId = focusedCatId;
       const emitPuterEvent = (partial: Partial<BridgeEvent>) =>
         consumeBridgeEvent({
           id: `${taskId}-${partial.type ?? "event"}-${Date.now()}`,
@@ -2550,7 +2645,7 @@ export default function Home() {
         title: "무료 AI가 답변을 작성하고 있어요",
         detail: "이 연결은 파일 수정과 명령 실행을 하지 않아요.",
       });
-      setRadioOpen(false);
+      if (!options.keepPanelOpen) setRadioOpen(false);
       try {
         const result = await submitPuterTask(prompt.trim());
         emitPuterEvent({
@@ -2581,6 +2676,89 @@ export default function Home() {
       }
       return;
     }
+    if (companionBackend === "pm-worker") {
+      const taskId = `pm-worker-${crypto.randomUUID()}`;
+      const threadId = focusedCatId;
+      const message = prompt.trim();
+      const nextShells = shells - PM_WORKER_CHAT_SHELL_COST;
+      const emitPmWorkerEvent = (partial: Partial<BridgeEvent>) =>
+        consumeBridgeEvent({
+          id: `${taskId}-${partial.type ?? "event"}-${Date.now()}`,
+          type: partial.type ?? "agent.status",
+          occurredAt: new Date().toISOString(),
+          taskId,
+          threadId,
+          department,
+          mode: "simulation",
+          ...partial,
+        });
+
+      setShells(nextShells);
+      window.localStorage.setItem(SHELL_KEY, String(nextShells));
+      playerCloudSyncRef.current?.recordShellDelta(
+        -PM_WORKER_CHAT_SHELL_COST,
+        "pm-worker-chat",
+      );
+      worldAudioRef.current?.playUi("purchaseSuccess");
+      emitPmWorkerEvent({
+        type: "pm-chat.queued",
+        status: "queued",
+        location: "general",
+        prompt: message,
+        title: "PM Worker AI에게 질문했어요",
+        detail: `대화 비용으로 조개 ${PM_WORKER_CHAT_SHELL_COST}개를 사용했어요.`,
+      });
+      emitPmWorkerEvent({
+        type: "agent.status",
+        status: "working",
+        location: department,
+        title: "ProjectManager 워커가 답변을 작성하고 있어요",
+        detail: "선택한 고양이가 답변을 기다리고 있어요.",
+      });
+      if (!options.keepPanelOpen) setRadioOpen(false);
+      try {
+        const result = await submitPmWorkerTask(message, focusedCatId);
+        emitPmWorkerEvent({
+          type: "pm-chat.completed",
+          status: "completed",
+          location: "queue",
+          title: "PM Worker AI 답변이 도착했어요",
+          detail: "고양이 대화창에서 이어서 질문할 수 있어요.",
+          result: result.reply,
+        });
+        setToast(
+          `답변이 도착했어요 · 조개 ${PM_WORKER_CHAT_SHELL_COST}개 사용`,
+        );
+      } catch (error) {
+        setShells((current) => {
+          const refunded = current + PM_WORKER_CHAT_SHELL_COST;
+          window.localStorage.setItem(SHELL_KEY, String(refunded));
+          return refunded;
+        });
+        playerCloudSyncRef.current?.recordShellDelta(
+          PM_WORKER_CHAT_SHELL_COST,
+          "pm-worker-chat-refund",
+        );
+        emitPmWorkerEvent({
+          type: "pm-chat.failed",
+          status: "failed",
+          location: "queue",
+          title: "PM Worker AI 연결에 실패했어요",
+          detail:
+            error instanceof Error
+              ? `${error.message} 사용한 조개는 돌려드렸어요.`
+              : "사용한 조개는 돌려드렸어요.",
+        });
+        setToast(
+          error instanceof Error
+            ? `${error.message} 조개는 돌려드렸어요.`
+            : "PM Worker AI 연결에 실패해 조개를 돌려드렸어요.",
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
     try {
       const response = await apiFetch(
         `/v2/sessions/${encodeURIComponent(selectedThreadId)}/turns`,
@@ -2595,11 +2773,14 @@ export default function Home() {
         },
       );
       const body = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(body.error ?? "작업을 시작하지 못했어요.");
-      setRadioOpen(false);
+      if (!response.ok)
+        throw new Error(body.error ?? "작업을 시작하지 못했어요.");
+      if (!options.keepPanelOpen) setRadioOpen(false);
     } catch (error) {
       setIsSubmitting(false);
-      setToast(error instanceof Error ? error.message : "브리지에 연결하지 못했어요.");
+      setToast(
+        error instanceof Error ? error.message : "브리지에 연결하지 못했어요.",
+      );
     }
   }
 
@@ -2611,11 +2792,14 @@ export default function Home() {
         { method: "POST" },
       );
       const body = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(body.error ?? "작업을 중단하지 못했어요.");
+      if (!response.ok)
+        throw new Error(body.error ?? "작업을 중단하지 못했어요.");
       setIsSubmitting(false);
       setToast("현재 Codex 작업을 중단했어요.");
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "작업을 중단하지 못했어요.");
+      setToast(
+        error instanceof Error ? error.message : "작업을 중단하지 못했어요.",
+      );
     }
   }
 
@@ -2640,7 +2824,9 @@ export default function Home() {
         void Notification.requestPermission();
       }
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "결정을 저장하지 못했어요.");
+      setToast(
+        error instanceof Error ? error.message : "결정을 저장하지 못했어요.",
+      );
     }
   }
 
@@ -2703,7 +2889,9 @@ export default function Home() {
         ? "서비스 실행기는 아직 서버 배포가 필요해요. 다른 연결을 선택할 수 있어요."
         : backend.id === "puter"
           ? "무료 AI 대화가 선택됐어요. 파일 수정과 명령 실행은 지원하지 않아요."
-          : "내 PC Codex 세션 연결이 선택됐어요.",
+          : backend.id === "pm-worker"
+            ? `PM Worker AI가 선택됐어요. 질문마다 조개 ${PM_WORKER_CHAT_SHELL_COST}개를 사용해요.`
+            : "내 PC Codex 세션 연결이 선택됐어요.",
     );
   }
 
@@ -2747,41 +2935,51 @@ export default function Home() {
       }}
     >
       {SHOW_LEGACY_OVERLAYS && (
-        <header className={`app-header hud-fade ${hudDormant ? "is-dormant" : ""}`}>
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true" />
-          <div>
-            <p>OPENCLAW PERSONAL OFFICE</p>
-            <h1>Agent Forest</h1>
-          </div>
-        </div>
-        <button
-          type="button"
-          className="radio-launch"
-          onClick={() => setRadioOpen(true)}
-          aria-label="캠핑 라디오 열기"
+        <header
+          className={`app-header hud-fade ${hudDormant ? "is-dormant" : ""}`}
         >
-          <span className={`radio-lamp ${bridgeState}`} />
-          <b>RADIO</b>
-          <small>{approvalQueue.length ? `${approvalQueue.length} WAIT` : "F1–F4"}</small>
-        </button>
+          <div className="brand">
+            <span className="brand-mark" aria-hidden="true" />
+            <div>
+              <p>OPENCLAW PERSONAL OFFICE</p>
+              <h1>Agent Forest</h1>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="radio-launch"
+            onClick={() => setRadioOpen(true)}
+            aria-label="캠핑 라디오 열기"
+          >
+            <span className={`radio-lamp ${bridgeState}`} />
+            <b>RADIO</b>
+            <small>
+              {approvalQueue.length ? `${approvalQueue.length} WAIT` : "F1–F4"}
+            </small>
+          </button>
         </header>
       )}
 
       <section className="world-card" aria-label="AI 에이전트 숲">
         {SHOW_LEGACY_OVERLAYS && (
-          <div className={`world-toolbar hud-fade ${hudDormant ? "is-dormant" : ""}`}>
-          <div>
-            <span className="live-pill">
-              <i />
-              LIVE OFFICE
-            </span>
-            <h2>고양이 에이전트가 일하는 해변 사무실</h2>
-          </div>
-          <div className="world-summary">
-            <span>{focusedRuntime ? STATUS_COPY[focusedRuntime.status] : "대기 중"}</span>
-            <strong>{focusedRuntime?.agentName ?? "코치 모모"}</strong>
-          </div>
+          <div
+            className={`world-toolbar hud-fade ${hudDormant ? "is-dormant" : ""}`}
+          >
+            <div>
+              <span className="live-pill">
+                <i />
+                LIVE OFFICE
+              </span>
+              <h2>고양이 에이전트가 일하는 해변 사무실</h2>
+            </div>
+            <div className="world-summary">
+              <span>
+                {focusedRuntime
+                  ? STATUS_COPY[focusedRuntime.status]
+                  : "대기 중"}
+              </span>
+              <strong>{focusedRuntime?.agentName ?? "코치 모모"}</strong>
+            </div>
           </div>
         )}
 
@@ -2856,8 +3054,7 @@ export default function Home() {
                     const nextState = updateCatNeedState(
                       before,
                       {
-                        happiness:
-                          before.happiness + petting.happinessGain,
+                        happiness: before.happiness + petting.happinessGain,
                       },
                       now,
                     );
@@ -2920,10 +3117,12 @@ export default function Home() {
             <span
               className="shell-collect-token"
               key={token.id}
-              style={{
-                "--shell-from-x": `${token.x * 100}%`,
-                "--shell-from-y": `${token.y * 100}%`,
-              } as CSSProperties}
+              style={
+                {
+                  "--shell-from-x": `${token.x * 100}%`,
+                  "--shell-from-y": `${token.y * 100}%`,
+                } as CSSProperties
+              }
               aria-hidden="true"
             >
               <img src="/art/ui/hud-shell-v2.png" alt="" />
@@ -3022,7 +3221,9 @@ export default function Home() {
           )}
 
           {SHOW_LEGACY_OVERLAYS && (
-            <div className={`world-caption hud-fade ${hudDormant ? "is-dormant" : ""}`}>
+            <div
+              className={`world-caption hud-fade ${hudDormant ? "is-dormant" : ""}`}
+            >
               <span>2.5D WebGL · AUTONOMOUS CAT MOTION ACTIVE</span>
               <b>고양이 자율 행동 · 책상 객체 충돌 회피 · 최대 4개 세션</b>
             </div>
@@ -3084,12 +3285,17 @@ export default function Home() {
                     <small>최대 네 마리까지 자리를 맡길 수 있어요</small>
                   </div>
                 </div>
-                <div className="cat-list-grid" role="list" aria-label="고양이 목록">
+                <div
+                  className="cat-list-grid"
+                  role="list"
+                  aria-label="고양이 목록"
+                >
                   {Array.from({ length: activeSeatCount }, (_, index) => {
                     const seatId = `seat-${index + 1}` as SeatId;
                     const seat =
-                      seatViews.find((candidate) => candidate.seatId === seatId) ??
-                      (index === 0 ? seatViews[0] : null);
+                      seatViews.find(
+                        (candidate) => candidate.seatId === seatId,
+                      ) ?? (index === 0 ? seatViews[0] : null);
                     if (!seat) {
                       return (
                         <button
@@ -3101,7 +3307,10 @@ export default function Home() {
                             setRadioPage("work");
                           }}
                         >
-                          <span className="cat-card-avatar plus" aria-hidden="true" />
+                          <span
+                            className="cat-card-avatar plus"
+                            aria-hidden="true"
+                          />
                           <span>
                             <strong>빈 자리 {index + 1}</strong>
                             <small>Codex 세션 연결</small>
@@ -3122,10 +3331,7 @@ export default function Home() {
                           .filter(Boolean)
                           .join(" ")}
                         key={seatId}
-                        onClick={() => {
-                          setSelectedSeat(seatId);
-                          setCatPage("detail");
-                        }}
+                        onClick={() => openCatDetail(seatId)}
                       >
                         <span className="cat-card-avatar" aria-hidden="true" />
                         <span className="cat-card-copy">
@@ -3240,7 +3446,9 @@ export default function Home() {
                     </div>
                     <div className="cat-happiness-line">
                       <span>행복 상태</span>
-                      <small>{getHappinessBand(focusedCatNeeds.happiness)}</small>
+                      <small>
+                        {getHappinessBand(focusedCatNeeds.happiness)}
+                      </small>
                     </div>
                   </div>
 
@@ -3249,6 +3457,18 @@ export default function Home() {
                     role="tablist"
                     aria-label="고양이 상세 메뉴"
                   >
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={catDetailTab === "chat"}
+                      className={catDetailTab === "chat" ? "selected" : ""}
+                      onClick={() => {
+                        worldAudioRef.current?.playUi("tabSwitch");
+                        setCatDetailTab("chat");
+                      }}
+                    >
+                      대화 · 업무
+                    </button>
                     <button
                       type="button"
                       role="tab"
@@ -3275,193 +3495,374 @@ export default function Home() {
                     </button>
                   </div>
 
+                  {catDetailTab === "chat" && (
+                    <div className="cat-conversation-panel">
+                      <div
+                        className="cat-chat-backends"
+                        role="radiogroup"
+                        aria-label="고양이 AI 연결 선택"
+                      >
+                        {companionBackendOptions
+                          .filter((backend) =>
+                            ["local-session", "puter", "pm-worker"].includes(
+                              backend.id,
+                            ),
+                          )
+                          .map((backend) => (
+                            <button
+                              type="button"
+                              role="radio"
+                              aria-checked={companionBackend === backend.id}
+                              className={
+                                companionBackend === backend.id
+                                  ? "selected"
+                                  : ""
+                              }
+                              key={backend.id}
+                              onClick={() => chooseCompanionBackend(backend.id)}
+                            >
+                              <strong>{backend.title}</strong>
+                              <small>{backend.badge}</small>
+                            </button>
+                          ))}
+                      </div>
+
+                      <div
+                        className={`cat-chat-connection ${
+                          selectedBackendReady ? "ready" : "offline"
+                        }`}
+                      >
+                        <span
+                          className={`connection-dot ${
+                            selectedBackendReady
+                              ? "connected"
+                              : companionBackend === "pm-worker" &&
+                                  pmWorkerConnectionState === "loading"
+                                ? "connecting"
+                                : "disconnected"
+                          }`}
+                        />
+                        <div>
+                          <strong>{selectedCompanionBackend?.title}</strong>
+                          <small>{selectedBackendStatus}</small>
+                        </div>
+                        {!selectedBackendReady && (
+                          <button
+                            type="button"
+                            onClick={openSelectedBackendConnection}
+                          >
+                            연결하러 가기
+                          </button>
+                        )}
+                      </div>
+
+                      <div
+                        className="cat-chat-thread"
+                        aria-label="고양이와 나눈 업무 대화"
+                        aria-live="polite"
+                      >
+                        {focusedConversation.length > 0 ? (
+                          focusedConversation.map((event) => {
+                            const userMessage = [
+                              "task.queued",
+                              "pm-chat.queued",
+                            ].includes(event.type);
+                            const failed = [
+                              "task.failed",
+                              "pm-chat.failed",
+                            ].includes(event.type);
+                            const content = userMessage
+                              ? event.prompt || event.detail
+                              : event.result || event.detail;
+                            return (
+                              <article
+                                className={[
+                                  "cat-chat-message",
+                                  userMessage ? "from-user" : "from-cat",
+                                  failed ? "failed" : "",
+                                ]
+                                  .filter(Boolean)
+                                  .join(" ")}
+                                key={event.id}
+                              >
+                                <small>
+                                  {userMessage
+                                    ? "나"
+                                    : (catNames[focusedCatId] ??
+                                      focusedRuntime?.agentName ??
+                                      "코치 모모")}
+                                </small>
+                                <p>{content}</p>
+                              </article>
+                            );
+                          })
+                        ) : (
+                          <div className="cat-chat-empty">
+                            <span
+                              className="cat-card-avatar"
+                              aria-hidden="true"
+                            />
+                            <strong>바로 일을 맡겨 보세요</strong>
+                            <p>답변과 진행 상황이 이 대화창에 계속 쌓여요.</p>
+                          </div>
+                        )}
+                        {isSubmitting && (
+                          <article className="cat-chat-message from-cat thinking">
+                            <small>
+                              {catNames[focusedCatId] ??
+                                focusedRuntime?.agentName ??
+                                "코치 모모"}
+                            </small>
+                            <p>답변을 준비하고 있어요…</p>
+                          </article>
+                        )}
+                      </div>
+
+                      <form
+                        className="cat-chat-composer"
+                        onSubmit={(event) =>
+                          void startTask(event, { keepPanelOpen: true })
+                        }
+                      >
+                        <label htmlFor="cat-chat-message">
+                          이 고양이에게 말하기
+                        </label>
+                        <textarea
+                          id="cat-chat-message"
+                          value={prompt}
+                          onChange={(event) => setPrompt(event.target.value)}
+                          maxLength={2_000}
+                          rows={3}
+                          placeholder="궁금한 것을 묻거나 할 일을 맡겨 보세요"
+                        />
+                        <div className="cat-chat-composer-footer">
+                          <span>
+                            {companionBackend === "pm-worker"
+                              ? `전송할 때 조개 ${PM_WORKER_CHAT_SHELL_COST}개`
+                              : companionBackend === "puter"
+                                ? "무료 대화 · 파일 변경 없음"
+                                : "연결된 Codex 프로젝트에서 실행"}
+                          </span>
+                          <span>{prompt.length}/2,000</span>
+                          <button
+                            type="submit"
+                            disabled={
+                              !selectedBackendReady ||
+                              (companionBackend === "pm-worker" &&
+                                shells < PM_WORKER_CHAT_SHELL_COST) ||
+                              isSubmitting ||
+                              !prompt.trim()
+                            }
+                          >
+                            {isSubmitting
+                              ? "고양이가 확인 중…"
+                              : companionBackend === "pm-worker"
+                                ? `보내기 · 조개 ${PM_WORKER_CHAT_SHELL_COST}`
+                                : "보내기"}
+                          </button>
+                        </div>
+                      </form>
+                    </div>
+                  )}
+
                   {catDetailTab === "style" && (
                     <>
-                  <label className="cat-name-editor">
-                    <span>고양이 이름</span>
-                    <input
-                      type="text"
-                      maxLength={6}
-                      value={
-                        catNames[focusedCatId] ??
-                        focusedRuntime?.agentName ??
-                        "코치 모모"
-                      }
-                      onChange={(event) => {
-                        const nextName = event.target.value
-                          .replace(/[\u0000-\u001f\u007f]/g, "")
-                          .slice(0, 6);
-                        const nextNames = {
-                          ...catNames,
-                          [focusedCatId]: nextName,
-                        };
-                        setCatNames(nextNames);
-                        window.localStorage.setItem(
-                          CAT_NAME_KEY,
-                          JSON.stringify(nextNames),
-                        );
-                      }}
-                      aria-label="고양이 이름, 최대 6글자"
-                    />
-                    <small>최대 6글자</small>
-                  </label>
+                      <label className="cat-name-editor">
+                        <span>고양이 이름</span>
+                        <input
+                          type="text"
+                          maxLength={6}
+                          value={
+                            catNames[focusedCatId] ??
+                            focusedRuntime?.agentName ??
+                            "코치 모모"
+                          }
+                          onChange={(event) => {
+                            const nextName = event.target.value
+                              .replace(/[\u0000-\u001f\u007f]/g, "")
+                              .slice(0, 6);
+                            const nextNames = {
+                              ...catNames,
+                              [focusedCatId]: nextName,
+                            };
+                            setCatNames(nextNames);
+                            window.localStorage.setItem(
+                              CAT_NAME_KEY,
+                              JSON.stringify(nextNames),
+                            );
+                          }}
+                          aria-label="고양이 이름, 최대 6글자"
+                        />
+                        <small>최대 6글자</small>
+                      </label>
 
-                  <label className="cat-field-label">털 색 · 무늬</label>
-                  <div className="cat-style-grid" role="radiogroup" aria-label="고양이 스타일">
-                    {CAT_STYLES.map((style) => {
-                      const owned = ownedCatStyles.has(style.id);
-                      const selected = catStyle === style.id;
-                      return (
-                        <button
-                          type="button"
-                          key={style.id}
-                          role="radio"
-                          aria-checked={selected}
-                          className={[
-                            selected ? "selected" : "",
-                            owned ? "owned" : "for-sale",
-                          ]
-                            .filter(Boolean)
-                            .join(" ")}
-                          onClick={() => requestCatLook(style.id)}
-                          title={style.ko}
-                        >
-                          <img
-                            className="cat-style-preview"
-                            src={catStylePreviewUrl(style.id)}
-                            alt=""
-                            aria-hidden="true"
-                            draggable={false}
-                          />
-                          <span>{style.id}</span>
-                          <small>
-                            {selected
-                              ? "사용 중"
-                              : owned
-                                ? "보유"
-                                : `${CAT_STYLE_PRICES[style.id]} 조개`}
-                          </small>
-                        </button>
-                      );
-                    })}
-                  </div>
+                      <label className="cat-field-label">털 색 · 무늬</label>
+                      <div
+                        className="cat-style-grid"
+                        role="radiogroup"
+                        aria-label="고양이 스타일"
+                      >
+                        {CAT_STYLES.map((style) => {
+                          const owned = ownedCatStyles.has(style.id);
+                          const selected = catStyle === style.id;
+                          return (
+                            <button
+                              type="button"
+                              key={style.id}
+                              role="radio"
+                              aria-checked={selected}
+                              className={[
+                                selected ? "selected" : "",
+                                owned ? "owned" : "for-sale",
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
+                              onClick={() => requestCatLook(style.id)}
+                              title={style.ko}
+                            >
+                              <img
+                                className="cat-style-preview"
+                                src={catStylePreviewUrl(style.id)}
+                                alt=""
+                                aria-hidden="true"
+                                draggable={false}
+                              />
+                              <span>{style.id}</span>
+                              <small>
+                                {selected
+                                  ? "사용 중"
+                                  : owned
+                                    ? "보유"
+                                    : `${CAT_STYLE_PRICES[style.id]} 조개`}
+                              </small>
+                            </button>
+                          );
+                        })}
+                      </div>
                     </>
                   )}
 
                   {catDetailTab === "care" && (
                     <>
-                  <div className="care-facility-summary">
-                    <span>
-                      <img
-                        className="care-facility-icon"
-                        src="/art/ui/care-v1/care-food-bowl-v1.png"
-                        alt=""
-                        aria-hidden="true"
-                        draggable={false}
-                      />
-                      <span className="care-facility-copy">
-                        <strong>
-                          밥그릇 {foodBowlCount}/{MAX_OWNED_FOOD_BOWL_COUNT}
-                        </strong>
-                        <small>
-                          {foodBowlState.grade
-                            ? `${FOOD_PROFILES[foodBowlState.grade].label} · ${foodBowlState.portionsRemaining}/${FOOD_PORTIONS_PER_FILL}인분`
-                            : "비어 있음"}
-                        </small>
-                      </span>
-                    </span>
-                    <span>
-                      <img
-                        className="care-facility-icon"
-                        src="/art/ui/care-v1/care-litter-box-v1.png"
-                        alt=""
-                        aria-hidden="true"
-                        draggable={false}
-                      />
-                      <span className="care-facility-copy">
-                        <strong>화장실 {litterBoxCount}/2</strong>
-                        <small>
-                          용량 {litterTier}단계 · 오염도{" "}
-                          {Math.round(litterLevel)}/{litterMaxLevel}
-                        </small>
-                      </span>
-                    </span>
-                  </div>
-                  <div className="food-grade-actions">
-                    {(Object.keys(FOOD_PROFILES) as FoodGrade[]).map((grade) => {
-                      const profile = FOOD_PROFILES[grade];
-                      return (
-                        <button
-                          type="button"
-                          className="game-button secondary"
-                          key={grade}
-                          onClick={() => refillFoodBowl(grade)}
-                        >
+                      <div className="care-facility-summary">
+                        <span>
                           <img
-                            className="care-action-icon"
+                            className="care-facility-icon"
                             src="/art/ui/care-v1/care-food-bowl-v1.png"
                             alt=""
                             aria-hidden="true"
                             draggable={false}
                           />
-                          <span>{profile.buttonLabel}</span>
-                          <small>{profile.price} 조개 · {profile.satiationMinutes}분</small>
+                          <span className="care-facility-copy">
+                            <strong>
+                              밥그릇 {foodBowlCount}/{MAX_OWNED_FOOD_BOWL_COUNT}
+                            </strong>
+                            <small>
+                              {foodBowlState.grade
+                                ? `${FOOD_PROFILES[foodBowlState.grade].label} · ${foodBowlState.portionsRemaining}/${FOOD_PORTIONS_PER_FILL}인분`
+                                : "비어 있음"}
+                            </small>
+                          </span>
+                        </span>
+                        <span>
+                          <img
+                            className="care-facility-icon"
+                            src="/art/ui/care-v1/care-litter-box-v1.png"
+                            alt=""
+                            aria-hidden="true"
+                            draggable={false}
+                          />
+                          <span className="care-facility-copy">
+                            <strong>화장실 {litterBoxCount}/2</strong>
+                            <small>
+                              용량 {litterTier}단계 · 오염도{" "}
+                              {Math.round(litterLevel)}/{litterMaxLevel}
+                            </small>
+                          </span>
+                        </span>
+                      </div>
+                      <div className="food-grade-actions">
+                        {(Object.keys(FOOD_PROFILES) as FoodGrade[]).map(
+                          (grade) => {
+                            const profile = FOOD_PROFILES[grade];
+                            return (
+                              <button
+                                type="button"
+                                className="game-button secondary"
+                                key={grade}
+                                onClick={() => refillFoodBowl(grade)}
+                              >
+                                <img
+                                  className="care-action-icon"
+                                  src="/art/ui/care-v1/care-food-bowl-v1.png"
+                                  alt=""
+                                  aria-hidden="true"
+                                  draggable={false}
+                                />
+                                <span>{profile.buttonLabel}</span>
+                                <small>
+                                  {profile.price} 조개 ·{" "}
+                                  {profile.satiationMinutes}분
+                                </small>
+                              </button>
+                            );
+                          },
+                        )}
+                      </div>
+                      <div className="cat-care-actions care-play-actions">
+                        <button
+                          type="button"
+                          className="game-button primary"
+                          onClick={beginSnackPlacement}
+                        >
+                          <img
+                            className="care-action-icon"
+                            src="/art/ui/care-v1/care-snack-v1.png"
+                            alt=""
+                            aria-hidden="true"
+                            draggable={false}
+                          />
+                          <span>간식 놓기 · {SNACK_PRICE} 조개</span>
                         </button>
-                      );
-                    })}
-                  </div>
-                  <div className="cat-care-actions care-play-actions">
-                    <button
-                      type="button"
-                      className="game-button primary"
-                      onClick={beginSnackPlacement}
-                    >
-                      <img
-                        className="care-action-icon"
-                        src="/art/ui/care-v1/care-snack-v1.png"
-                        alt=""
-                        aria-hidden="true"
-                        draggable={false}
-                      />
-                      <span>간식 놓기 · {SNACK_PRICE} 조개</span>
-                    </button>
-                    <button
-                      type="button"
-                      className="game-button primary"
-                      onClick={beginLaserPlay}
-                    >
-                      <img
-                        className="care-action-icon"
-                        src="/art/ui/care-v1/care-laser-v1.png"
-                        alt=""
-                        aria-hidden="true"
-                        draggable={false}
-                      />
-                      <span>레이저 포인터 · {LASER_DURATION_MS / 1_000}초</span>
-                      <small>
-                        오늘 {playLog[focusedCatId]?.laser?.count ?? 0}/
-                        {PLAY_DAILY_CAP_PER_CAT}회
-                      </small>
-                    </button>
-                    <button
-                      type="button"
-                      className="game-button primary"
-                      onClick={beginToyHunt}
-                    >
-                      <img
-                        className="care-action-icon"
-                        src="/art/ui/care-v1/care-feather-v1.png"
-                        alt=""
-                        aria-hidden="true"
-                        draggable={false}
-                      />
-                      <span>깃털 장난감 사냥</span>
-                      <small>
-                        오늘 {playLog[focusedCatId]?.toy?.count ?? 0}/
-                        {PLAY_DAILY_CAP_PER_CAT}회
-                      </small>
-                    </button>
-                  </div>
+                        <button
+                          type="button"
+                          className="game-button primary"
+                          onClick={beginLaserPlay}
+                        >
+                          <img
+                            className="care-action-icon"
+                            src="/art/ui/care-v1/care-laser-v1.png"
+                            alt=""
+                            aria-hidden="true"
+                            draggable={false}
+                          />
+                          <span>
+                            레이저 포인터 · {LASER_DURATION_MS / 1_000}초
+                          </span>
+                          <small>
+                            오늘 {playLog[focusedCatId]?.laser?.count ?? 0}/
+                            {PLAY_DAILY_CAP_PER_CAT}회
+                          </small>
+                        </button>
+                        <button
+                          type="button"
+                          className="game-button primary"
+                          onClick={beginToyHunt}
+                        >
+                          <img
+                            className="care-action-icon"
+                            src="/art/ui/care-v1/care-feather-v1.png"
+                            alt=""
+                            aria-hidden="true"
+                            draggable={false}
+                          />
+                          <span>깃털 장난감 사냥</span>
+                          <small>
+                            오늘 {playLog[focusedCatId]?.toy?.count ?? 0}/
+                            {PLAY_DAILY_CAP_PER_CAT}회
+                          </small>
+                        </button>
+                      </div>
                     </>
                   )}
                 </div>
@@ -3470,20 +3871,20 @@ export default function Home() {
 
             {radioPage === "desk" && (
               <div className="desk-seat-tabs" role="tablist" aria-label="꾸밀 좌석">
-                {unlockedSeatIds.map(
-                  (seatId, index) => (
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={(selectedSeat ?? "seat-1") === seatId}
-                      className={(selectedSeat ?? "seat-1") === seatId ? "selected" : ""}
-                      key={seatId}
-                      onClick={() => setSelectedSeat(seatId)}
-                    >
-                      자리 {index + 1}
-                    </button>
-                  ),
-                )}
+                {unlockedSeatIds.map((seatId, index) => (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={(selectedSeat ?? "seat-1") === seatId}
+                    className={
+                      (selectedSeat ?? "seat-1") === seatId ? "selected" : ""
+                    }
+                    key={seatId}
+                    onClick={() => setSelectedSeat(seatId)}
+                  >
+                    자리 {index + 1}
+                  </button>
+                ))}
                 {activeSeatCount < MAX_SEAT_COUNT && (
                   <button
                     type="button"
@@ -3594,9 +3995,7 @@ export default function Home() {
                       <button
                         type="button"
                         className="game-button secondary"
-                        disabled={
-                          foodBowlCount >= MAX_OWNED_FOOD_BOWL_COUNT
-                        }
+                        disabled={foodBowlCount >= MAX_OWNED_FOOD_BOWL_COUNT}
                         onClick={buySecondFoodBowl}
                       >
                         {foodBowlCount >= MAX_OWNED_FOOD_BOWL_COUNT
@@ -3643,7 +4042,8 @@ export default function Home() {
                       "seat-1") as WorkstationSeatId;
                     const owned = workstationDecor.owned.includes(item.id);
                     const equipped =
-                      workstationDecor.equipped[seatId]?.[item.slot] === item.id;
+                      workstationDecor.equipped[seatId]?.[item.slot] ===
+                      item.id;
                     const locked = activeSeatCount < item.unlockSeatCount;
                     return (
                       <button
@@ -3691,7 +4091,11 @@ export default function Home() {
             )}
 
             {radioPage === "work" && (
-              <div className="radio-subtabs" role="tablist" aria-label="업무 메뉴">
+              <div
+                className="radio-subtabs"
+                role="tablist"
+                aria-label="업무 메뉴"
+              >
                 <button
                   type="button"
                   role="tab"
@@ -3728,30 +4132,20 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="selected-session-line">
-                  <span
-                    className={
-                      (companionBackend === "puter" &&
-                        puterConnectionState === "ready") ||
-                      selectedSession
-                        ? "ready"
-                        : ""
-                    }
-                  />
-                  {companionBackend === "puter"
-                    ? puterConnectionState === "ready"
-                      ? "무료 AI 연결됨 · 파일 수정과 명령 실행 없음"
-                      : "세션 연결에서 무료 AI 로그인을 먼저 완료해 주세요"
-                    : companionBackend === "local-session"
-                      ? selectedSession
-                        ? `${selectedSession.title} · ${selectedSession.projectName}`
-                        : "WORK의 세션 연결에서 사용할 Codex 세션을 선택해 주세요"
-                      : "서비스 실행기 배포 대기 중"}
+                  <span className={selectedBackendReady ? "ready" : ""} />
+                  {selectedBackendStatus}
                 </div>
-                <div className="department-tabs" role="radiogroup" aria-label="담당 부서">
-                  {(Object.entries(DEPARTMENTS) as [
-                    Department,
-                    (typeof DEPARTMENTS)[Department],
-                  ][]).map(([key, item]) => (
+                <div
+                  className="department-tabs"
+                  role="radiogroup"
+                  aria-label="담당 부서"
+                >
+                  {(
+                    Object.entries(DEPARTMENTS) as [
+                      Department,
+                      (typeof DEPARTMENTS)[Department],
+                    ][]
+                  ).map(([key, item]) => (
                     <button
                       type="button"
                       key={key}
@@ -3779,7 +4173,9 @@ export default function Home() {
                     <span>
                       {companionBackend === "puter"
                         ? "대화형 답변 전용 · 프로젝트 변경 없음"
-                        : "현재 PC 세션의 보안 설정 사용"}
+                        : companionBackend === "pm-worker"
+                          ? `ProjectManager AI 대화 · 전송당 조개 ${PM_WORKER_CHAT_SHELL_COST}개`
+                          : "현재 PC 세션의 보안 설정 사용"}
                     </span>
                     <span>{prompt.length}/2,000</span>
                   </div>
@@ -3787,9 +4183,13 @@ export default function Home() {
                     className="run-button"
                     type="submit"
                     disabled={
-                      selectedCompanionBackend?.available === "server-pending" ||
+                      selectedCompanionBackend?.available ===
+                        "server-pending" ||
                       (companionBackend === "puter" &&
                         puterConnectionState !== "ready") ||
+                      (companionBackend === "pm-worker" &&
+                        (pmWorkerConnectionState !== "ready" ||
+                          shells < PM_WORKER_CHAT_SHELL_COST)) ||
                       (companionBackend === "local-session" &&
                         (bridgeState !== "connected" ||
                           !codexAvailable ||
@@ -3803,9 +4203,11 @@ export default function Home() {
                       ? "작업 진행 중"
                       : companionBackend === "puter"
                         ? "무료 AI에게 질문하기"
-                        : companionBackend === "local-session"
-                          ? "선택한 Codex 세션에서 실행"
-                          : "서비스 실행기 준비 중"}
+                        : companionBackend === "pm-worker"
+                          ? `PM Worker에게 질문 · 조개 ${PM_WORKER_CHAT_SHELL_COST}`
+                          : companionBackend === "local-session"
+                            ? "선택한 Codex 세션에서 실행"
+                            : "서비스 실행기 준비 중"}
                   </button>
                   <button
                     className="simulate-button"
@@ -3839,9 +4241,15 @@ export default function Home() {
                             : puterConnectionState === "loading"
                               ? "connecting"
                               : "disconnected"
-                        : backend.available === "ready" && selected
-                          ? "connected"
-                          : "disconnected";
+                          : backend.id === "pm-worker"
+                            ? pmWorkerConnectionState === "ready"
+                              ? "connected"
+                              : pmWorkerConnectionState === "loading"
+                                ? "connecting"
+                                : "disconnected"
+                            : backend.available === "ready" && selected
+                              ? "connected"
+                              : "disconnected";
                     return (
                       <button
                         type="button"
@@ -3857,11 +4265,22 @@ export default function Home() {
                         <strong>{backend.title}</strong>
                         <small>{backend.description}</small>
                         <em>{backend.badge}</em>
-                        <span className="backend-capabilities" aria-label="지원 기능">
-                          <b className={backend.capabilities.fileEdit ? "yes" : "no"}>
+                        <span
+                          className="backend-capabilities"
+                          aria-label="지원 기능"
+                        >
+                          <b
+                            className={
+                              backend.capabilities.fileEdit ? "yes" : "no"
+                            }
+                          >
                             파일
                           </b>
-                          <b className={backend.capabilities.shellExec ? "yes" : "no"}>
+                          <b
+                            className={
+                              backend.capabilities.shellExec ? "yes" : "no"
+                            }
+                          >
                             명령
                           </b>
                           <b
@@ -3891,7 +4310,13 @@ export default function Home() {
                           : puterConnectionState === "loading"
                             ? "connecting"
                             : "disconnected"
-                        : bridgeState
+                        : companionBackend === "pm-worker"
+                          ? pmWorkerConnectionState === "ready"
+                            ? "connected"
+                            : pmWorkerConnectionState === "loading"
+                              ? "connecting"
+                              : "disconnected"
+                          : bridgeState
                     }`}
                   />
                 </div>
@@ -3929,9 +4354,39 @@ export default function Home() {
                       </button>
                     )}
                   </div>
+                ) : companionBackend === "pm-worker" ? (
+                  <div className="install-letter backend-ready-note pm-worker-note">
+                    <strong>
+                      {pmWorkerConnectionState === "ready"
+                        ? "PM Worker AI가 연결됐어요"
+                        : pmWorkerConnectionState === "loading"
+                          ? "PM Worker AI를 확인하고 있어요"
+                          : "PM Worker AI 연결을 확인해 주세요"}
+                    </strong>
+                    <p>
+                      ProjectManager 서버의 대화형 AI 워커를 사용합니다. 고양이
+                      상세 화면에서 질문할 때마다 조개{" "}
+                      {PM_WORKER_CHAT_SHELL_COST}개가 차감되며, 연결 실패 시에는
+                      자동으로 돌려드려요.
+                    </p>
+                    {pmWorkerConnectionState !== "ready" && (
+                      <button
+                        type="button"
+                        onClick={() => void retryPmWorkerConnection()}
+                        disabled={pmWorkerConnectionState === "loading"}
+                      >
+                        {pmWorkerConnectionState === "loading"
+                          ? "확인 중…"
+                          : "연결 다시 확인"}
+                      </button>
+                    )}
+                  </div>
                 ) : selectedCompanionBackend?.available === "server-pending" ? (
                   <div className="ui-empty-state state-error">
-                    <span className="ui-empty-icon offline" aria-hidden="true" />
+                    <span
+                      className="ui-empty-icon offline"
+                      aria-hidden="true"
+                    />
                     <strong>서비스 실행기 준비 중</strong>
                     <p>
                       서버 실행기가 배포되기 전까지 무료 AI 또는 내 PC Codex
@@ -3943,7 +4398,10 @@ export default function Home() {
                     <div className="install-letter">
                       <strong>내 AI에게 이 한 줄만 전하세요</strong>
                       <p>{INSTALL_HANDOFF}</p>
-                      <button type="button" onClick={() => void copyInstallHandoff()}>
+                      <button
+                        type="button"
+                        onClick={() => void copyInstallHandoff()}
+                      >
                         설치 문장 복사
                       </button>
                     </div>
@@ -3998,22 +4456,31 @@ export default function Home() {
                         연결 해제
                       </button>
                     </div>
-                    <div className="session-list" role="listbox" aria-label="Codex 세션">
+                    <div
+                      className="session-list"
+                      role="listbox"
+                      aria-label="Codex 세션"
+                    >
                       {sessions.length ? (
                         sessions.map((session) => (
                           <button
                             type="button"
                             role="option"
                             aria-selected={selectedThreadId === session.id}
-                            className={selectedThreadId === session.id ? "selected" : ""}
+                            className={
+                              selectedThreadId === session.id ? "selected" : ""
+                            }
                             key={session.id}
                             onClick={() => void selectSession(session.id)}
                           >
-                            <span className={`session-state state-${session.status}`} />
+                            <span
+                              className={`session-state state-${session.status}`}
+                            />
                             <span className="session-copy">
                               <strong>{session.title}</strong>
                               <small>
-                                {session.projectName} · {relativeTime(session.updatedAt)}
+                                {session.projectName} ·{" "}
+                                {relativeTime(session.updatedAt)}
                               </small>
                             </span>
                             <em>{sessionStatusLabel(session.status)}</em>
@@ -4028,7 +4495,9 @@ export default function Home() {
                             aria-hidden="true"
                           />
                           <strong>
-                            {sessionsLoading ? "세션 확인 중" : "연결된 세션이 없어요"}
+                            {sessionsLoading
+                              ? "세션 확인 중"
+                              : "연결된 세션이 없어요"}
                           </strong>
                           <p>
                             {sessionsLoading
@@ -4044,7 +4513,11 @@ export default function Home() {
             )}
 
             {radioPage === "status-log" && (
-              <div className="radio-subtabs" role="tablist" aria-label="현황과 기록 메뉴">
+              <div
+                className="radio-subtabs"
+                role="tablist"
+                aria-label="현황과 기록 메뉴"
+              >
                 <button
                   type="button"
                   role="tab"
@@ -4092,14 +4565,22 @@ export default function Home() {
                     {STATUS_COPY[focusedRuntime?.status ?? "idle"]}
                   </span>
                 </div>
-                <div className="daily-economy-summary" aria-label="오늘의 조개 획득 현황">
+                <div
+                  className="daily-economy-summary"
+                  aria-label="오늘의 조개 획득 현황"
+                >
                   <span>
                     <strong>해변 조개</strong>
-                    <small>{worldShellDaily.count}/{WORLD_SHELL_DAILY_CAP}</small>
+                    <small>
+                      {worldShellDaily.count}/{WORLD_SHELL_DAILY_CAP}
+                    </small>
                   </span>
                   <span>
                     <strong>업무 보상</strong>
-                    <small>{taskRewardDaily.count}/20건 · {taskRewardDaily.reward}/145</small>
+                    <small>
+                      {taskRewardDaily.count}/20건 · {taskRewardDaily.reward}
+                      /145
+                    </small>
                   </span>
                 </div>
                 {uiPreview === "s11" ? (
@@ -4107,8 +4588,8 @@ export default function Home() {
                     <span className="ui-empty-icon error" aria-hidden="true" />
                     <strong>PC 연결을 확인해 주세요</strong>
                     <p>
-                      오프라인 상태라 작업 상태를 불러오지 못했어요. 연결 화면에서
-                      다시 확인할 수 있어요.
+                      오프라인 상태라 작업 상태를 불러오지 못했어요. 연결
+                      화면에서 다시 확인할 수 있어요.
                     </p>
                     <button
                       type="button"
@@ -4151,7 +4632,9 @@ export default function Home() {
                       <div className="token-row live-usage">
                         <span>
                           입력{" "}
-                          <b>{compactNumber(focusedRuntime.usage.input_tokens)}</b>
+                          <b>
+                            {compactNumber(focusedRuntime.usage.input_tokens)}
+                          </b>
                         </span>
                         <span>
                           캐시{" "}
@@ -4163,7 +4646,9 @@ export default function Home() {
                         </span>
                         <span>
                           출력{" "}
-                          <b>{compactNumber(focusedRuntime.usage.output_tokens)}</b>
+                          <b>
+                            {compactNumber(focusedRuntime.usage.output_tokens)}
+                          </b>
                         </span>
                       </div>
                     )}
@@ -4201,7 +4686,9 @@ export default function Home() {
                   {latestEvents.length ? (
                     latestEvents.map((event) => (
                       <li key={event.id}>
-                        <span className={`log-dot status-${event.status ?? "idle"}`} />
+                        <span
+                          className={`log-dot status-${event.status ?? "idle"}`}
+                        />
                         <div>
                           <strong>{event.title ?? event.type}</strong>
                           <small>{formatTime(event.occurredAt)}</small>
@@ -4275,8 +4762,7 @@ export default function Home() {
               />
               <strong>{pendingCatStyle}</strong>
               <p>
-                처음 한 번만 구매하면 이후에는 조개 없이 다시 적용할 수
-                있어요.
+                처음 한 번만 구매하면 이후에는 조개 없이 다시 적용할 수 있어요.
               </p>
               <div className="style-purchase-balance">
                 <span>가격 {CAT_STYLE_PRICES[pendingCatStyle]} 조개</span>
@@ -4311,7 +4797,8 @@ export default function Home() {
           className="style-purchase-backdrop onboarding-backdrop"
           role="presentation"
           onPointerDown={(event) => {
-            if (event.target !== event.currentTarget || uiPreview === "s00") return;
+            if (event.target !== event.currentTarget || uiPreview === "s00")
+              return;
             setOnboardingOpen(false);
           }}
         >
@@ -4339,13 +4826,19 @@ export default function Home() {
               <span className="onboarding-cat" aria-hidden="true" />
               <strong>고양이에게 첫 업무 자리를 만들어 주세요</strong>
               <p>
-                PC Companion에 표시된 여섯 자리 연결 코드를 입력하면 Codex 세션이
-                고양이로 나타나요.
+                PC Companion에 표시된 여섯 자리 연결 코드를 입력하면 Codex
+                세션이 고양이로 나타나요.
               </p>
               <ol aria-label="연결 순서">
-                <li><b>1</b> PC Companion 실행</li>
-                <li><b>2</b> 여섯 자리 코드 확인</li>
-                <li><b>3</b> 연결 화면에서 한 번 입력</li>
+                <li>
+                  <b>1</b> PC Companion 실행
+                </li>
+                <li>
+                  <b>2</b> 여섯 자리 코드 확인
+                </li>
+                <li>
+                  <b>3</b> 연결 화면에서 한 번 입력
+                </li>
               </ol>
               <button
                 type="button"
@@ -4443,7 +4936,10 @@ export default function Home() {
             aria-modal="true"
             aria-labelledby="disconnect-confirm-title"
           >
-            <span className="style-purchase-title" id="disconnect-confirm-title">
+            <span
+              className="style-purchase-title"
+              id="disconnect-confirm-title"
+            >
               PC 연결 해제
             </span>
             <button
@@ -4520,7 +5016,8 @@ export default function Home() {
             <div className="approval-copy">
               <span className="section-kicker">MANAGER REPORT</span>
               <span className="approval-count">
-                대기 {Math.max(1, approvalQueue.length)}건 · 먼저 온 요청부터 표시
+                대기 {Math.max(1, approvalQueue.length)}건 · 먼저 온 요청부터
+                표시
               </span>
               <h2 id="approval-title">{visibleApprovalEvent.title}</h2>
               <p>{visibleApprovalEvent.detail}</p>
@@ -4531,10 +5028,10 @@ export default function Home() {
               )}
               {visibleApprovalEvent.files &&
                 visibleApprovalEvent.files.length > 0 && (
-                <div className="approval-detail">
-                  변경 파일 {visibleApprovalEvent.files.length}개
-                </div>
-              )}
+                  <div className="approval-detail">
+                    변경 파일 {visibleApprovalEvent.files.length}개
+                  </div>
+                )}
               {Boolean(visibleApprovalEvent.permissions) && (
                 <div className="approval-detail">
                   추가 권한 요청 내용이 포함되어 있습니다.
@@ -4546,7 +5043,8 @@ export default function Home() {
                     입력{" "}
                     <b>
                       {compactNumber(
-                        normalizeUsage(visibleApprovalEvent.usage)?.input_tokens,
+                        normalizeUsage(visibleApprovalEvent.usage)
+                          ?.input_tokens,
                       )}
                     </b>
                   </span>
@@ -4554,7 +5052,8 @@ export default function Home() {
                     캐시{" "}
                     <b>
                       {compactNumber(
-                        normalizeUsage(visibleApprovalEvent.usage)?.cached_input_tokens,
+                        normalizeUsage(visibleApprovalEvent.usage)
+                          ?.cached_input_tokens,
                       )}
                     </b>
                   </span>
@@ -4562,7 +5061,8 @@ export default function Home() {
                     출력{" "}
                     <b>
                       {compactNumber(
-                        normalizeUsage(visibleApprovalEvent.usage)?.output_tokens,
+                        normalizeUsage(visibleApprovalEvent.usage)
+                          ?.output_tokens,
                       )}
                     </b>
                   </span>

@@ -2,10 +2,7 @@ export const COMPANION_BACKEND_KEY = "agent-forest-companion-backend-v1";
 
 export type AppEdition = "service" | "public";
 export type CompanionBackendId =
-  | "chatgpt-cli"
-  | "claude-cli"
-  | "puter"
-  | "local-session";
+  "chatgpt-cli" | "claude-cli" | "puter" | "pm-worker" | "local-session";
 
 export type CompanionCapabilities = {
   fileEdit: boolean;
@@ -79,6 +76,22 @@ export const COMPANION_BACKENDS: CompanionBackendDefinition[] = [
     title: "무료 AI 대화",
     description: "Puter 로그인 후 브라우저에서 답변과 아이디어를 받아요.",
     badge: "무료 · 대화 전용",
+    editions: ["service", "public"],
+    available: "ready",
+    capabilities: {
+      fileEdit: false,
+      shellExec: false,
+      approvalFlow: false,
+      streaming: false,
+      multiSession: false,
+    },
+  },
+  {
+    id: "pm-worker",
+    title: "PM Worker AI",
+    description:
+      "ProjectManager의 공용 AI 워커와 대화해요. 질문마다 조개 5개를 사용해요.",
+    badge: "조개 5 · 대화 전용",
     editions: ["service", "public"],
     available: "ready",
     capabilities: {
