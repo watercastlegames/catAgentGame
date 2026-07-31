@@ -146,6 +146,7 @@ import {
   submitPmWorkerTask,
   type PmWorkerConnectionState,
 } from "./pm-worker-companion";
+import { buildCatChatSuggestions } from "./cat-chat-suggestions";
 import { isWorldLayoutAdminHost } from "./world-object-layout.mjs";
 
 type Department = "general" | "coding" | "design" | "music";
@@ -476,9 +477,7 @@ export default function Home() {
   const [codexVersion, setCodexVersion] = useState<string | null>(null);
   const [codexAvailable, setCodexAvailable] = useState(false);
   const [department, setDepartment] = useState<Department>("coding");
-  const [prompt, setPrompt] = useState(
-    "도구를 사용하지 말고 현재 Codex와 연결되었다는 사실을 한 문장으로 알려줘.",
-  );
+  const [prompt, setPrompt] = useState("");
   const [runtimes, setRuntimes] = useState<Record<string, SessionRuntime>>({});
   const [events, setEvents] = useState<BridgeEvent[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -663,6 +662,22 @@ export default function Home() {
         .slice(0, 16)
         .reverse(),
     [events, focusedCatId],
+  );
+  const catChatSuggestions = useMemo(
+    () =>
+      buildCatChatSuggestions({
+        events,
+        focusedCatId,
+        department: focusedRuntime?.department ?? department,
+        backend: companionBackend,
+      }),
+    [
+      companionBackend,
+      department,
+      events,
+      focusedCatId,
+      focusedRuntime?.department,
+    ],
   );
   const foodAvailable = foodBowlState.portionsRemaining > 0;
   const litterMaxLevel = litterCapacityForTier(litterTier);
@@ -3617,6 +3632,24 @@ export default function Home() {
                           </article>
                         )}
                       </div>
+
+                      <section
+                        className="cat-chat-suggestions"
+                        aria-label="추천 대화"
+                      >
+                        <strong>이런 일을 맡겨보세요</strong>
+                        <div>
+                          {catChatSuggestions.map((suggestion) => (
+                            <button
+                              type="button"
+                              key={suggestion}
+                              onClick={() => setPrompt(suggestion)}
+                            >
+                              {suggestion}
+                            </button>
+                          ))}
+                        </div>
+                      </section>
 
                       <form
                         className="cat-chat-composer"

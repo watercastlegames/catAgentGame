@@ -4410,6 +4410,49 @@ button {
   background: #fff8e6;
 }
 
+.cat-chat-suggestions {
+  display: grid;
+  gap: 7px;
+}
+
+.cat-chat-suggestions > strong {
+  color: #654b42;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.cat-chat-suggestions > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.cat-chat-suggestions button {
+  min-height: 58px;
+  padding: 8px 10px;
+  border: 2px solid rgba(112, 80, 67, 0.27);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fffdf1 0%, #f5ead2 100%);
+  color: #654b42;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: left;
+  box-shadow: 0 3px 0 rgba(94, 65, 53, 0.13);
+}
+
+.cat-chat-suggestions button:hover,
+.cat-chat-suggestions button:focus-visible {
+  border-color: #6d9581;
+  background: #fff8dc;
+  outline: none;
+}
+
+.cat-chat-suggestions button:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgba(94, 65, 53, 0.13);
+}
+
 .cat-chat-composer > label {
   color: #654b42;
   font-size: 13px;
@@ -4513,6 +4556,14 @@ button {
 
   .cat-chat-composer-footer {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .cat-chat-suggestions > div {
+    grid-template-columns: 1fr;
+  }
+
+  .cat-chat-suggestions button {
+    min-height: 46px;
   }
 
   .cat-chat-composer-footer button {
