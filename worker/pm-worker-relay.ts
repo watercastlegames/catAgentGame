@@ -17,6 +17,57 @@ const JSON_HEADERS = {
 const DEFAULT_ENDPOINT =
   "https://sidak.kr/autodev/ProjectManager/api/hikami.asp";
 const REQUEST_TIMEOUT_MS = 150_000;
+const CURRENT_WEB_TERMS = [
+  "뉴스",
+  "속보",
+  "주가",
+  "주식",
+  "증시",
+  "코스피",
+  "코스닥",
+  "시세",
+  "환율",
+  "금리",
+  "비트코인",
+  "날씨",
+  "예보",
+  "미세먼지",
+  "경기 결과",
+  "경기 일정",
+  "스코어",
+  "실시간",
+  "맛집",
+  "나들이",
+  "가볼만한",
+  "여행 추천",
+  "공연",
+  "행사",
+  "상영시간",
+  "웹 검색",
+  "인터넷 검색",
+  "검색해",
+  "찾아봐",
+  "알아봐",
+  "stock price",
+  "market news",
+  "latest news",
+  "exchange rate",
+  "weather",
+  "search the web",
+  "look up",
+];
+
+export function needsCurrentWeb(prompt: string) {
+  const normalized = prompt.toLocaleLowerCase("ko-KR");
+  return CURRENT_WEB_TERMS.some((term) => normalized.includes(term));
+}
+
+function utf8Base64(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -57,8 +108,12 @@ async function upstreamRequest(
   }
 
   target.searchParams.set("action", "chat");
-  const form = new URLSearchParams({ message: prompt });
+  const form = new URLSearchParams({
+    message: prompt,
+    message_b64: utf8Base64(prompt),
+  });
   if (sessionId) form.set("session_id", sessionId);
+  if (needsCurrentWeb(prompt)) form.set("web_search", "1");
   return fetch(target, {
     method: "POST",
     headers: {
@@ -69,6 +124,28 @@ async function upstreamRequest(
     body: form,
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
+}
+
+async function bootstrapCurrentWebRelay(endpoint: URL, apiKey: string) {
+  const target = new URL("../relay-bootstrap.asp", endpoint);
+  const response = await fetch(target, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "X-HiKami-Key": apiKey,
+    },
+    signal: AbortSignal.timeout(25_000),
+  });
+  return response.ok;
+}
+
+async function parseUpstreamBody(response: Response) {
+  const responseText = await response.text();
+  try {
+    return JSON.parse(responseText) as UpstreamBody;
+  } catch {
+    return null;
+  }
 }
 
 async function readChatBody(request: Request) {
@@ -124,18 +201,28 @@ export async function handlePmWorkerRequest(
     }
 
     const { prompt, sessionId } = await readChatBody(request);
-    const upstream = await upstreamRequest(
+    let upstream = await upstreamRequest(
       endpoint,
       apiKey,
       "chat",
       prompt,
       sessionId,
     );
-    const responseText = await upstream.text();
-    let body: UpstreamBody = {};
-    try {
-      body = JSON.parse(responseText) as UpstreamBody;
-    } catch {
+    let body = await parseUpstreamBody(upstream);
+    if (needsCurrentWeb(prompt) && body?.code === 503) {
+      const restarted = await bootstrapCurrentWebRelay(endpoint, apiKey);
+      if (restarted) {
+        upstream = await upstreamRequest(
+          endpoint,
+          apiKey,
+          "chat",
+          prompt,
+          sessionId,
+        );
+        body = await parseUpstreamBody(upstream);
+      }
+    }
+    if (!body) {
       return json({ error: "PM Worker AI 응답 형식이 올바르지 않아요." }, 502);
     }
     if (!upstream.ok || !body.reply || !body.session_id) {

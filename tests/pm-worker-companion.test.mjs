@@ -32,3 +32,22 @@ test("PM Worker relay supports health and chat without exposing the upstream key
   assert.match(relay, /\/api\/pm-worker\/chat/);
   assert.match(relay, /project-manager-worker/);
 });
+
+test("PM Worker relay explicitly requests web search for current-information prompts", () => {
+  assert.match(relay, /export function needsCurrentWeb/);
+  assert.match(relay, /CURRENT_WEB_TERMS/);
+  assert.match(relay, /needsCurrentWeb\(prompt\)/);
+  assert.match(relay, /form\.set\("web_search", "1"\)/);
+});
+
+test("PM Worker relay transports Korean prompts without Classic ASP form corruption", () => {
+  assert.match(relay, /function utf8Base64/);
+  assert.match(relay, /message_b64:\s*utf8Base64\(prompt\)/);
+});
+
+test("PM Worker relay recovers the current-web service and retries once", () => {
+  assert.match(relay, /bootstrapCurrentWebRelay/);
+  assert.match(relay, /relay-bootstrap\.asp/);
+  assert.match(relay, /body\?\.code === 503/);
+  assert.match(relay, /if \(restarted\)/);
+});
