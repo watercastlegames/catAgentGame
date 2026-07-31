@@ -128,6 +128,17 @@ export const EXTRA_CARE_FACILITY_DEFAULT_POSES = Object.freeze({
   },
 });
 
+// Purchasable world decorations are registered in placement mode before they
+// are owned, but stay hidden for players until purchase. Their default pose is
+// kept separate from the free common layout so ownership remains authoritative.
+export const PURCHASABLE_WORLD_OBJECT_DEFAULT_POSES = Object.freeze({
+  "cat-exercise-wheel": {
+    x: 0,
+    z: 3.72,
+    rotationY: -0.28,
+  },
+});
+
 const WORLD_LAYOUT_ADMIN_HOSTS = new Set([
   "localhost",
   "127.0.0.1",

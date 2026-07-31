@@ -15,6 +15,7 @@ export const FIRST_PURCHASE_KINDS = [
   "litter",
   "seat",
   "workstation-decor",
+  "world-facility",
 ] as const;
 
 export type FirstPurchaseKind = (typeof FIRST_PURCHASE_KINDS)[number];

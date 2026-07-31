@@ -18,6 +18,7 @@ test("daily first-question and purchase milestones are wired to visible rewards"
     "litter",
     "seat",
     "workstation-decor",
+    "world-facility",
   ]) {
     assert.match(
       page,

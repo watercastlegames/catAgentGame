@@ -33,6 +33,7 @@ import {
   EXTRA_CARE_FACILITY_DEFAULT_POSES,
   HARD_CODED_WORLD_OBJECT_LAYOUT,
   MAX_CARE_FACILITY_COUNT,
+  PURCHASABLE_WORLD_OBJECT_DEFAULT_POSES,
   WORLD_OBJECT_LAYOUT_STORAGE_KEY,
   isWorldLayoutAdminHost,
   parseWorldObjectLayout,
@@ -115,6 +116,7 @@ type AgentWorld3DProps = {
   litterLevel: number;
   litterMaxLevel: number;
   litterBoxCount?: 1 | 2;
+  exerciseWheelOwned?: boolean;
   workstationDecor?: Partial<Record<SeatId, string[]>>;
   onFoodBowlClick?: () => void;
   onLitterBoxClick?: () => void;
@@ -287,6 +289,8 @@ const FOOD_BOWL_EMPTY_MODEL_URL =
   "/models/cat-care-v1/cat-food-bowl-empty-meshy6-web-v1.glb";
 const FOOD_BOWL_FULL_MODEL_URL =
   "/models/cat-care-v1/cat-food-bowl-full-meshy6-web-v1.glb";
+const CAT_EXERCISE_WHEEL_MODEL_URL =
+  "/models/cat-exercise-wheel-v1/cat-exercise-wheel-meshy6-web-v1.glb";
 // Keep both care facilities together below the upper-right palm. The bowl is
 // offset to the left so its coffee-cup-sized silhouette remains unobstructed.
 const FOOD_BOWL_POSITION = new THREE.Vector3(2.18, 0, -2.65);
@@ -299,6 +303,8 @@ const LITTER_BOX_POSITION = new THREE.Vector3(3.05, 0, -2.58);
 const LITTER_BOX_APPROACH_POSITION = new THREE.Vector3(2.96, 0, -1.92);
 const LITTER_BOX_USE_POSITION = new THREE.Vector3(3.05, 0, -2.5);
 const LITTER_BOX_WAIT_POSITION = new THREE.Vector3(2.54, 0, -1.52);
+const CAT_EXERCISE_WHEEL_POSITION = new THREE.Vector3(0, 0, 3.72);
+const CAT_EXERCISE_WHEEL_ROTATION_Y = -0.28;
 // Keep the illustrated front face and the right hinge cap visible, matching
 // plump-closed-scallop-ref-v1.png. Math.PI exposed the generated back plate.
 const COLLECTIBLE_SHELL_REFERENCE_YAW = THREE.MathUtils.degToRad(-10);
@@ -683,6 +689,13 @@ const LITTER_BOX_OBSTACLE: SceneObstacle = {
   minZ: LITTER_BOX_POSITION.z - 0.5,
   maxZ: LITTER_BOX_POSITION.z + 0.5,
 };
+const CAT_EXERCISE_WHEEL_OBSTACLE: SceneObstacle = {
+  id: "cat-exercise-wheel",
+  minX: CAT_EXERCISE_WHEEL_POSITION.x - 0.78,
+  maxX: CAT_EXERCISE_WHEEL_POSITION.x + 0.78,
+  minZ: CAT_EXERCISE_WHEEL_POSITION.z - 0.46,
+  maxZ: CAT_EXERCISE_WHEEL_POSITION.z + 0.46,
+};
 const MESHY_WORKSTATION_PLACEMENTS: MeshyWorkstationPlacement[] = [
   {
     id: TENT_WORKSTATION_OBSTACLE.id,
@@ -796,6 +809,20 @@ const MESHY_DECORATION_ASSETS: MeshyDecorationAsset[] = [
       },
     ],
   },
+  {
+    id: "cat-exercise-wheel",
+    url: CAT_EXERCISE_WHEEL_MODEL_URL,
+    placements: [
+      {
+        id: CAT_EXERCISE_WHEEL_OBSTACLE.id,
+        position: CAT_EXERCISE_WHEEL_POSITION,
+        rotationY: CAT_EXERCISE_WHEEL_ROTATION_Y,
+        height: 1.42,
+        shadowRadius: 0.78,
+        obstacle: CAT_EXERCISE_WHEEL_OBSTACLE,
+      },
+    ],
+  },
 ];
 const SCENE_OBSTACLES = [
   DESK_OBSTACLE,
@@ -807,6 +834,7 @@ const SCENE_OBSTACLES = [
   CAMPING_SUPPLY_CLUSTER_OBSTACLE,
   FOOD_BOWL_OBSTACLE,
   LITTER_BOX_OBSTACLE,
+  CAT_EXERCISE_WHEEL_OBSTACLE,
 ];
 const WORKSTATION_OBSTACLES = new Set<SceneObstacle>([
   DESK_OBSTACLE,
@@ -2886,6 +2914,7 @@ export default function AgentWorld3D({
   litterLevel,
   litterMaxLevel,
   litterBoxCount = 1,
+  exerciseWheelOwned = false,
   workstationDecor = {},
   onFoodBowlClick,
   onLitterBoxClick,
@@ -2917,6 +2946,7 @@ export default function AgentWorld3D({
   const foodGradeRef = useRef<FoodGrade | null>(foodGrade);
   const litterLevelRef = useRef(litterLevel);
   const litterMaxLevelRef = useRef(litterMaxLevel);
+  const exerciseWheelOwnedRef = useRef(exerciseWheelOwned);
   const workstationDecorRef =
     useRef<Partial<Record<SeatId, string[]>>>(workstationDecor);
   const onFoodBowlClickRef = useRef(onFoodBowlClick);
@@ -2970,6 +3000,7 @@ export default function AgentWorld3D({
     foodGradeRef.current = foodGrade;
     litterLevelRef.current = litterLevel;
     litterMaxLevelRef.current = litterMaxLevel;
+    exerciseWheelOwnedRef.current = exerciseWheelOwned;
     workstationDecorRef.current = workstationDecor;
     onFoodBowlClickRef.current = onFoodBowlClick;
     onLitterBoxClickRef.current = onLitterBoxClick;
@@ -2994,6 +3025,7 @@ export default function AgentWorld3D({
     foodGrade,
     litterLevel,
     litterMaxLevel,
+    exerciseWheelOwned,
     workstationDecor,
     onFoodBowlClick,
     onLitterBoxClick,
@@ -3147,12 +3179,17 @@ export default function AgentWorld3D({
       ]),
     );
     const dynamicCareObstacleIds = new Set<string>();
+    let catExerciseWheelGroup: THREE.Group | null = null;
     const runtimeObstacleFor = (obstacle: SceneObstacle) =>
       runtimeObstacleById.get(obstacle.id) ?? { ...obstacle };
     const getRuntimeSceneObstacles = (seatCount: number) => {
-      const obstacles = getActiveSceneObstacles(seatCount).map(
-        runtimeObstacleFor,
-      );
+      const obstacles = getActiveSceneObstacles(seatCount)
+        .filter(
+          (obstacle) =>
+            obstacle.id !== CAT_EXERCISE_WHEEL_OBSTACLE.id ||
+            exerciseWheelOwnedRef.current,
+        )
+        .map(runtimeObstacleFor);
       dynamicCareObstacleIds.forEach((id) => {
         const obstacle = runtimeObstacleById.get(id);
         if (obstacle && !obstacles.includes(obstacle)) {
@@ -3460,6 +3497,7 @@ export default function AgentWorld3D({
       const defaultPose =
         HARD_CODED_WORLD_OBJECT_LAYOUT[id] ??
         EXTRA_CARE_FACILITY_DEFAULT_POSES[id] ??
+        PURCHASABLE_WORLD_OBJECT_DEFAULT_POSES[id] ??
         initialPose;
       const entry: EditableWorldObject = {
         id,
@@ -4766,6 +4804,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
           decoration.name = `${placement.id}-meshy6`;
           decoration.position.copy(placement.position);
           decoration.rotation.y = placement.rotationY;
+          if (placement.id === CAT_EXERCISE_WHEEL_OBSTACLE.id) {
+            catExerciseWheelGroup = decoration;
+            decoration.visible =
+              layoutEditorEnabled || exerciseWheelOwnedRef.current;
+          }
           const decorationObstacle = placement.obstacle
             ? runtimeObstacleFor(placement.obstacle)
             : undefined;
@@ -4793,7 +4836,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
                 ? "캠핑 소품"
                 : asset.id === "tropical-foliage"
                   ? "해변 식물"
-                  : "해변 장식",
+                  : asset.id === "cat-exercise-wheel"
+                    ? "고양이 러닝휠"
+                    : "해변 장식",
             object: decoration,
             obstacle: decorationObstacle,
           });
@@ -6580,6 +6625,10 @@ float shoreOverlayWaterSignal( vec3 color ) {
           layoutEditorEnabled ||
           Number(seatId.slice(-1)) <= activeSeatCountRef.current;
       });
+      if (catExerciseWheelGroup) {
+        catExerciseWheelGroup.visible =
+          layoutEditorEnabled || exerciseWheelOwnedRef.current;
+      }
       syncWorkstationDecorGroups();
       syncFoodBowlVisuals();
       applyFoodGradeAppearance();

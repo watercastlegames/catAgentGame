@@ -95,6 +95,16 @@ import {
   type WorkstationDecorState,
   type WorkstationSeatId,
 } from "./workstation-decor";
+import {
+  CAT_EXERCISE_WHEEL_ID,
+  CAT_EXERCISE_WHEEL_PREVIEW_URL,
+  CAT_EXERCISE_WHEEL_PRICE,
+  WORLD_FACILITY_STORAGE_KEY,
+  createDefaultWorldFacilityState,
+  parseWorldFacilityState,
+  purchaseCatExerciseWheel,
+  type WorldFacilityState,
+} from "./world-facility-economy";
 import { preloadPopupAssets } from "./popup-assets.mjs";
 import { type PlayerCloudSync, createPlayerCloudSync } from "./storage";
 import {
@@ -579,6 +589,8 @@ export default function Home() {
   const [playLog, setPlayLog] = useState<CatPlayLog>({});
   const [workstationDecor, setWorkstationDecor] =
     useState<WorkstationDecorState>(createDefaultWorkstationDecorState);
+  const [worldFacilities, setWorldFacilities] =
+    useState<WorldFacilityState>(createDefaultWorldFacilityState);
   const [companionBackend, setCompanionBackend] = useState<CompanionBackendId>(
     () => parseCompanionBackend(null),
   );
@@ -1427,6 +1439,11 @@ export default function Home() {
         window.localStorage.getItem(WORKSTATION_DECOR_KEY),
       );
       setWorkstationDecor(restoredWorkstationDecor);
+      setWorldFacilities(
+        parseWorldFacilityState(
+          window.localStorage.getItem(WORLD_FACILITY_STORAGE_KEY),
+        ),
+      );
       setCompanionBackend(
         parseCompanionBackend(
           window.localStorage.getItem(COMPANION_BACKEND_KEY),
@@ -2100,6 +2117,37 @@ export default function Home() {
       `두 번째 밥그릇을 배치했어요.${firstPurchaseBonus ? ` · 첫 구매 보상 +${firstPurchaseBonus}` : ""}`,
     );
   }, [claimFirstPurchaseBonus, foodBowlCount, shells]);
+
+  const buyCatExerciseWheel = useCallback(() => {
+    const purchase = purchaseCatExerciseWheel(shells, worldFacilities);
+    if (!purchase.ok) {
+      worldAudioRef.current?.playUi("purchaseFail");
+      setToast(
+        `고양이 러닝휠을 구매하려면 조개 ${purchase.required}개가 필요해요.`,
+      );
+      return;
+    }
+    if (purchase.charged === 0) {
+      setToast("고양이 러닝휠을 이미 보유하고 있어요.");
+      return;
+    }
+
+    setShells(purchase.balance);
+    setWorldFacilities(purchase.state);
+    window.localStorage.setItem(SHELL_KEY, String(purchase.balance));
+    window.localStorage.setItem(
+      WORLD_FACILITY_STORAGE_KEY,
+      JSON.stringify(purchase.state),
+    );
+    const firstPurchaseBonus = claimFirstPurchaseBonus(
+      "world-facility",
+      "월드 놀이 시설",
+    );
+    worldAudioRef.current?.playUi("purchaseSuccess");
+    setToast(
+      `고양이 러닝휠을 해변에 배치했어요.${firstPurchaseBonus ? ` · 첫 구매 보상 +${firstPurchaseBonus}` : ""}`,
+    );
+  }, [claimFirstPurchaseBonus, shells, worldFacilities]);
 
   const upgradeLitterFacility = useCallback(() => {
     if (litterTier >= 3) {
@@ -3304,6 +3352,9 @@ export default function Home() {
             litterLevel={litterLevel}
             litterMaxLevel={litterMaxLevel}
             litterBoxCount={litterBoxCount}
+            exerciseWheelOwned={worldFacilities.owned.includes(
+              CAT_EXERCISE_WHEEL_ID,
+            )}
             workstationDecor={workstationDecorBySeat}
             onFoodBowlClick={refillFoodBowl}
             onLitterBoxClick={cleanLitterFacility}
@@ -4328,16 +4379,16 @@ export default function Home() {
                 >
                   <div className="decor-catalog-heading">
                     <strong id="world-facility-shop-title">
-                      월드 생활 시설
+                      월드 생활 · 놀이 시설
                     </strong>
                     <small>
-                      기본 1개 제공 · 추가 시설은 구매 후 월드에 배치돼요.
+                      생활 시설은 기본 1개 제공 · 놀이 시설은 구매 후 월드에 배치돼요.
                     </small>
                   </div>
                   <div
                     className="world-facility-grid"
                     role="group"
-                    aria-label="월드 생활 시설 구매"
+                    aria-label="월드 생활 및 놀이 시설 구매"
                   >
                     <article className="world-facility-card">
                       <div>
@@ -4377,6 +4428,38 @@ export default function Home() {
                           : litterTier === 1
                             ? `2호기 구매 · ${LITTER_TIER_PRICE[2]} 조개`
                             : `용량 3단계 · ${LITTER_TIER_PRICE[3]} 조개`}
+                      </button>
+                    </article>
+                    <article className="world-facility-card world-facility-feature-card">
+                      <img
+                        className="world-facility-preview"
+                        src={CAT_EXERCISE_WHEEL_PREVIEW_URL}
+                        alt="밝은 원목 고양이 러닝휠"
+                        width="128"
+                        height="128"
+                      />
+                      <div>
+                        <strong>고양이 러닝휠</strong>
+                        <small>
+                          해변에 놓는 원목 운동 시설이에요. 관리자 배치 모드에서 위치와 방향을 바꿀 수 있어요.
+                        </small>
+                      </div>
+                      <em>
+                        {worldFacilities.owned.includes(CAT_EXERCISE_WHEEL_ID)
+                          ? "보유"
+                          : "신규"}
+                      </em>
+                      <button
+                        type="button"
+                        className="game-button secondary"
+                        disabled={worldFacilities.owned.includes(
+                          CAT_EXERCISE_WHEEL_ID,
+                        )}
+                        onClick={buyCatExerciseWheel}
+                      >
+                        {worldFacilities.owned.includes(CAT_EXERCISE_WHEEL_ID)
+                          ? "월드 배치 완료"
+                          : `구매 · ${CAT_EXERCISE_WHEEL_PRICE} 조개`}
                       </button>
                     </article>
                   </div>

@@ -5,6 +5,7 @@ import test from "node:test";
 import {
   CARE_FACILITY_LAYOUT_IDS,
   EXTRA_CARE_FACILITY_DEFAULT_POSES,
+  PURCHASABLE_WORLD_OBJECT_DEFAULT_POSES,
   HARD_CODED_WORLD_OBJECT_LAYOUT,
   MAX_CARE_FACILITY_COUNT,
   countCareFacilities,
@@ -102,6 +103,14 @@ test("care facilities restore one or two placed instances with a hard cap", () =
       "toilet",
     ),
     2,
+  );
+});
+
+test("purchasable world objects keep a placement pose without joining the free layout", () => {
+  assert.equal(HARD_CODED_WORLD_OBJECT_LAYOUT["cat-exercise-wheel"], undefined);
+  assert.deepEqual(
+    PURCHASABLE_WORLD_OBJECT_DEFAULT_POSES["cat-exercise-wheel"],
+    { x: 0, z: 3.72, rotationY: -0.28 },
   );
 });
 

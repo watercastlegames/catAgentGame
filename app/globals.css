@@ -6668,6 +6668,29 @@ button {
   font-size: 16px;
 }
 
+.world-facility-feature-card {
+  grid-column: 1 / -1;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.world-facility-preview {
+  grid-row: 1 / 3;
+  width: 96px;
+  height: 96px;
+  box-sizing: border-box;
+  border: 7px solid transparent;
+  border-radius: 18px;
+  background: #fff3d9;
+  border-image: url("/art/ui/slices/card-default-v2.png") 38 46 fill / 7px 9px
+    stretch;
+  object-fit: cover;
+}
+
+.world-facility-feature-card > .game-button {
+  grid-column: 2 / -1;
+}
+
 .desk-item-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
@@ -7301,6 +7324,15 @@ button {
   .world-facility-grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 7px;
+  }
+
+  .world-facility-feature-card {
+    grid-template-columns: 82px minmax(0, 1fr) auto;
+  }
+
+  .world-facility-preview {
+    width: 82px;
+    height: 82px;
   }
 
   .world-facility-card {

@@ -406,6 +406,13 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /RoundedBoxGeometry/);
   assert.match(world3d, /MESHY_WORKSTATION_PLACEMENTS/);
   assert.match(world3d, /MESHY_DECORATION_ASSETS/);
+  assert.match(
+    world3d,
+    /cat-exercise-wheel-meshy6-web-v1\.glb/,
+  );
+  assert.match(world3d, /exerciseWheelOwnedRef/);
+  assert.match(page, /CAT_EXERCISE_WHEEL_PREVIEW_URL/);
+  assert.match(page, /onClick=\{buyCatExerciseWheel\}/);
   assert.doesNotMatch(
     world3d,
     /id: "camping-lantern",\s*url: CAMPING_LANTERN_MODEL_URL/,
@@ -622,7 +629,7 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /foodBowlCount=\{foodBowlCount\}/);
   assert.match(page, /litterBoxCount=\{litterBoxCount\}/);
   assert.match(page, /className="world-facility-shop"/);
-  assert.match(page, /aria-label="월드 생활 시설 구매"/);
+  assert.match(page, /aria-label="월드 생활 및 놀이 시설 구매"/);
   assert.match(page, /onClick=\{buySecondFoodBowl\}/);
   assert.match(page, /onClick=\{upgradeLitterFacility\}/);
   const deskPanelIndex = page.indexOf(
