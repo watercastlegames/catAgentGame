@@ -136,7 +136,13 @@ import {
   visibleCompanionBackends,
   type CompanionBackendId,
 } from "./companion-backends";
-import { submitPuterTask } from "./puter-companion";
+import {
+  inspectPuterConnection,
+  loadPuterCompanion,
+  signInPuterCompanion,
+  submitPuterTask,
+  type PuterConnectionState,
+} from "./puter-companion";
 import { isWorldLayoutAdminHost } from "./world-object-layout.mjs";
 
 type Department = "general" | "coding" | "design" | "music";
@@ -471,6 +477,8 @@ export default function Home() {
     useState<CompanionTransport>("local");
   const [pairingCode, setPairingCode] = useState("");
   const [pairingBusy, setPairingBusy] = useState(false);
+  const [puterConnectionState, setPuterConnectionState] =
+    useState<PuterConnectionState>("loading");
   const [sessions, setSessions] = useState<CodexSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -672,6 +680,28 @@ export default function Home() {
   useEffect(() => {
     runtimesRef.current = runtimes;
   }, [runtimes]);
+
+  useEffect(() => {
+    if (
+      !radioOpen ||
+      radioPage !== "work" ||
+      workTab !== "connect" ||
+      companionBackend !== "puter"
+    ) {
+      return;
+    }
+    let disposed = false;
+    void inspectPuterConnection()
+      .then((state) => {
+        if (!disposed) setPuterConnectionState(state);
+      })
+      .catch(() => {
+        if (!disposed) setPuterConnectionState("error");
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [companionBackend, radioOpen, radioPage, workTab]);
   useEffect(() => {
     foodBowlStateRef.current = foodBowlState;
   }, [foodBowlState]);
@@ -2306,6 +2336,38 @@ export default function Home() {
     setBridgeState("disconnected");
   }
 
+  async function connectPuter() {
+    if (puterConnectionState === "loading") return;
+    setPuterConnectionState("loading");
+    try {
+      await signInPuterCompanion();
+      setPuterConnectionState("ready");
+      setToast("무료 AI 연결이 완료됐어요.");
+    } catch (error) {
+      setPuterConnectionState("signed-out");
+      setToast(
+        error instanceof Error
+          ? error.message
+          : "무료 AI 로그인에 실패했어요.",
+      );
+    }
+  }
+
+  async function retryPuterPreparation() {
+    setPuterConnectionState("loading");
+    try {
+      await loadPuterCompanion();
+      setPuterConnectionState(await inspectPuterConnection());
+    } catch (error) {
+      setPuterConnectionState("error");
+      setToast(
+        error instanceof Error
+          ? error.message
+          : "무료 AI 연결 모듈을 준비하지 못했어요.",
+      );
+    }
+  }
+
   function requestDisconnectCompanion() {
     setConfirmDialog({ kind: "disconnect" });
   }
@@ -2589,12 +2651,6 @@ export default function Home() {
     } catch {
       setToast(INSTALL_HANDOFF);
     }
-  }
-
-  function chooseDecor(value: string) {
-    setDecorChoice(value);
-    window.localStorage.setItem(DECOR_KEY, value);
-    worldAudioRef.current?.playUi("itemEquip");
   }
 
   function chooseWorkstationDecor(itemId: string) {
@@ -3674,13 +3730,17 @@ export default function Home() {
                 <div className="selected-session-line">
                   <span
                     className={
-                      companionBackend === "puter" || selectedSession
+                      (companionBackend === "puter" &&
+                        puterConnectionState === "ready") ||
+                      selectedSession
                         ? "ready"
                         : ""
                     }
                   />
                   {companionBackend === "puter"
-                    ? "무료 AI 대화 · 파일 수정과 명령 실행 없음"
+                    ? puterConnectionState === "ready"
+                      ? "무료 AI 연결됨 · 파일 수정과 명령 실행 없음"
+                      : "세션 연결에서 무료 AI 로그인을 먼저 완료해 주세요"
                     : companionBackend === "local-session"
                       ? selectedSession
                         ? `${selectedSession.title} · ${selectedSession.projectName}`
@@ -3728,6 +3788,8 @@ export default function Home() {
                     type="submit"
                     disabled={
                       selectedCompanionBackend?.available === "server-pending" ||
+                      (companionBackend === "puter" &&
+                        puterConnectionState !== "ready") ||
                       (companionBackend === "local-session" &&
                         (bridgeState !== "connected" ||
                           !codexAvailable ||
@@ -3771,6 +3833,12 @@ export default function Home() {
                     const connectionTone =
                       backend.id === "local-session"
                         ? bridgeState
+                        : backend.id === "puter"
+                          ? puterConnectionState === "ready"
+                            ? "connected"
+                            : puterConnectionState === "loading"
+                              ? "connecting"
+                              : "disconnected"
                         : backend.available === "ready" && selected
                           ? "connected"
                           : "disconnected";
@@ -3817,17 +3885,49 @@ export default function Home() {
                   </div>
                   <span
                     className={`connection-dot ${
-                      companionBackend === "puter" ? "connected" : bridgeState
+                      companionBackend === "puter"
+                        ? puterConnectionState === "ready"
+                          ? "connected"
+                          : puterConnectionState === "loading"
+                            ? "connecting"
+                            : "disconnected"
+                        : bridgeState
                     }`}
                   />
                 </div>
                 {companionBackend === "puter" ? (
                   <div className="install-letter backend-ready-note">
-                    <strong>바로 사용할 수 있는 무료 대화형 AI예요</strong>
+                    <strong>
+                      {puterConnectionState === "ready"
+                        ? "무료 AI가 연결됐어요"
+                        : puterConnectionState === "loading"
+                          ? "무료 AI를 준비하고 있어요"
+                          : puterConnectionState === "error"
+                            ? "무료 AI 모듈을 불러오지 못했어요"
+                            : "무료 AI 로그인이 필요해요"}
+                    </strong>
                     <p>
-                      업무 지시 탭에서 질문하면 고양이가 답변을 가져옵니다. 실제
-                      파일 수정이나 터미널 명령은 내 PC Codex 세션을 선택해 주세요.
+                      {puterConnectionState === "ready"
+                        ? "업무 지시 탭에서 질문하면 고양이가 답변을 가져옵니다. 실제 파일 수정은 Agent Forest 메인 AI를 선택해 주세요."
+                        : "Puter 로그인 창에서 최초 한 번만 연결하면 무료 대화를 사용할 수 있어요."}
                     </p>
+                    {puterConnectionState !== "ready" && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void (puterConnectionState === "error"
+                            ? retryPuterPreparation()
+                            : connectPuter())
+                        }
+                        disabled={puterConnectionState === "loading"}
+                      >
+                        {puterConnectionState === "loading"
+                          ? "준비 중…"
+                          : puterConnectionState === "error"
+                            ? "다시 준비"
+                            : "무료 AI 로그인"}
+                      </button>
+                    )}
                   </div>
                 ) : selectedCompanionBackend?.available === "server-pending" ? (
                   <div className="ui-empty-state state-error">
@@ -4085,28 +4185,6 @@ export default function Home() {
                     <p>업무 지시에서 새 일을 맡겨 보세요.</p>
                   </div>
                 )}
-                <div className="free-decor">
-                  <div>
-                    <strong>무료 해변 꾸미기</strong>
-                    <small>작업 완료로 모은 조개 {shells}개</small>
-                  </div>
-                  <div>
-                    {[
-                      ["coral", "산호"],
-                      ["mint", "민트"],
-                      ["sunset", "노을"],
-                    ].map(([value, label]) => (
-                      <button
-                        type="button"
-                        key={value}
-                        className={decorChoice === value ? "selected" : ""}
-                        onClick={() => chooseDecor(value)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
               </section>
             )}
 

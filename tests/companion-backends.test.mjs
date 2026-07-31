@@ -20,12 +20,12 @@ const backends = await import(
   `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`
 );
 
-test("public builds omit both owner-funded CLI backends", () => {
+test("public builds omit owner-funded CLI backends and prefer the local Agent Forest bridge", () => {
   assert.deepEqual(
     backends.visibleCompanionBackends("public").map((backend) => backend.id),
-    ["puter", "local-session"],
+    ["local-session", "puter"],
   );
-  assert.equal(backends.defaultCompanionBackend("public"), "puter");
+  assert.equal(backends.defaultCompanionBackend("public"), "local-session");
 });
 
 test("service builds expose all four backends but do not fake server readiness", () => {
@@ -39,7 +39,7 @@ test("service builds expose all four backends but do not fake server readiness",
 test("stored backend selection is constrained to the current edition", () => {
   assert.equal(
     backends.parseCompanionBackend("chatgpt-cli", "public"),
-    "puter",
+    "local-session",
   );
   assert.equal(
     backends.parseCompanionBackend("local-session", "public"),

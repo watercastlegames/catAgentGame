@@ -60,25 +60,10 @@ export const COMPANION_BACKENDS: CompanionBackendDefinition[] = [
     },
   },
   {
-    id: "puter",
-    title: "무료 AI 대화",
-    description: "브라우저에서 Puter AI를 사용해 답변과 아이디어를 받아요.",
-    badge: "무료 · 코드 수정 불가",
-    editions: ["service", "public"],
-    available: "ready",
-    capabilities: {
-      fileEdit: false,
-      shellExec: false,
-      approvalFlow: false,
-      streaming: false,
-      multiSession: false,
-    },
-  },
-  {
     id: "local-session",
-    title: "내 PC Codex 세션",
-    description: "내 컴퓨터의 기존 Codex 세션과 실제 프로젝트를 연결해요.",
-    badge: "내 PC 세션 필요",
+    title: "Agent Forest 메인 AI",
+    description: "내 PC의 Codex 세션과 실제 프로젝트를 안전하게 연결해요.",
+    badge: "메인 · 내 PC 연결",
     editions: ["service", "public"],
     available: "requires-pairing",
     capabilities: {
@@ -87,6 +72,21 @@ export const COMPANION_BACKENDS: CompanionBackendDefinition[] = [
       approvalFlow: true,
       streaming: true,
       multiSession: true,
+    },
+  },
+  {
+    id: "puter",
+    title: "무료 AI 대화",
+    description: "Puter 로그인 후 브라우저에서 답변과 아이디어를 받아요.",
+    badge: "무료 · 대화 전용",
+    editions: ["service", "public"],
+    available: "ready",
+    capabilities: {
+      fileEdit: false,
+      shellExec: false,
+      approvalFlow: false,
+      streaming: false,
+      multiSession: false,
     },
   },
 ];
@@ -100,7 +100,7 @@ export function visibleCompanionBackends(edition = APP_EDITION) {
 export function defaultCompanionBackend(
   edition = APP_EDITION,
 ): CompanionBackendId {
-  return edition === "service" ? "chatgpt-cli" : "puter";
+  return edition === "service" ? "chatgpt-cli" : "local-session";
 }
 
 export function parseCompanionBackend(
