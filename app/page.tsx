@@ -154,6 +154,7 @@ import {
   rememberCatChatTopic,
   seedCatChatTopicMemoryFromEvents,
 } from "./cat-chat-suggestions";
+import { buildCatPersonaPrompt } from "./cat-chat-persona";
 import { isWorldLayoutAdminHost } from "./world-object-layout.mjs";
 
 type Department = "general" | "coding" | "design" | "music";
@@ -514,6 +515,9 @@ export default function Home() {
   const [statusLogTab, setStatusLogTab] = useState<StatusLogTab>("status");
   const [hudDormant, setHudDormant] = useState(false);
   const [completionSignal, setCompletionSignal] = useState(0);
+  const [unreadReplyCatIds, setUnreadReplyCatIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [shells, setShells] = useState(0);
   const layoutAdminEnabled = useSyncExternalStore(
     () => () => {},
@@ -654,25 +658,44 @@ export default function Home() {
   }, [runtimeList, selectedSeat, selectedThreadId]);
   const focusedCatId = focusedRuntime?.threadId ?? DEMO_CAT_ID;
   const focusedCatNeeds = catNeeds[focusedCatId] ?? createDefaultCatNeedState();
-  const focusedConversation = useMemo(
-    () =>
-      events
-        .filter(
-          (event) =>
-            event.threadId === focusedCatId &&
-            [
-              "task.queued",
-              "task.completed",
-              "task.failed",
-              "pm-chat.queued",
-              "pm-chat.completed",
-              "pm-chat.failed",
-            ].includes(event.type),
-        )
-        .slice(0, 16)
-        .reverse(),
-    [events, focusedCatId],
-  );
+  const focusedConversation = useMemo(() => {
+    const userEventTypes = new Set([
+      "chat.user.sent",
+      "task.queued",
+      "pm-chat.queued",
+    ]);
+    const conversationEventTypes = new Set([
+      ...userEventTypes,
+      "task.completed",
+      "task.failed",
+      "pm-chat.completed",
+      "pm-chat.failed",
+    ]);
+    const deduped: BridgeEvent[] = [];
+
+    for (const event of events) {
+      if (
+        event.threadId !== focusedCatId ||
+        !conversationEventTypes.has(event.type)
+      ) {
+        continue;
+      }
+      const newer = deduped.at(-1);
+      const sameRecentUserMessage =
+        newer &&
+        userEventTypes.has(event.type) &&
+        userEventTypes.has(newer.type) &&
+        (event.prompt ?? "").trim() === (newer.prompt ?? "").trim() &&
+        Math.abs(
+          new Date(event.occurredAt).getTime() -
+            new Date(newer.occurredAt).getTime(),
+        ) < 15_000;
+      if (!sameRecentUserMessage) deduped.push(event);
+      if (deduped.length >= 16) break;
+    }
+
+    return deduped.reverse();
+  }, [events, focusedCatId]);
   const catChatSuggestions = useMemo(
     () =>
       buildCatChatSuggestions({
@@ -864,8 +887,11 @@ export default function Home() {
         agentName: catNames[runtime.threadId] || runtime.agentName,
         location: runtime.location,
         status: runtime.status,
-        statusLabel: STATUS_COPY[runtime.status],
+        statusLabel: unreadReplyCatIds.has(runtime.threadId)
+          ? "답변 도착"
+          : STATUS_COPY[runtime.status],
         blocked: Boolean(runtime.pendingApprovalId),
+        hasUnreadReply: unreadReplyCatIds.has(runtime.threadId),
       }));
     return active.length
       ? active
@@ -878,6 +904,7 @@ export default function Home() {
             status: "idle",
             statusLabel: STATUS_COPY.idle,
             blocked: false,
+            hasUnreadReply: unreadReplyCatIds.has(DEMO_CAT_ID),
             hunger: Math.round(
               (catNeeds[DEMO_CAT_ID] ?? createDefaultCatNeedState()).hunger,
             ),
@@ -889,7 +916,14 @@ export default function Home() {
             ),
           },
         ];
-  }, [activeSeatCount, catNames, catNeeds, runtimeList, unlockedSeatIds]);
+  }, [
+    activeSeatCount,
+    catNames,
+    catNeeds,
+    runtimeList,
+    unreadReplyCatIds,
+    unlockedSeatIds,
+  ]);
 
   const apiFetch = useCallback(
     (pathname: string, init: RequestInit = {}) => {
@@ -1017,6 +1051,15 @@ export default function Home() {
         let status = event.status ?? existing?.status ?? "idle";
         let location = event.location ?? existing?.location ?? "general";
         let pendingApprovalId = existing?.pendingApprovalId ?? null;
+        if (
+          existing?.status === "working" &&
+          ["queued", "briefing", "moving", "reporting"].includes(
+            event.status ?? "",
+          )
+        ) {
+          status = "working";
+          location = existing.location;
+        }
         if (event.type === "approval.required") {
           status = "waiting_approval";
           location = "office";
@@ -1074,9 +1117,25 @@ export default function Home() {
         if (event.requestId) alreadyAlertedRef.current.delete(event.requestId);
         setToast(event.title ?? "결정을 저장했어요.");
       }
-      if (event.type === "task.completed") {
+      const replyCompleted = [
+        "task.completed",
+        "pm-chat.completed",
+      ].includes(event.type);
+      const replyFailed = ["task.failed", "pm-chat.failed"].includes(
+        event.type,
+      );
+      if (replyCompleted || replyFailed) {
         setIsSubmitting(false);
-        setCompletionSignal((value) => value + 1);
+        if (replyCompleted) setCompletionSignal((value) => value + 1);
+        if (event.threadId) {
+          setUnreadReplyCatIds((current) => {
+            const next = new Set(current);
+            next.add(event.threadId as string);
+            return next;
+          });
+        }
+      }
+      if (event.type === "task.completed") {
         if (event.taskId && !completedTaskIdsRef.current.has(event.taskId)) {
           completedTaskIdsRef.current.add(event.taskId);
           const claim = claimTaskReward(
@@ -1103,8 +1162,7 @@ export default function Home() {
           }
         }
       }
-      if (event.type === "task.failed") {
-        setIsSubmitting(false);
+      if (replyFailed) {
         setToast(event.detail ?? "작업이 완료되지 않았어요.");
       }
       if (event.type === "session.updated" && event.session) {
@@ -2489,7 +2547,15 @@ export default function Home() {
     setSelectedSeat(seatId);
     setCatDetailTab("chat");
     setCatPage("detail");
+    setRadioPage("cats");
+    setRadioOpen(true);
     if (runtime?.threadId) {
+      setUnreadReplyCatIds((current) => {
+        if (!current.has(runtime.threadId)) return current;
+        const next = new Set(current);
+        next.delete(runtime.threadId);
+        return next;
+      });
       setSelectedThreadId(runtime.threadId);
       window.localStorage.setItem(SELECTED_SESSION_KEY, runtime.threadId);
     }
@@ -2630,10 +2696,7 @@ export default function Home() {
     }
   }
 
-  async function startTask(
-    event: FormEvent,
-    options: { keepPanelOpen?: boolean } = {},
-  ) {
+  async function startTask(event: FormEvent) {
     event.preventDefault();
     if (!prompt.trim() || isSubmitting) return;
     if (selectedCompanionBackend?.available === "server-pending") {
@@ -2661,10 +2724,19 @@ export default function Home() {
       );
       return;
     }
+    const message = prompt.trim();
+    const catName =
+      catNames[focusedCatId] ??
+      focusedRuntime?.agentName ??
+      "코치 모모";
+    const personaPrompt = buildCatPersonaPrompt({
+      catName,
+      userPrompt: message,
+    });
     setCatChatTopicMemory((current) => {
       const next = rememberCatChatTopic(current, {
         catId: focusedCatId,
-        prompt: prompt.trim(),
+        prompt: message,
       });
       window.localStorage.setItem(
         CAT_CHAT_TOPIC_MEMORY_KEY,
@@ -2688,23 +2760,30 @@ export default function Home() {
           ...partial,
         });
       emitPuterEvent({
+        type: "chat.user.sent",
+        prompt: message,
+        title: "내가 보낸 말",
+        detail: message,
+      });
+      emitPuterEvent({
         type: "task.queued",
         status: "queued",
         location: "general",
-        prompt: prompt.trim(),
+        prompt: message,
         title: "무료 AI에게 질문을 전달했어요",
         detail: "Puter AI 응답을 기다리고 있어요.",
       });
       emitPuterEvent({
         type: "agent.status",
         status: "working",
-        location: department,
+        location: "coding",
         title: "무료 AI가 답변을 작성하고 있어요",
         detail: "이 연결은 파일 수정과 명령 실행을 하지 않아요.",
       });
-      if (!options.keepPanelOpen) setRadioOpen(false);
+      setPrompt("");
+      setRadioOpen(false);
       try {
-        const result = await submitPuterTask(prompt.trim());
+        const result = await submitPuterTask(personaPrompt);
         emitPuterEvent({
           type: "task.completed",
           status: "completed",
@@ -2736,7 +2815,6 @@ export default function Home() {
     if (companionBackend === "pm-worker") {
       const taskId = `pm-worker-${crypto.randomUUID()}`;
       const threadId = focusedCatId;
-      const message = prompt.trim();
       const nextShells = shells - PM_WORKER_CHAT_SHELL_COST;
       const emitPmWorkerEvent = (partial: Partial<BridgeEvent>) =>
         consumeBridgeEvent({
@@ -2758,6 +2836,12 @@ export default function Home() {
       );
       worldAudioRef.current?.playUi("purchaseSuccess");
       emitPmWorkerEvent({
+        type: "chat.user.sent",
+        prompt: message,
+        title: "내가 보낸 말",
+        detail: message,
+      });
+      emitPmWorkerEvent({
         type: "pm-chat.queued",
         status: "queued",
         location: "general",
@@ -2768,13 +2852,14 @@ export default function Home() {
       emitPmWorkerEvent({
         type: "agent.status",
         status: "working",
-        location: department,
+        location: "coding",
         title: "ProjectManager 워커가 답변을 작성하고 있어요",
         detail: "선택한 고양이가 답변을 기다리고 있어요.",
       });
-      if (!options.keepPanelOpen) setRadioOpen(false);
+      setPrompt("");
+      setRadioOpen(false);
       try {
-        const result = await submitPmWorkerTask(message, focusedCatId);
+        const result = await submitPmWorkerTask(personaPrompt, focusedCatId);
         emitPmWorkerEvent({
           type: "pm-chat.completed",
           status: "completed",
@@ -2816,25 +2901,62 @@ export default function Home() {
       }
       return;
     }
+    const taskId = `local-chat-${crypto.randomUUID()}`;
+    const threadId = selectedThreadId as string;
+    const emitLocalEvent = (partial: Partial<BridgeEvent>) =>
+      consumeBridgeEvent({
+        id: `${taskId}-${partial.type ?? "event"}-${Date.now()}`,
+        type: partial.type ?? "agent.status",
+        occurredAt: new Date().toISOString(),
+        taskId,
+        threadId,
+        department,
+        mode: "codex",
+        ...partial,
+      });
+    emitLocalEvent({
+      type: "chat.user.sent",
+      prompt: message,
+      title: "내가 보낸 말",
+      detail: message,
+    });
+    emitLocalEvent({
+      type: "agent.status",
+      status: "working",
+      location: "coding",
+      title: `${catName}가 자리로 돌아가 작업하고 있어요`,
+      detail: "답변이 준비될 때까지 키캡을 누르며 작업해요.",
+    });
+    setPrompt("");
+    setRadioOpen(false);
     try {
       const response = await apiFetch(
-        `/v2/sessions/${encodeURIComponent(selectedThreadId)}/turns`,
+        `/v2/sessions/${encodeURIComponent(threadId)}/turns`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            prompt: prompt.trim(),
+            prompt: personaPrompt,
+            displayPrompt: message,
             department,
-            threadId: selectedThreadId,
+            threadId,
           }),
         },
       );
       const body = (await response.json()) as { error?: string };
       if (!response.ok)
         throw new Error(body.error ?? "작업을 시작하지 못했어요.");
-      if (!options.keepPanelOpen) setRadioOpen(false);
     } catch (error) {
-      setIsSubmitting(false);
+      emitLocalEvent({
+        type: "task.failed",
+        status: "failed",
+        location: "queue",
+        title: "PC Codex 연결에 실패했어요",
+        detail:
+          error instanceof Error
+            ? error.message
+            : "브리지에 연결하지 못했어요.",
+      });
       setToast(
         error instanceof Error ? error.message : "브리지에 연결하지 못했어요.",
       );
@@ -3083,12 +3205,17 @@ export default function Home() {
             onLaserResolved={resolveLaserPlay}
             onToyResolved={resolveToyHunt}
             onSeatClick={(seatId) => {
-              // 쓰다듬는 반응 — 짧게 인사하고 잠깐 골골거린다.
-              worldAudioRef.current?.playCat("greet");
-              worldAudioRef.current?.playCat("purr");
               const targetCat = seatViews.find(
                 (seat) => seat.seatId === seatId,
               );
+              if (targetCat?.hasUnreadReply) {
+                worldAudioRef.current?.playCat("report");
+                openCatDetail(seatId);
+                return;
+              }
+              // 쓰다듬는 반응 — 짧게 인사하고 잠깐 골골거린다.
+              worldAudioRef.current?.playCat("greet");
+              worldAudioRef.current?.playCat("purr");
               if (targetCat) {
                 const now = Date.now();
                 const petting = completePetting(
@@ -3376,7 +3503,9 @@ export default function Home() {
                       );
                     }
                     const attention =
-                      (seat.hunger ?? 0) >= 70 || (seat.toilet ?? 0) >= 70;
+                      Boolean(seat.hasUnreadReply) ||
+                      (seat.hunger ?? 0) >= 70 ||
+                      (seat.toilet ?? 0) >= 70;
                     return (
                       <button
                         type="button"
@@ -3406,7 +3535,13 @@ export default function Home() {
                             </i>
                           </span>
                         </span>
-                        <em>{attention ? "돌봄" : "상세"}</em>
+                        <em>
+                          {seat.hasUnreadReply
+                            ? "답변"
+                            : attention
+                              ? "돌봄"
+                              : "상세"}
+                        </em>
                       </button>
                     );
                   })}
@@ -3621,6 +3756,7 @@ export default function Home() {
                         {focusedConversation.length > 0 ? (
                           focusedConversation.map((event) => {
                             const userMessage = [
+                              "chat.user.sent",
                               "task.queued",
                               "pm-chat.queued",
                             ].includes(event.type);
@@ -3698,9 +3834,7 @@ export default function Home() {
 
                       <form
                         className="cat-chat-composer"
-                        onSubmit={(event) =>
-                          void startTask(event, { keepPanelOpen: true })
-                        }
+                        onSubmit={startTask}
                       >
                         <label htmlFor="cat-chat-message">
                           이 고양이에게 말하기

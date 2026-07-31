@@ -322,7 +322,7 @@ function createContext(body, mode, threadId = null) {
     agentId: departmentAgents[department],
     department,
     departmentLabel: departmentLabels[department],
-    prompt: safeText(body.prompt, 2_000),
+    prompt: safeText(body.prompt, 4_000),
     mode,
     lastMessage: "",
   };
@@ -690,7 +690,8 @@ async function resumeSession(threadId) {
 }
 
 async function startTurn(threadId, body) {
-  const prompt = safeText(body.prompt, 2_000);
+  const prompt = safeText(body.prompt, 4_000);
+  const displayPrompt = safeText(body.displayPrompt, 2_000) || prompt;
   if (!prompt) throw new Error("작업 내용을 입력해 주세요.");
   const client = await ensureAppServer();
   await client.request("thread/resume", { threadId }, 45_000);
@@ -707,8 +708,8 @@ async function startTurn(threadId, body) {
     status: "queued",
     location: "general",
     title: "선택한 Codex 세션에 작업을 전달했어요",
-    detail: prompt.slice(0, 220),
-    prompt,
+    detail: displayPrompt.slice(0, 220),
+    prompt: displayPrompt,
     mode: "codex",
     source: "bridge",
   });

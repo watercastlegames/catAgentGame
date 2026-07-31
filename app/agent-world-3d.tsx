@@ -61,6 +61,7 @@ export type SeatView = {
   status: string;
   statusLabel: string;
   blocked: boolean;
+  hasUnreadReply?: boolean;
   hunger?: number;
   toilet?: number;
   happiness?: number;
@@ -178,6 +179,7 @@ const DEFAULT_SEAT_VIEW: SeatView = {
   status: "idle",
   statusLabel: "대기 중",
   blocked: false,
+  hasUnreadReply: false,
   hunger: 0,
   toilet: 0,
   happiness: 30,
@@ -2750,7 +2752,11 @@ function createAgentMarker(initialSeat: SeatView) {
   dot.position.z = 0.01;
   beacon.add(ring, bar, dot);
   beacon.position.y = 1.45;
-  beacon.visible = false;
+  const updateBeacon = (seat: SeatView) => {
+    beacon.visible = seat.blocked || Boolean(seat.hasUnreadReply);
+    beaconMaterial.color.setHex(seat.blocked ? 0xd86c5f : 0xe5a942);
+  };
+  updateBeacon(initialSeat);
   beacon.renderOrder = MARKER_BEACON_RENDER_ORDER;
   ring.renderOrder = MARKER_BEACON_RENDER_ORDER;
   bar.renderOrder = MARKER_BEACON_RENDER_ORDER;
@@ -2761,7 +2767,7 @@ function createAgentMarker(initialSeat: SeatView) {
   marker.traverse((object) => {
     object.layers.set(MARKER_OVERLAY_LAYER);
   });
-  return { marker, label, beacon, texture, update };
+  return { marker, label, beacon, texture, update, updateBeacon };
 }
 
 function createLitterLevelGauge(initialLevel: number, initialMaxLevel = 100) {
@@ -5527,7 +5533,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       shadow.position.y = 0.012;
       root.add(shadow);
       const marker = createAgentMarker(seat);
-      marker.beacon.visible = seat.blocked;
+      marker.updateBeacon(seat);
       root.add(marker.marker);
       billboardObjects.push(marker.label, marker.beacon);
       let clickProxy: THREE.Object3D | null = null;
@@ -5675,12 +5681,23 @@ float shoreOverlayWaterSignal( vec3 color ) {
           entry.ambientInitialized = false;
         }
         if (seat.seatId !== "queue") entry.seatId = seat.seatId;
+        const isSecondaryAutonomous =
+          seat.seatId !== "queue" &&
+          !seat.blocked &&
+          AUTONOMOUS_STATUSES.has(seat.status);
+        if (!isSecondaryAutonomous && entry.care) {
+          leaveCareQueue(entry.care.intent, entry.catId);
+          releaseCareFacility(entry.care.intent, entry.catId);
+          entry.care = null;
+          entry.careWaypoints.length = 0;
+        }
         entry.careRetrySeconds = Math.max(
           0,
           entry.careRetrySeconds - delta,
         );
 
         if (
+          isSecondaryAutonomous &&
           !entry.care &&
           seat.seatId !== "queue" &&
           !seat.blocked &&
@@ -5862,10 +5879,6 @@ float shoreOverlayWaterSignal( vec3 color ) {
         if (entry.clickProxy) entry.clickProxy.visible = !insideLitterBox;
         let ambientAnimation: string | null = null;
         if (!entry.care) {
-          const isSecondaryAutonomous =
-            seat.seatId !== "queue" &&
-            !seat.blocked &&
-            AUTONOMOUS_STATUSES.has(seat.status);
           if (!entry.ambientInitialized) {
             entry.root.position.copy(homeTarget);
             entry.ambientTarget.copy(homeTarget);
@@ -5877,13 +5890,20 @@ float shoreOverlayWaterSignal( vec3 color ) {
           }
 
           if (!isSecondaryAutonomous) {
-            entry.root.position.copy(homeTarget);
             entry.ambientTarget.copy(homeTarget);
             entry.careLastTarget.copy(homeTarget);
-            entry.careWaypoints.length = 0;
             entry.ambientPhase = "resting";
             entry.ambientTimer = randomBetween(3.5, 7.5);
-            ambientAnimation = seat.status === "working" ? "work" : "idle";
+            const arrivedHome = moveSecondaryTowards(
+              entry,
+              homeTarget,
+              navigationObstacles,
+            );
+            ambientAnimation = arrivedHome
+              ? seat.status === "working"
+                ? "work"
+                : "idle"
+              : "walk";
           } else if (entry.ambientPhase === "resting") {
             entry.ambientTimer -= delta;
             ambientAnimation =
@@ -5958,7 +5978,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
           }
         }
         entry.marker.update(seat);
-        entry.marker.beacon.visible = seat.blocked;
+        entry.marker.updateBeacon(seat);
         // 책상에서 일하는 동안에는 머리 위가 아니라 모니터 위쪽에 뜬다.
         entry.marker.marker.position.lerp(
           markerAnchorFor(
@@ -6524,8 +6544,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const animationTime = suppressMonitorInteraction ? 0 : clock.elapsedTime;
       const primaryView = seatsRef.current[0] ?? DEFAULT_SEAT_VIEW;
       const isPrimaryBlocked = primaryView.blocked;
+      const isPrimaryWorking = primaryView.status === "working";
       primaryMarker.update(primaryView);
-      primaryMarker.beacon.visible = isPrimaryBlocked;
+      primaryMarker.updateBeacon(primaryView);
       workstationGroups.forEach((workstation, seatId) => {
         workstation.visible =
           layoutEditorEnabled ||
@@ -6763,6 +6784,12 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const isAutonomous =
         mixer !== null &&
         AUTONOMOUS_STATUSES.has(motionRef.current.status);
+      if (!isAutonomous && primaryCare) {
+        leaveCareQueue(primaryCare.intent, primaryCareCatId);
+        releaseCareFacility(primaryCare.intent, primaryCareCatId);
+        primaryCare = null;
+        primaryCareRetrySeconds = 0;
+      }
       let isMoving = false;
       let isKneading = false;
       let movementSpeed = TASK_MOVE_SPEED;
@@ -6850,6 +6877,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
         ambientTarget.copy(currentPosition);
         avoidanceWaypoints.length = 0;
         setAmbientLabel("간식을 발견하고 걸어가는 중");
+      }
+      if (!isAutonomous && activeSnackPhase !== "none") {
+        resolveActiveSnack(false);
       }
       if (activeSnackPhase !== "none") {
         snackGroup.position.y =
@@ -7328,14 +7358,18 @@ float shoreOverlayWaterSignal( vec3 color ) {
           }
         }
       } else {
-        desiredPosition.copy(worldTargets[motionRef.current.location]);
+        desiredPosition.copy(
+          isPrimaryWorking
+            ? codingDeskTarget
+            : worldTargets[motionRef.current.location],
+        );
         const taskDistance = currentPosition.distanceTo(desiredPosition);
         isMoving = taskDistance > TASK_ARRIVAL_DISTANCE;
         if (isMoving) {
           requestedWalkFadeSeconds = 0.28;
         } else {
           currentPosition.copy(desiredPosition);
-          if (motionRef.current.location === "coding") {
+          if (isPrimaryWorking) {
             isKneading = true;
             playAnimation(DESK_KNEADING_ANIMATION_KEY, 0.24);
           } else {
@@ -7357,7 +7391,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
         (isAutonomous &&
           ambientDestination === "desk" &&
           ambientPhase === "walking") ||
-        (!isAutonomous && motionRef.current.location === "coding");
+        (!isAutonomous && isPrimaryWorking);
       const wantsLitterInteraction = primaryCare?.intent === "toilet";
       const activeSceneObstacles = getRuntimeSceneObstacles(
         activeSeatCountRef.current,
