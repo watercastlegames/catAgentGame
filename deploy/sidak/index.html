@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#86c6cb" />
+    <meta
+      name="description"
+      content="Agent Forest — AI 고양이 에이전트와 함께하는 해변 사무실"
+    />
+    <meta
+      http-equiv="refresh"
+      content="0; url=https://agent-forest-raccoon.sminia82.chatgpt.site/"
+    />
+    <title>Agent Forest</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family:
+          "Pretendard",
+          "Noto Sans KR",
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          sans-serif;
+        background: #a7dfe0;
+        color: #684f4b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      body {
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(circle at 50% 42%, rgb(255 247 211 / 94%) 0 16%, transparent 17%),
+          radial-gradient(circle at 50% 58%, #f7d895 0 34%, transparent 35%),
+          linear-gradient(180deg, #7dd5da 0%, #b4e8df 100%);
+      }
+
+      main {
+        display: grid;
+        justify-items: center;
+        gap: 16px;
+        width: min(82vw, 420px);
+        padding: 28px 24px;
+        border: 3px solid rgb(114 82 73 / 72%);
+        border-radius: 28px;
+        background: rgb(255 250 229 / 94%);
+        box-shadow:
+          0 16px 34px rgb(78 104 104 / 22%),
+          inset 0 2px 0 rgb(255 255 255 / 80%);
+        text-align: center;
+      }
+
+      .mark {
+        display: grid;
+        place-items: center;
+        width: 66px;
+        height: 66px;
+        border: 3px solid rgb(114 82 73 / 72%);
+        border-radius: 50%;
+        background: #f5be77;
+        font-size: 34px;
+        line-height: 1;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(25px, 7vw, 34px);
+        line-height: 1.2;
+      }
+
+      p {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      a {
+        display: inline-flex;
+        min-height: 48px;
+        align-items: center;
+        justify-content: center;
+        padding: 0 22px;
+        border: 3px solid rgb(114 82 73 / 72%);
+        border-radius: 16px;
+        background: #f1a68f;
+        color: #684f4b;
+        font-size: 16px;
+        font-weight: 900;
+        text-decoration: none;
+        box-shadow: 0 5px 0 #c97f70;
+      }
+    </style>
+    <script>
+      (() => {
+        const target = new URL("https://agent-forest-raccoon.sminia82.chatgpt.site/");
+        target.search = window.location.search;
+        target.hash = window.location.hash;
+        window.location.replace(target.toString());
+      })();
+    </script>
+  </head>
+  <body>
+    <main>
+      <div class="mark" aria-hidden="true">🐾</div>
+      <h1>Agent Forest</h1>
+      <p>해변 사무실로 이동하고 있어요.</p>
+      <a href="https://agent-forest-raccoon.sminia82.chatgpt.site/">바로 입장하기</a>
+    </main>
+  </body>
+</html>
