@@ -7863,6 +7863,48 @@ button {
   background: rgba(220, 231, 168, 0.35);
 }
 
+/* 언어 토글 — 호르무즈와 같은 알약 그룹 구조를 Agent Forest 색으로.
+   버튼 폭을 고정해 ko/en 을 오갈 때 상단바가 흔들리지 않게 한다. */
+.developer-nav .lang-switch {
+  display: inline-flex;
+  margin-left: auto;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 250, 240, 0.9);
+  gap: 2px;
+}
+
+.developer-nav .lang-switch button {
+  min-width: 64px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--brown-soft);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    background 0.18s ease,
+    color 0.18s ease;
+}
+
+.developer-nav .lang-switch button:hover {
+  color: var(--forest-800);
+}
+
+.developer-nav .lang-switch button.active {
+  background: var(--forest-800);
+  color: var(--paper);
+}
+
+.developer-nav .lang-switch button:focus-visible {
+  outline: 2px solid var(--forest-600);
+  outline-offset: 2px;
+}
+
 /* 공통 라벨 */
 .developer-page .eyebrow,
 .developer-page .section-heading > span,
