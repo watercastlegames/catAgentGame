@@ -399,20 +399,46 @@ q = '오늘 삼성전자'
    **`message_b64` 없이 `message`만 보내는 구형 클라이언트도 한국어가 깨지지 않는다** — 직접 호출 실측 확인.
 6. 테스트 13 → **40개** 전부 통과. 적대적 검증에서 나온 blocker(ScriptTimeout)·major 5건 반영 완료.
 
-### ⚠ 발견된 미해결 문제 — 공개 Sites 배포가 구버전으로 롤백돼 있다
+### ⚠ 검증 도구 함정 — `curl`로 한국어를 테스트하면 거짓 실패가 난다 (중요)
 
-2026-08-01 오후 실측: 공개 `POST /api/pm-worker/chat`의 **한국어 최신 정보 질문이 실패**한다
-("메시지가 깨져서…" 응답). 원인 분리 결과:
+2026-08-01 오후, 공개 API가 한국어 질문에 "메시지가 깨져서…"로 답해 **Sites 배포가 구버전으로 롤백됐다고
+오진했다. 사실이 아니었다.** 배포는 정상이고 전 구간이 제대로 동작한다.
 
-- 서버(ASP·5201·5202)는 정상 — 동일 형태 요청을 직접 보내면(신형 b64·구형 message-only 모두) 완벽 동작.
-- 영어 질문("samsung electronics stock price")은 **공개 경로에서도 완벽 동작** — 웹 분기·인용·출처 전부 정상.
-- 즉 현재 chatgpt.site에 배포된 Worker는 `f343310`(v71)이 아니라 **그 이전 빌드**다.
-  `message_b64`/`web_search`를 보내지 않고, 한국어 `message`가 깨진 채 도착한다.
-  GitHub `origin/main`은 정상 코드를 갖고 있다 — **Sites 재배포만 하면 복구된다.**
-  재배포에는 Sites 소스 저장소 임시 토큰이 필요해 이 세션에서는 불가능했다.
+진짜 원인은 **테스트에 쓴 `curl` 자체**였다. Windows Git Bash에서
 
-재배포 전까지의 실사용 영향: 공개 사이트에서 영어 최신 질문·일반 대화는 정상, 한국어 최신 질문만 실패.
-재배포 후에는 이 문서 11절 판정 기준을 그대로 다시 돌리면 된다.
+```bash
+curl -d '{"prompt":"오늘 삼성전자 주가 알려줘"}'   # ← 셸이 한국어를 U+FFFD로 파괴한 뒤 전송
+```
+
+인자의 한국어가 콘솔 코드페이지를 거치며 치환 문자(U+FFFD)로 바뀐 채 나간다.
+서버는 받은 그대로(이미 깨진 값) 처리했을 뿐이다. 7절이 경고한 PowerShell Here-String 함정과 같은 계열이다.
+
+**증거** — ASP에 임시 진단을 넣어 Worker가 실제로 보낸 본문을 확인한 결과:
+
+| 보낸 방법 | ASP가 받은 본문 |
+|---|---|
+| `curl -d '…한국어…'` | `message=DIAGPROBE+%EF%BF%BD%EF%BF%BD%EF%BF%BD…` ← 이미 U+FFFD |
+| Python `requests(json=…)` | `message=DIAGPROBE+%EA%B3%A0%EC%96%91…&message_b64=RElBR1BST0JF…` ← 정상 |
+
+Python 경로에서는 **`message_b64`와 `web_search`가 정상적으로 함께 전송된다** —
+즉 배포된 Worker는 `f343310`(v71) 최신 빌드가 맞다. 재배포는 필요 없었다.
+
+**한국어 검증은 반드시 UTF-8이 보장되는 방법으로 할 것.** 브라우저, 또는:
+
+```python
+requests.post(URL, json={"prompt": "오늘 삼성전자 주가 알려줘", "sessionId": ""}, timeout=200)
+```
+
+이 방법으로 11절 판정 기준을 재실행해 **전 항목 통과**를 확인했다(2026-08-01):
+한국어 온전 / 삼성전자·SK하이닉스 구분 / 조회 기준 16:10 KST 명시 / 실제 출처 URL 4개 /
+문단 줄바꿈 / 사실별 `[n]` 인용. 원달러 환율 질문도 출처 4개와 함께 정상.
+
+### 참고 — `https://sidak.kr/autodev/GameCreator/catAgentGame/`
+
+이 주소도 배포돼 있다(2026-07-31). 다만 게임 본체가 아니라 **`index.html` 한 장짜리 리다이렉트 문패**로,
+meta refresh와 `location.replace`로 `agent-forest-raccoon.sminia82.chatgpt.site`로 넘긴다.
+서버 전체를 훑어도 `catAgent`/`agent-forest` 산출물은 이 문패와 5202 PID 메모 파일뿐이다.
+게임은 Cloudflare Worker + D1 위에서 돌기 때문에 IIS 정적 호스팅으로 대체할 수 없다.
 
 ### 이번에 겪은 운영 사고 기록 (재발 방지 장치 포함)
 
