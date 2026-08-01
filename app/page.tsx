@@ -5155,6 +5155,7 @@ export default function Home() {
                 )}
                 <div className="legal-links">
                   <a href="/cats">고양이 스타일 전체 보기</a>
+                  <a href="/developer">개발자 정보</a>
                   <a href="/legal#terms">이용약관</a>
                   <a href="/legal#privacy">개인정보처리방침</a>
                   <a href="/legal#license">라이선스</a>
