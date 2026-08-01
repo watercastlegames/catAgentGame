@@ -7184,13 +7184,19 @@ button {
   white-space: nowrap;
 }
 
+/* display:grid 를 다시 켜는 순간, 세로형 개편 전에 쓰던 2단 레이아웃
+   (.approval-modal 의 `grid-template-columns: 180px minmax(0, 1fr)` + `gap: 24px`, 1395행)이
+   같이 되살아난다. 그러면 본문이 옛 매니저 고양이 자리인 180px 칸에 갇혀
+   왼쪽만 좁게 나오고 오른쪽이 비어 보인다. 여기서 단일 컬럼으로 못박는다. */
 .style-purchase-modal,
 .approval-modal {
   box-sizing: border-box;
   display: grid;
   height: min(80%, 680px);
   max-height: 80%;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
+  gap: 0;
   overflow: hidden;
 }
 
