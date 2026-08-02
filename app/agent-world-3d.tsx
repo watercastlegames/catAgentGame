@@ -969,8 +969,20 @@ function createWorldAtmosphereBackdrop() {
 varying vec2 atmosphereUv;
 
 void main() {
-  atmosphereUv = uv;
-  gl_Position = vec4(position.xy, 0.9999, 1.0);
+  vec4 atmosphereWorldPosition = modelMatrix * vec4(position, 1.0);
+  float panoramaAzimuth = atan(
+    atmosphereWorldPosition.x,
+    -atmosphereWorldPosition.z
+  );
+  atmosphereUv = vec2(
+    fract(0.5 + panoramaAzimuth / 6.28318530718),
+    clamp(
+      0.715 + (atmosphereWorldPosition.y + 6.2) * 0.035,
+      0.0,
+      1.0
+    )
+  );
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`,
     fragmentShader: `
 varying vec2 atmosphereUv;
@@ -1019,10 +1031,10 @@ void main() {
   float cloudBand = smoothstep(horizon + 0.03, horizon + 0.12, uv.y) *
     (1.0 - smoothstep(horizon + 0.2, horizon + 0.34, uv.y));
   float cloudShape =
-    softEllipse(uv, vec2(0.13, horizon + 0.15), vec2(0.09, 0.025)) +
-    softEllipse(uv, vec2(0.21, horizon + 0.16), vec2(0.075, 0.022)) +
-    softEllipse(uv, vec2(0.76, horizon + 0.1), vec2(0.085, 0.023)) +
-    softEllipse(uv, vec2(0.84, horizon + 0.115), vec2(0.06, 0.018));
+    softEllipse(uv, vec2(0.41, horizon + 0.15), vec2(0.055, 0.025)) +
+    softEllipse(uv, vec2(0.46, horizon + 0.16), vec2(0.045, 0.022)) +
+    softEllipse(uv, vec2(0.56, horizon + 0.1), vec2(0.052, 0.023)) +
+    softEllipse(uv, vec2(0.61, horizon + 0.115), vec2(0.038, 0.018));
   float cloudOpacity = clamp(cloudShape, 0.0, 1.0) * cloudBand * mix(0.32, 0.1, nightAmount);
   color = mix(color, mix(vec3(1.0, 0.97, 0.89), vec3(0.56, 0.61, 0.76), nightAmount), cloudOpacity);
 
@@ -1049,8 +1061,8 @@ void main() {
   color += moonlightColor * moonGlow * moonVisibility * 0.62;
   color = mix(color, moonlightColor * mix(0.82, 1.0, moonShade), moonDisc * moonVisibility * 0.94);
 
-  float leftIsland = softEllipse(uv, vec2(0.13, horizon + 0.003), vec2(0.12, 0.017));
-  float rightIsland = softEllipse(uv, vec2(0.85, horizon + 0.001), vec2(0.085, 0.013));
+  float leftIsland = softEllipse(uv, vec2(0.43, horizon + 0.003), vec2(0.07, 0.017));
+  float rightIsland = softEllipse(uv, vec2(0.59, horizon + 0.001), vec2(0.052, 0.013));
   float distantIsland = clamp(leftIsland + rightIsland, 0.0, 1.0);
   color = mix(color, mix(vec3(0.26, 0.43, 0.45), vec3(0.18, 0.22, 0.34), nightAmount), distantIsland * 0.72);
 
@@ -1084,15 +1096,82 @@ void main() {
     depthWrite: false,
     transparent: false,
     toneMapped: false,
+    side: THREE.BackSide,
   });
   disableOutline(material);
 
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
-  mesh.name = "world-atmosphere-horizon-backdrop";
+  const mesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(18.5, 18.5, 48, 128, 1, true),
+    material,
+  );
+  mesh.name = "world-atmosphere-horizon-cyclorama";
+  mesh.position.y = -7;
   mesh.frustumCulled = false;
   mesh.renderOrder = -1000;
   mesh.layers.set(WORLD_LAYER);
   return { mesh, material, uniforms };
+}
+
+function createCurvedOceanGeometry() {
+  const radius = 18.45;
+  const flatRadius = 7.6;
+  const oceanDepth = 12.25;
+  const radialSegments = 48;
+  const angularSegments = 128;
+  const positions: number[] = [0, -0.07, 0];
+  const uvs: number[] = [0.5, 0.5];
+  const indices: number[] = [];
+
+  for (let ring = 1; ring <= radialSegments; ring += 1) {
+    const ringRatio = ring / radialSegments;
+    const ringRadius = radius * ringRatio;
+    const curveRatio = THREE.MathUtils.clamp(
+      (ringRadius - flatRadius) / (radius - flatRadius),
+      0,
+      1,
+    );
+    const smoothCurve =
+      curveRatio * curveRatio * (3 - 2 * curveRatio);
+    const ringHeight = -0.07 - oceanDepth * smoothCurve;
+
+    for (let segment = 0; segment <= angularSegments; segment += 1) {
+      const angle = (segment / angularSegments) * Math.PI * 2;
+      const x = Math.sin(angle) * ringRadius;
+      const z = -Math.cos(angle) * ringRadius;
+      positions.push(x, ringHeight, z);
+      uvs.push(x / (radius * 2) + 0.5, z / (radius * 2) + 0.5);
+    }
+  }
+
+  const firstRingStart = 1;
+  for (let segment = 0; segment < angularSegments; segment += 1) {
+    indices.push(0, firstRingStart + segment + 1, firstRingStart + segment);
+  }
+
+  const ringStride = angularSegments + 1;
+  for (let ring = 1; ring < radialSegments; ring += 1) {
+    const innerStart = 1 + (ring - 1) * ringStride;
+    const outerStart = innerStart + ringStride;
+    for (let segment = 0; segment < angularSegments; segment += 1) {
+      const innerLeft = innerStart + segment;
+      const innerRight = innerLeft + 1;
+      const outerLeft = outerStart + segment;
+      const outerRight = outerLeft + 1;
+      indices.push(innerLeft, innerRight, outerLeft);
+      indices.push(innerRight, outerRight, outerLeft);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  geometry.computeBoundingSphere();
+  return geometry;
 }
 
 function createIllustratedMaterial(color: number) {
@@ -3337,7 +3416,7 @@ export default function AgentWorld3D({
       });
     };
 
-    const camera = new THREE.OrthographicCamera(-5, 5, 6, -6, 0.1, 50);
+    const camera = new THREE.OrthographicCamera(-5, 5, 6, -6, 0.1, 100);
     const cameraBase = new THREE.Vector3(0, 9.2, 12.9);
     const cameraLookAt = new THREE.Vector3(0, 0.2, 0);
     const cameraBaseOffset = cameraBase.clone().sub(cameraLookAt);
@@ -3826,21 +3905,12 @@ export default function AgentWorld3D({
       4,
       renderer.capabilities.getMaxAnisotropy(),
     );
-    const worldViewportSizeUniform = {
-      value: new THREE.Vector2(1, 1),
-    };
     const oceanMaterial = new THREE.MeshBasicMaterial({
       map: oceanTexture,
-      transparent: true,
+      transparent: false,
       toneMapped: false,
     });
     oceanMaterial.onBeforeCompile = (shader) => {
-      shader.uniforms.worldViewportSize = worldViewportSizeUniform;
-      shader.fragmentShader = shader.fragmentShader.replace(
-        "#include <common>",
-        `#include <common>
-uniform vec2 worldViewportSize;`,
-      );
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <map_fragment>",
         `#ifdef USE_MAP
@@ -3858,11 +3928,6 @@ uniform vec2 worldViewportSize;`,
     0.0,
     1.0
   );
-  float worldScreenY =
-    gl_FragCoord.y / max( worldViewportSize.y, 1.0 );
-  float horizonReveal = smoothstep( 0.68, 0.94, worldScreenY );
-  sampledDiffuseColor.a *= 1.0 - horizonReveal * 0.965;
-
   #ifdef DECODE_VIDEO_TEXTURE
 
     sampledDiffuseColor = sRGBTransferEOTF( sampledDiffuseColor );
@@ -3875,15 +3940,13 @@ uniform vec2 worldViewportSize;`,
       );
     };
     oceanMaterial.customProgramCacheKey = () =>
-      "extended-ocean-atmosphere-horizon-v3";
+      "curved-ocean-cyclorama-v1";
     disableOutline(oceanMaterial);
     const outerOcean = new THREE.Mesh(
-      new THREE.PlaneGeometry(42, 42),
+      createCurvedOceanGeometry(),
       oceanMaterial,
     );
-    outerOcean.name = "extended-ocean-floor";
-    outerOcean.rotation.x = -Math.PI / 2;
-    outerOcean.position.y = -0.07;
+    outerOcean.name = "curved-ocean-cyclorama-floor";
     scene.add(outerOcean);
 
     const groundTexture = textureLoader.load(
@@ -3906,12 +3969,10 @@ uniform vec2 worldViewportSize;`,
     const oceanTideUniform = { value: 0 };
     groundMaterial.onBeforeCompile = (shader) => {
       shader.uniforms.oceanTideTime = oceanTideUniform;
-      shader.uniforms.worldViewportSize = worldViewportSizeUniform;
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <common>",
         `#include <common>
 uniform float oceanTideTime;
-uniform vec2 worldViewportSize;
 
 float shoreWaterSignal( vec3 color ) {
   float turquoiseLead = ( color.g + color.b ) * 0.5 - color.r;
@@ -3985,11 +4046,6 @@ float shoreWaterSignal( vec3 color ) {
     waterSurface;
   float foamPulse = ( tideBreath * 0.5 + 0.5 ) * shoreFoam;
   sampledDiffuseColor.rgb += vec3( 0.035, 0.065, 0.075 ) * foamPulse;
-  float worldScreenY =
-    gl_FragCoord.y / max( worldViewportSize.y, 1.0 );
-  float horizonReveal = smoothstep( 0.72, 0.955, worldScreenY );
-  sampledDiffuseColor.a *=
-    1.0 - horizonReveal * waterSurface * 0.94;
 
   #ifdef DECODE_VIDEO_TEXTURE
 
@@ -4003,7 +4059,7 @@ float shoreWaterSignal( vec3 color ) {
       );
     };
     groundMaterial.customProgramCacheKey = () =>
-      "shore-tide-atmosphere-horizon-v5";
+      "shore-tide-curved-ocean-v1";
     disableOutline(groundMaterial);
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(10, 15),
@@ -4021,12 +4077,9 @@ float shoreWaterSignal( vec3 color ) {
       toneMapped: false,
     });
     shoreWaterOverlayMaterial.onBeforeCompile = (shader) => {
-      shader.uniforms.worldViewportSize = worldViewportSizeUniform;
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <common>",
         `#include <common>
-uniform vec2 worldViewportSize;
-
 float shoreOverlayWaterSignal( vec3 color ) {
   float turquoiseLead = ( color.g + color.b ) * 0.5 - color.r;
   return smoothstep( 0.02, 0.14, turquoiseLead );
@@ -4056,9 +4109,6 @@ float shoreOverlayWaterSignal( vec3 color ) {
   float foamMask =
     foamBrightness * smoothstep( 0.035, 0.5, nearbyWater );
   shoreColor.a *= clamp( max( waterMask, foamMask ), 0.0, 1.0 );
-  float worldScreenY =
-    gl_FragCoord.y / max( worldViewportSize.y, 1.0 );
-  shoreColor.a *= 1.0 - smoothstep( 0.72, 0.955, worldScreenY ) * 0.94;
 
   #ifdef DECODE_VIDEO_TEXTURE
 
@@ -4072,7 +4122,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       );
     };
     shoreWaterOverlayMaterial.customProgramCacheKey = () =>
-      "shore-water-atmosphere-horizon-v3";
+      "shore-water-curved-ocean-v1";
     disableOutline(shoreWaterOverlayMaterial);
     const shoreWaterOverlay = new THREE.Mesh(
       new THREE.PlaneGeometry(10, 15),
@@ -6593,12 +6643,12 @@ float shoreOverlayWaterSignal( vec3 color ) {
       uniforms.dawnAmount.value = sample.dawn;
       uniforms.starAmount.value = sample.stars;
       uniforms.sunPosition.value.set(
-        0.5 + sample.sunX * 0.39,
-        0.715 + sample.sunHeight * 0.2 - sample.sunset * 0.023,
+        0.5 + sample.sunX * 0.055,
+        0.715 + sample.sunHeight * 0.12 - sample.sunset * 0.017,
       );
       uniforms.moonPosition.value.set(
-        0.5 + sample.moonX * 0.39,
-        0.715 + sample.moonHeight * 0.19,
+        0.5 + sample.moonX * 0.055,
+        0.715 + sample.moonHeight * 0.12,
       );
       uniforms.sunVisibility.value = sample.sunVisibility;
       uniforms.moonVisibility.value = sample.moonVisibility;
@@ -6676,7 +6726,6 @@ float shoreOverlayWaterSignal( vec3 color ) {
       camera.bottom = -viewHeight / 2;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
-      renderer.getDrawingBufferSize(worldViewportSizeUniform.value);
     };
 
     const activePointers = new Map<number, THREE.Vector2>();

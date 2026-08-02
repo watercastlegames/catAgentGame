@@ -528,21 +528,22 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /간식을 먹고 우유를 마시는 중/);
   assert.match(world3d, /beach-island-ocean-v4-style-locked\.png/);
   assert.match(world3d, /ocean-water-tile-v1\.png/);
-  assert.match(world3d, /extended-ocean-floor/);
-  assert.match(world3d, /new THREE\.PlaneGeometry\(42, 42\)/);
-  assert.match(world3d, /shore-tide-atmosphere-horizon-v5/);
+  assert.match(world3d, /curved-ocean-cyclorama-floor/);
+  assert.match(world3d, /createCurvedOceanGeometry\(\)/);
+  assert.match(world3d, /new THREE\.CylinderGeometry\(18\.5, 18\.5, 48, 128, 1, true\)/);
+  assert.match(world3d, /shore-tide-curved-ocean-v1/);
   assert.match(world3d, /uniform float oceanTideTime/);
   assert.match(world3d, /shoreWaterSignal/);
   assert.match(world3d, /tideBreath/);
   assert.match(world3d, /tideScale = tideBreath \* 0\.014/);
   assert.match(world3d, /surfaceRipple/);
-  assert.match(world3d, /shore-water-atmosphere-horizon-v3/);
+  assert.match(world3d, /shore-water-curved-ocean-v1/);
   assert.match(world3d, /animated-shore-water-overlay/);
   assert.match(world3d, /shoreOverlayWaterSignal/);
   assert.match(world3d, /shorelineScale/);
   assert.match(world3d, /shoreWaterOverlay\.scale\.set/);
   assert.match(world3d, /oceanTexture\.offset\.set/);
-  assert.match(world3d, /world-atmosphere-horizon-backdrop/);
+  assert.match(world3d, /world-atmosphere-horizon-cyclorama/);
   assert.match(world3d, /WORLD_DAY_NIGHT_STORAGE_KEY/);
   assert.match(world3d, /worldDayNightPhaseAt\(Date\.now\(\), worldDayNightAnchor\)/);
   assert.match(world3d, /uniform float sunsetAmount/);
@@ -692,7 +693,7 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.doesNotMatch(world3d, /WORKSTATION_OUTLINE_THICKNESS/);
   assert.doesNotMatch(world3d, /WORKSTATION_OUTLINE_ALPHA/);
   assert.match(world3d, /FAR_OCEAN_STYLE_COLOR = 0x77cbbd/);
-  assert.match(world3d, /extended-ocean-atmosphere-horizon-v3/);
+  assert.match(world3d, /curved-ocean-cyclorama-v1/);
   assert.match(
     world3d,
     /new THREE\.Fog\(FAR_OCEAN_STYLE_COLOR, 15, 27\)/,
