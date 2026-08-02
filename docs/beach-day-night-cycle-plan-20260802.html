@@ -1,0 +1,520 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent Forest · 해변 낮·노을·밤 순환 기획서</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #4e433d;
+      --muted: #746861;
+      --line: rgba(99, 79, 68, 0.18);
+      --paper: #fffaf0;
+      --paper-strong: #fffdf8;
+      --mint: #65b9a6;
+      --mint-dark: #377e72;
+      --coral: #ed987e;
+      --sun: #f4c55f;
+      --night: #26385f;
+      --shadow: 0 22px 60px rgba(77, 57, 43, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% 0%, rgba(255, 225, 157, 0.34), transparent 34rem),
+        linear-gradient(180deg, #f7efe0 0%, #f2eadb 100%);
+      font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+      line-height: 1.65;
+      word-break: keep-all;
+    }
+
+    a { color: inherit; }
+    button, input { font: inherit; }
+    .wrap { width: min(1180px, calc(100% - 32px)); margin: 0 auto; }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 76px 0 58px;
+      color: #fffdf7;
+      background:
+        linear-gradient(118deg, rgba(21, 72, 88, 0.18), rgba(63, 43, 89, 0.28)),
+        linear-gradient(135deg, #55c4ce 0%, #f2c675 45%, #ee987d 71%, #5a658e 100%);
+    }
+    .hero::before,
+    .hero::after {
+      content: "";
+      position: absolute;
+      border-radius: 50%;
+      pointer-events: none;
+    }
+    .hero::before {
+      width: 380px; height: 380px; right: -80px; top: -170px;
+      background: radial-gradient(circle, rgba(255,255,225,.96) 0 10%, rgba(255,222,129,.45) 22%, transparent 64%);
+    }
+    .hero::after {
+      width: 700px; height: 160px; left: -140px; bottom: -115px;
+      background: rgba(255,255,255,.2);
+      box-shadow: 0 -18px 0 rgba(255,255,255,.08);
+    }
+    .hero-inner { position: relative; z-index: 1; max-width: 900px; }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 7px 13px; border: 1px solid rgba(255,255,255,.48);
+      border-radius: 999px; background: rgba(54,62,78,.16);
+      font-size: 13px; font-weight: 800; letter-spacing: .08em;
+    }
+    .hero h1 {
+      max-width: 850px; margin: 20px 0 14px;
+      font-size: clamp(38px, 7vw, 74px); line-height: 1.04; letter-spacing: -.055em;
+      text-shadow: 0 4px 20px rgba(50,48,57,.16);
+    }
+    .hero p { max-width: 760px; margin: 0; font-size: clamp(16px, 2vw, 21px); font-weight: 650; }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 25px; }
+    .hero-meta span {
+      padding: 8px 12px; border-radius: 12px;
+      background: rgba(255,255,255,.2); border: 1px solid rgba(255,255,255,.25);
+      backdrop-filter: blur(8px); font-size: 13px; font-weight: 800;
+    }
+
+    .toc {
+      position: sticky; top: 0; z-index: 20;
+      border-bottom: 1px solid var(--line); background: rgba(255,250,240,.88);
+      backdrop-filter: blur(14px);
+    }
+    .toc .wrap { display: flex; gap: 7px; padding: 10px 0; overflow-x: auto; scrollbar-width: none; }
+    .toc a { flex: 0 0 auto; padding: 8px 12px; border-radius: 999px; text-decoration: none; font-size: 13px; font-weight: 850; }
+    .toc a:hover { background: #fff; box-shadow: 0 4px 18px rgba(77,57,43,.1); }
+
+    main { padding: 34px 0 80px; }
+    section { scroll-margin-top: 74px; margin: 28px 0; }
+    .section-head { display: grid; grid-template-columns: 72px 1fr; gap: 14px; align-items: start; margin-bottom: 18px; }
+    .section-no {
+      display: grid; place-items: center; width: 60px; height: 40px;
+      border-radius: 13px; color: #fff; background: var(--mint-dark);
+      font-size: 13px; font-weight: 900; letter-spacing: .08em;
+      box-shadow: 0 6px 0 rgba(52,100,91,.18);
+    }
+    h2 { margin: 0; font-size: clamp(25px, 4vw, 38px); line-height: 1.2; letter-spacing: -.035em; }
+    .section-head p { grid-column: 2; margin: -8px 0 0; color: var(--muted); }
+
+    .card {
+      border: 1px solid var(--line); border-radius: 26px;
+      background: rgba(255,253,248,.92); box-shadow: var(--shadow);
+    }
+    .decision { display: grid; grid-template-columns: 1.35fr .65fr; overflow: hidden; }
+    .decision-copy { padding: 31px; }
+    .decision-copy h3 { margin: 0 0 8px; font-size: 26px; letter-spacing: -.03em; }
+    .decision-copy p { margin: 0; color: var(--muted); }
+    .decision-copy strong { color: #c46a55; }
+    .decision-number {
+      display: grid; place-items: center; min-height: 180px; padding: 24px; text-align: center;
+      color: #fff; background: linear-gradient(145deg, #efaf68, #e68175 58%, #617096);
+    }
+    .decision-number b { display: block; font-size: 66px; line-height: 1; letter-spacing: -.06em; }
+    .decision-number span { display: block; margin-top: 8px; font-size: 13px; font-weight: 900; letter-spacing: .12em; }
+
+    .simulator { padding: 16px; }
+    .scene-shell {
+      display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(250px, .7fr); gap: 16px;
+    }
+    .scene-preview {
+      --scene-brightness: 1.02;
+      --scene-saturation: 1.05;
+      --scene-sepia: .02;
+      --tint: rgba(255,196,100,.04);
+      --stars: 0;
+      --warmth: .16;
+      --night-glow: 0;
+      position: relative; isolation: isolate; overflow: hidden;
+      min-height: 610px; border-radius: 20px; background: #49afc0;
+    }
+    .scene-preview img {
+      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 52%;
+      filter: brightness(var(--scene-brightness)) saturate(var(--scene-saturation)) sepia(var(--scene-sepia));
+      transition: filter .18s linear;
+    }
+    .scene-tint { position: absolute; inset: 0; background: var(--tint); mix-blend-mode: multiply; pointer-events: none; }
+    .sun, .moon {
+      position: absolute; z-index: 3; width: 62px; aspect-ratio: 1; border-radius: 50%;
+      translate: -50% -50%; pointer-events: none; transition: opacity .2s linear;
+    }
+    .sun {
+      left: 22%; top: 15%; background: #fff6c8;
+      box-shadow: 0 0 14px #fff7c6, 0 0 44px 18px rgba(255,211,101,.72), 0 0 95px 48px rgba(255,183,79,.26);
+    }
+    .moon {
+      left: 82%; top: 16%; background: #fff9d8;
+      box-shadow: inset -12px -8px 0 rgba(160,176,204,.22), 0 0 30px rgba(203,224,255,.7), 0 0 70px rgba(145,177,232,.32);
+      opacity: 0;
+    }
+    .stars {
+      position: absolute; inset: 0; z-index: 2; opacity: var(--stars); pointer-events: none;
+      background-image:
+        radial-gradient(circle at 8% 12%, #fff 0 1px, transparent 1.8px),
+        radial-gradient(circle at 18% 29%, #fff8c7 0 1.3px, transparent 2px),
+        radial-gradient(circle at 34% 10%, #fff 0 1px, transparent 1.8px),
+        radial-gradient(circle at 47% 21%, #dfeeff 0 1.2px, transparent 2px),
+        radial-gradient(circle at 61% 8%, #fff8cf 0 1px, transparent 1.9px),
+        radial-gradient(circle at 74% 27%, #fff 0 1.4px, transparent 2.2px),
+        radial-gradient(circle at 91% 13%, #e1f2ff 0 1.2px, transparent 2px),
+        radial-gradient(circle at 28% 41%, #fff 0 1px, transparent 1.7px),
+        radial-gradient(circle at 86% 44%, #fff7c4 0 1px, transparent 1.8px);
+      animation: twinkle 4.6s ease-in-out infinite alternate;
+    }
+    @keyframes twinkle { to { filter: brightness(1.5); opacity: calc(var(--stars) * .68); } }
+    .sea-glint {
+      position: absolute; z-index: 3; left: 7%; top: 10%; width: 36%; height: 34%;
+      rotate: -20deg; opacity: calc(.08 + var(--warmth)); pointer-events: none;
+      background: repeating-linear-gradient(174deg, transparent 0 18px, rgba(255,247,189,.72) 20px 22px, transparent 24px 35px);
+      filter: blur(1px); mask-image: radial-gradient(ellipse, #000, transparent 68%);
+    }
+    .moon-path {
+      position: absolute; z-index: 3; right: 5%; top: 14%; width: 30%; height: 44%;
+      opacity: var(--night-glow); pointer-events: none;
+      background: repeating-linear-gradient(174deg, transparent 0 18px, rgba(196,225,255,.5) 20px 22px, transparent 24px 34px);
+      filter: blur(1px); mask-image: radial-gradient(ellipse, #000, transparent 72%);
+    }
+    .office-glow {
+      position: absolute; z-index: 4; right: 7%; bottom: 7%; width: 23%; aspect-ratio: 1;
+      opacity: var(--night-glow); pointer-events: none;
+      background: radial-gradient(circle, rgba(255,212,111,.72), rgba(255,178,77,.22) 32%, transparent 68%);
+      mix-blend-mode: screen;
+    }
+    .phase-label {
+      position: absolute; z-index: 7; left: 16px; top: 16px; display: flex; align-items: center; gap: 9px;
+      padding: 9px 13px; border-radius: 999px; color: #fff; background: rgba(40,44,55,.56);
+      box-shadow: 0 7px 22px rgba(25,30,42,.18); backdrop-filter: blur(10px);
+      font-size: 13px; font-weight: 900;
+    }
+    .phase-label i { width: 9px; height: 9px; border-radius: 50%; background: #ffd77b; box-shadow: 0 0 0 4px rgba(255,215,123,.18); }
+
+    .control-panel { padding: 22px; border-radius: 20px; background: #f6efe2; border: 1px solid rgba(105,82,66,.12); }
+    .control-panel h3 { margin: 0 0 5px; font-size: 21px; }
+    .control-panel > p { margin: 0 0 20px; color: var(--muted); font-size: 14px; }
+    .time-readout { margin-bottom: 16px; padding: 14px; border-radius: 15px; background: #fff; border: 1px solid var(--line); }
+    .time-readout b { display: block; font-size: 28px; letter-spacing: -.04em; }
+    .time-readout span { color: var(--muted); font-size: 13px; font-weight: 700; }
+    input[type="range"] { width: 100%; accent-color: var(--coral); }
+    .tick-row { display: flex; justify-content: space-between; color: #8d7d73; font-size: 11px; font-weight: 800; }
+    .phase-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 18px; }
+    .phase-buttons button {
+      min-height: 44px; border: 1px solid var(--line); border-radius: 13px; color: var(--ink); background: #fff;
+      cursor: pointer; font-weight: 850; box-shadow: 0 4px 0 rgba(96,76,64,.08); transition: transform .13s, box-shadow .13s;
+    }
+    .phase-buttons button:hover { transform: translateY(-1px); box-shadow: 0 6px 0 rgba(96,76,64,.1); }
+    .phase-buttons button:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(96,76,64,.08); }
+    .legend { display: grid; gap: 9px; margin-top: 20px; }
+    .legend div { display: grid; grid-template-columns: 14px 1fr; gap: 9px; align-items: start; font-size: 13px; }
+    .legend i { width: 11px; height: 11px; margin-top: 5px; border-radius: 50%; }
+
+    .phase-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 13px; }
+    .phase-card { overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: var(--paper-strong); box-shadow: 0 13px 34px rgba(77,57,43,.09); }
+    .phase-art { position: relative; height: 230px; overflow: hidden; background: #55baca; }
+    .phase-art img { width: 100%; height: 100%; object-fit: cover; }
+    .phase-art::after { content: ""; position: absolute; inset: 0; mix-blend-mode: multiply; }
+    .phase-card.day .phase-art img { filter: brightness(1.05) saturate(1.06); }
+    .phase-card.day .phase-art::after { background: linear-gradient(140deg, rgba(255,237,170,.08), transparent); }
+    .phase-card.golden .phase-art img { filter: brightness(.98) saturate(1.12) sepia(.12); }
+    .phase-card.golden .phase-art::after { background: linear-gradient(140deg, rgba(255,184,96,.05), rgba(221,107,88,.19)); }
+    .phase-card.night .phase-art img { filter: brightness(.62) saturate(.82) hue-rotate(8deg); }
+    .phase-card.night .phase-art::after { background: rgba(38,51,91,.42); }
+    .phase-card.dawn .phase-art img { filter: brightness(.84) saturate(.92) sepia(.06); }
+    .phase-card.dawn .phase-art::after { background: linear-gradient(150deg, rgba(86,92,145,.29), rgba(239,159,143,.16)); }
+    .phase-copy { padding: 17px; }
+    .phase-copy b { display: block; font-size: 17px; }
+    .phase-copy small { display: block; margin: 2px 0 8px; color: #c16a57; font-weight: 900; }
+    .phase-copy p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+
+    .timeline { padding: 24px; }
+    .timeline-bar { display: grid; grid-template-columns: 160fr 70fr 60fr 170fr 60fr 80fr; height: 28px; overflow: hidden; border-radius: 999px; box-shadow: inset 0 0 0 1px rgba(74,63,66,.12); }
+    .timeline-bar span:nth-child(1) { background: #71cbd1; }
+    .timeline-bar span:nth-child(2) { background: #f2c66f; }
+    .timeline-bar span:nth-child(3) { background: #ed9278; }
+    .timeline-bar span:nth-child(4) { background: #34466e; }
+    .timeline-bar span:nth-child(5) { background: #7c7ca0; }
+    .timeline-bar span:nth-child(6) { background: #d9aaa0; }
+    .timeline-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 18px; }
+    .timeline-list div { padding: 14px; border: 1px solid var(--line); border-radius: 15px; background: #fff; }
+    .timeline-list b { display: block; }
+    .timeline-list span { color: var(--muted); font-size: 13px; }
+
+    .spec-grid, .implementation-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 13px; }
+    .spec-card { padding: 22px; }
+    .spec-card h3 { margin: 0 0 8px; font-size: 19px; }
+    .spec-card p { margin: 0; color: var(--muted); font-size: 14px; }
+    .spec-card ul { margin: 12px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+    .swatches { display: flex; gap: 7px; margin-top: 15px; }
+    .swatches i { width: 35px; height: 35px; border-radius: 11px; border: 2px solid rgba(255,255,255,.8); box-shadow: 0 0 0 1px var(--line); }
+
+    .flow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 9px; }
+    .flow article { position: relative; min-height: 160px; padding: 20px 17px; border-radius: 18px; background: #fff; border: 1px solid var(--line); }
+    .flow article:not(:last-child)::after { content: "›"; position: absolute; right: -8px; top: 57px; z-index: 2; color: #c07c64; font-size: 30px; font-weight: 300; }
+    .flow em { display: inline-grid; place-items: center; width: 31px; height: 31px; border-radius: 10px; color: #fff; background: var(--coral); font-style: normal; font-weight: 900; }
+    .flow b { display: block; margin: 11px 0 5px; }
+    .flow p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+    .checklist { display: grid; gap: 9px; padding: 22px; }
+    .check { display: grid; grid-template-columns: 32px 1fr auto; gap: 10px; align-items: center; padding: 13px 14px; border-radius: 15px; background: #fff; border: 1px solid var(--line); }
+    .check i { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 50%; color: #fff; background: var(--mint); font-style: normal; font-weight: 900; }
+    .check b { font-size: 14px; }
+    .check span { color: var(--muted); font-size: 12px; text-align: right; }
+
+    .guardrail {
+      display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; padding: 25px;
+      color: #fff; background: linear-gradient(135deg, #4a5c75, #293958); border-radius: 24px;
+      box-shadow: var(--shadow);
+    }
+    .guardrail .moon-icon { display: grid; place-items: center; width: 72px; height: 72px; border-radius: 22px; background: rgba(255,255,255,.11); font-size: 35px; }
+    .guardrail h3 { margin: 0 0 5px; }
+    .guardrail p { margin: 0; color: rgba(255,255,255,.76); }
+
+    footer { padding: 22px 0 50px; color: #897b71; text-align: center; font-size: 12px; }
+
+    @media (max-width: 900px) {
+      .scene-shell, .decision { grid-template-columns: 1fr; }
+      .scene-preview { min-height: 560px; }
+      .phase-grid { grid-template-columns: repeat(2, 1fr); }
+      .timeline-list { grid-template-columns: repeat(2, 1fr); }
+      .flow { grid-template-columns: repeat(2, 1fr); }
+      .flow article::after { display: none; }
+    }
+    @media (max-width: 600px) {
+      .wrap { width: min(100% - 20px, 1180px); }
+      .hero { padding: 52px 0 43px; }
+      .hero h1 { font-size: 43px; }
+      main { padding-top: 16px; }
+      .section-head { grid-template-columns: 52px 1fr; gap: 10px; }
+      .section-no { width: 46px; height: 34px; }
+      .section-head p { grid-column: 1 / -1; margin-top: 0; }
+      .simulator { padding: 9px; }
+      .scene-preview { min-height: 500px; }
+      .control-panel { padding: 17px; }
+      .phase-grid, .spec-grid, .implementation-grid, .timeline-list, .flow { grid-template-columns: 1fr; }
+      .phase-art { height: 280px; }
+      .timeline { padding: 18px; }
+      .check { grid-template-columns: 32px 1fr; }
+      .check span { grid-column: 2; text-align: left; }
+      .guardrail { grid-template-columns: 1fr; }
+    }
+    @media print {
+      .toc { display: none; }
+      body { background: #fff; }
+      .hero { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .card, .phase-card { box-shadow: none; break-inside: avoid; }
+      section { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap hero-inner">
+      <span class="eyebrow">AGENT FOREST · WORLD ATMOSPHERE v1.0</span>
+      <h1>햇살이 머물고,<br />노을과 밤이 찾아오는 해변</h1>
+      <p>현재 섬과 캐릭터의 그림체는 그대로 유지하면서, 바다 반사·태양 방향·노을·달빛·별·오두막 불빛이 하나의 10분 루프로 천천히 이어지는 힐링 월드 기획안입니다.</p>
+      <div class="hero-meta">
+        <span>전체 주기 10분</span><span>PC·모바일 동일</span><span>리로드 후 시간 유지</span><span>게임 플레이 영향 없음</span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="문서 목차">
+    <div class="wrap">
+      <a href="#decision">핵심 결정</a><a href="#preview">화면 미리보기</a><a href="#phases">시간대 연출</a><a href="#timeline">10분 타임라인</a><a href="#visual">시각 설계</a><a href="#implementation">구현 순서</a><a href="#acceptance">완료 기준</a>
+    </div>
+  </nav>
+
+  <main class="wrap">
+    <section id="decision">
+      <div class="section-head"><span class="section-no">01</span><h2>핵심 결정</h2><p>밤을 보기 위해 오래 기다리지 않되, 변화가 게임 연출처럼 급하게 느껴지지 않는 기준입니다.</p></div>
+      <div class="card decision">
+        <div class="decision-copy">
+          <h3>권고안: <strong>10분에 한 번 완주하는 낮·밤 루프</strong></h3>
+          <p>첫 실행은 밝고 시원한 오전 햇살에서 시작합니다. 약 3분 뒤 골든아워, 약 5분 뒤 밤을 만나고, 새벽을 거쳐 다시 낮으로 돌아옵니다. 새로고침해도 시간이 초기화되지 않아 월드가 실제로 흐르는 느낌을 유지합니다.</p>
+        </div>
+        <div class="decision-number"><div><b>10:00</b><span>ONE COMPLETE LOOP</span></div></div>
+      </div>
+    </section>
+
+    <section id="preview">
+      <div class="section-head"><span class="section-no">02</span><h2>시간대 화면 미리보기</h2><p>아래 슬라이더는 기획 확인용입니다. 실제 게임에는 슬라이더를 노출하지 않고 시간이 자동으로 흐릅니다.</p></div>
+      <div class="card simulator">
+        <div class="scene-shell">
+          <div class="scene-preview" id="scenePreview">
+            <img src="../public/art/beach-island-ocean-v4-style-locked.png" alt="현재 해변 섬 배경" />
+            <div class="scene-tint"></div><div class="stars"></div><div class="sea-glint"></div><div class="moon-path"></div><div class="office-glow"></div>
+            <div class="sun" id="sun"></div><div class="moon" id="moon"></div>
+            <div class="phase-label"><i id="phaseDot"></i><span id="phaseLabel">맑은 햇살</span></div>
+          </div>
+          <aside class="control-panel">
+            <h3>10분 루프 시뮬레이터</h3>
+            <p>시간을 움직여 색감과 빛의 전환 방향을 확인하세요.</p>
+            <div class="time-readout"><b id="timeReadout">01:00</b><span id="virtualTime">가상 시각 11:00 · 맑은 햇살</span></div>
+            <input id="timeSlider" type="range" min="0" max="600" step="1" value="60" aria-label="10분 월드 시간" />
+            <div class="tick-row"><span>0분</span><span>5분</span><span>10분</span></div>
+            <div class="phase-buttons">
+              <button type="button" data-second="60">☀️ 햇살</button>
+              <button type="button" data-second="205">🌇 노을</button>
+              <button type="button" data-second="365">🌙 밤</button>
+              <button type="button" data-second="510">🌅 새벽</button>
+            </div>
+            <div class="legend">
+              <div><i style="background:#f3c566"></i><span><b>햇살</b><br />바다에 길게 반사되는 밝은 금빛</span></div>
+              <div><i style="background:#e98d74"></i><span><b>노을</b><br />오렌지·코랄 림라이트와 긴 그림자</span></div>
+              <div><i style="background:#34466e"></i><span><b>밤</b><br />달빛, 별, 은빛 물결, 오두막 불빛</span></div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section id="phases">
+      <div class="section-head"><span class="section-no">03</span><h2>네 장면의 감정선</h2><p>단순 밝기 필터가 아니라 시간대마다 주인공이 되는 빛을 바꿉니다.</p></div>
+      <div class="phase-grid">
+        <article class="phase-card day"><div class="phase-art"><img src="../public/art/beach-island-ocean-v4-style-locked.png" alt="맑은 햇살 시간대" /></div><div class="phase-copy"><b>맑은 Sunshine</b><small>00:00–02:40</small><p>청록 바다와 밝은 모래를 살리고, 왼쪽 위 태양 방향에서 부드러운 금빛이 들어옵니다.</p></div></article>
+        <article class="phase-card golden"><div class="phase-art"><img src="../public/art/beach-island-ocean-v4-style-locked.png" alt="골든아워와 노을 시간대" /></div><div class="phase-copy"><b>골든아워·노을</b><small>02:40–04:50</small><p>오렌지에서 코랄로 천천히 이동합니다. 바다 반사가 길어지고 오브젝트 가장자리가 따뜻해집니다.</p></div></article>
+        <article class="phase-card night"><div class="phase-art"><img src="../public/art/beach-island-ocean-v4-style-locked.png" alt="별과 달이 있는 밤 시간대" /></div><div class="phase-copy"><b>별빛 Beach Night</b><small>04:50–07:40</small><p>남색으로만 덮지 않습니다. 달빛·은빛 물결·별·랜턴과 사무실 불빛으로 포근함을 만듭니다.</p></div></article>
+        <article class="phase-card dawn"><div class="phase-art"><img src="../public/art/beach-island-ocean-v4-style-locked.png" alt="새벽과 일출 시간대" /></div><div class="phase-copy"><b>새벽·일출</b><small>07:40–10:00</small><p>보랏빛 새벽에서 옅은 분홍빛 일출로 이어지고, 다음 낮의 청록색을 자연스럽게 되찾습니다.</p></div></article>
+      </div>
+    </section>
+
+    <section id="timeline">
+      <div class="section-head"><span class="section-no">04</span><h2>10분 타임라인</h2><p>모든 경계는 곡선 보간해 색이 끊기거나 갑자기 바뀌지 않습니다.</p></div>
+      <div class="card timeline">
+        <div class="timeline-bar" aria-label="10분 낮밤 시간대 비율"><span></span><span></span><span></span><span></span><span></span><span></span></div>
+        <div class="timeline-list">
+          <div><b>00:00–02:40 · 낮</b><span>시원하고 밝은 해변, 태양 반사 강조</span></div>
+          <div><b>02:40–03:50 · 골든아워</b><span>금빛 증가, 그림자 방향 이동</span></div>
+          <div><b>03:50–04:50 · 일몰</b><span>코랄 하늘빛, 태양 반사 약화</span></div>
+          <div><b>04:50–07:40 · 밤</b><span>달빛·별·은빛 물결·실내 조명</span></div>
+          <div><b>07:40–08:40 · 여명</b><span>짙은 남색에서 보랏빛으로 회복</span></div>
+          <div><b>08:40–10:00 · 일출</b><span>분홍·금빛을 거쳐 다시 맑은 낮</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="visual">
+      <div class="section-head"><span class="section-no">05</span><h2>시각 시스템 설계</h2><p>현재 일러스트 질감과 아웃라인은 보존하고, 시간에 따라 필요한 값만 함께 움직입니다.</p></div>
+      <div class="spec-grid">
+        <article class="card spec-card"><h3>태양과 방향광</h3><p>태양 위치에 따라 주광의 색·방향·세기를 바꿉니다. 낮에는 크림빛, 노을에는 살구빛, 밤에는 주광을 끄고 달빛으로 교체합니다.</p><div class="swatches"><i style="background:#fff2c5"></i><i style="background:#ffc57a"></i><i style="background:#ed9278"></i><i style="background:#a9c8ed"></i></div></article>
+        <article class="card spec-card"><h3>바다 반사와 파도</h3><p>현재 파도 애니메이션은 유지합니다. 여기에 태양·달 방향을 받는 반사 띠와 시간대별 청록/남색 색 보간만 추가합니다.</p><div class="swatches"><i style="background:#51c7ca"></i><i style="background:#41aeb1"></i><i style="background:#356f8e"></i><i style="background:#263e6b"></i></div></article>
+        <article class="card spec-card"><h3>밤의 포근한 불빛</h3><p>오두막 모니터·랜턴·자리 주변에 따뜻한 국소 조명을 켭니다. 밤에도 고양이 표정과 책상 소품이 읽히도록 최소 밝기를 보장합니다.</p><ul><li>오두막·랜턴: 따뜻한 주황빛</li><li>모니터: 옅은 하늘빛</li><li>조개 반짝임: 밤에 조금 더 선명</li></ul></article>
+        <article class="card spec-card"><h3>별과 달빛 파티클</h3><p>별은 하나의 가벼운 점 파티클로 처리하고 천천히 밝기만 흔듭니다. 화면 전체를 가리지 않고 바다와 상단 여백 위주로 배치합니다.</p><ul><li>달/태양 스프라이트 각 1개</li><li>별 파티클 1 draw call</li><li>카메라 회전에 방해되지 않는 원거리 레이어</li></ul></article>
+      </div>
+    </section>
+
+    <section id="implementation">
+      <div class="section-head"><span class="section-no">06</span><h2>구현 순서</h2><p>각 단계마다 낮·노을·밤 캡처를 비교해 다음 단계로 넘어갑니다.</p></div>
+      <div class="flow">
+        <article><em>1</em><b>시간 엔진</b><p>10분 phase 계산, 새로고침 유지, 부드러운 보간, QA 시간 고정 옵션.</p></article>
+        <article><em>2</em><b>월드 조명</b><p>태양·달 방향광, 환경광, 안개색, 야간 최소 밝기 적용.</p></article>
+        <article><em>3</em><b>바다·배경</b><p>수면 색과 반사 띠, 노을 수평광, 야간 은빛 물결 추가.</p></article>
+        <article><em>4</em><b>야간 디테일</b><p>별, 달, 랜턴, 오두막, 모니터 불빛과 잔잔한 반짝임.</p></article>
+        <article><em>5</em><b>실기 검증</b><p>PC·모바일 밝기, 성능, 아웃라인, 팝업 가독성, 리로드 연속성 확인.</p></article>
+      </div>
+    </section>
+
+    <section id="acceptance">
+      <div class="section-head"><span class="section-no">07</span><h2>완료 판정 기준</h2><p>‘밤이 된다’가 아니라 ‘힐링 해변의 하루가 흐른다’고 느껴져야 통과합니다.</p></div>
+      <div class="card checklist">
+        <div class="check"><i>✓</i><b>정확히 10분 후 동일한 낮 장면으로 자연스럽게 복귀</b><span>시간 루프</span></div>
+        <div class="check"><i>✓</i><b>노을·밤·일출 경계에서 색과 밝기가 한 프레임도 튀지 않음</b><span>연속성</span></div>
+        <div class="check"><i>✓</i><b>밤에도 고양이 얼굴, 태그, 책상, 오두막 내부가 선명함</b><span>가독성</span></div>
+        <div class="check"><i>✓</i><b>바다는 낮 금빛, 밤 은빛 반사가 태양·달 방향에 맞음</b><span>해변 감성</span></div>
+        <div class="check"><i>✓</i><b>PC·모바일에서 객체 클릭, 이동, 카메라 회전과 충돌 없음</b><span>기능 안정성</span></div>
+        <div class="check"><i>✓</i><b>새로고침·팝업 열기 후에도 시간대가 초기화되지 않음</b><span>지속성</span></div>
+        <div class="check"><i>✓</i><b>저사양 모바일에서도 신규 효과 때문에 체감 프레임이 급락하지 않음</b><span>성능</span></div>
+      </div>
+    </section>
+
+    <section>
+      <div class="guardrail"><div class="moon-icon">🌙</div><div><h3>야간 핵심 가드레일</h3><p>검은 필터를 덮어 어둡게 만드는 방식은 사용하지 않습니다. 원본 색을 남긴 채 달빛·바다 반사·따뜻한 실내 조명의 대비로 밤을 표현합니다. 밤 최저 밝기는 현재 낮 화면의 약 50% 아래로 내려가지 않게 제한합니다.</p></div></div>
+    </section>
+  </main>
+
+  <footer><div class="wrap">Agent Forest · Beach Day/Night Cycle Planning Document · 2026-08-02</div></footer>
+
+  <script>
+    (() => {
+      const scene = document.getElementById("scenePreview");
+      const slider = document.getElementById("timeSlider");
+      const timeReadout = document.getElementById("timeReadout");
+      const virtualTime = document.getElementById("virtualTime");
+      const phaseLabel = document.getElementById("phaseLabel");
+      const phaseDot = document.getElementById("phaseDot");
+      const sun = document.getElementById("sun");
+      const moon = document.getElementById("moon");
+
+      const stops = [
+        { t: 0,   name: "맑은 햇살", virtual: "10:00", brightness: 1.04, saturation: 1.06, sepia: .01, tint: [255, 226, 150, .02], stars: 0, warmth: .16, nightGlow: 0, dot: "#ffd77b" },
+        { t: 160, name: "골든아워", virtual: "16:00", brightness: 1.00, saturation: 1.11, sepia: .09, tint: [248, 176, 95, .11], stars: 0, warmth: .34, nightGlow: 0, dot: "#efbf68" },
+        { t: 230, name: "코랄 노을", virtual: "18:20", brightness: .88, saturation: 1.06, sepia: .12, tint: [212, 102, 101, .25], stars: .08, warmth: .24, nightGlow: .05, dot: "#e78775" },
+        { t: 290, name: "별빛 밤", virtual: "20:00", brightness: .62, saturation: .83, sepia: 0, tint: [39, 50, 91, .46], stars: .86, warmth: .03, nightGlow: .92, dot: "#a9c8ed" },
+        { t: 460, name: "고요한 여명", virtual: "04:30", brightness: .69, saturation: .88, sepia: .02, tint: [80, 78, 125, .38], stars: .55, warmth: .02, nightGlow: .52, dot: "#b9b5dd" },
+        { t: 520, name: "분홍빛 일출", virtual: "06:20", brightness: .84, saturation: .96, sepia: .07, tint: [224, 142, 130, .19], stars: .08, warmth: .19, nightGlow: .08, dot: "#eab0a0" },
+        { t: 600, name: "맑은 햇살", virtual: "10:00", brightness: 1.04, saturation: 1.06, sepia: .01, tint: [255, 226, 150, .02], stars: 0, warmth: .16, nightGlow: 0, dot: "#ffd77b" }
+      ];
+
+      const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+      const smooth = value => value * value * (3 - 2 * value);
+      const lerp = (a, b, t) => a + (b - a) * t;
+      const hexToRgb = hex => [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+      const mixColor = (a, b, t) => {
+        const left = hexToRgb(a), right = hexToRgb(b);
+        return `rgb(${left.map((value, index) => Math.round(lerp(value, right[index], t))).join(",")})`;
+      };
+
+      function render(second) {
+        const value = clamp(Number(second), 0, 600);
+        let left = stops[0], right = stops[stops.length - 1];
+        for (let index = 0; index < stops.length - 1; index += 1) {
+          if (value >= stops[index].t && value <= stops[index + 1].t) {
+            left = stops[index]; right = stops[index + 1]; break;
+          }
+        }
+        const progress = smooth((value - left.t) / Math.max(1, right.t - left.t));
+        const tint = left.tint.map((entry, index) => lerp(entry, right.tint[index], progress));
+        const name = progress < .5 ? left.name : right.name;
+        const virtual = progress < .5 ? left.virtual : right.virtual;
+        const minutes = Math.floor(value / 60), seconds = Math.round(value % 60);
+
+        scene.style.setProperty("--scene-brightness", lerp(left.brightness, right.brightness, progress).toFixed(3));
+        scene.style.setProperty("--scene-saturation", lerp(left.saturation, right.saturation, progress).toFixed(3));
+        scene.style.setProperty("--scene-sepia", lerp(left.sepia, right.sepia, progress).toFixed(3));
+        scene.style.setProperty("--tint", `rgba(${tint[0].toFixed(0)},${tint[1].toFixed(0)},${tint[2].toFixed(0)},${tint[3].toFixed(3)})`);
+        scene.style.setProperty("--stars", lerp(left.stars, right.stars, progress).toFixed(3));
+        scene.style.setProperty("--warmth", lerp(left.warmth, right.warmth, progress).toFixed(3));
+        scene.style.setProperty("--night-glow", lerp(left.nightGlow, right.nightGlow, progress).toFixed(3));
+        phaseDot.style.background = mixColor(left.dot, right.dot, progress);
+        phaseLabel.textContent = name;
+        timeReadout.textContent = `${String(minutes).padStart(2,"0")}:${String(seconds).padStart(2,"0")}`;
+        virtualTime.textContent = `가상 시각 ${virtual} · ${name}`;
+
+        const sunProgress = clamp(value / 300, 0, 1);
+        const sunY = 58 - Math.sin(sunProgress * Math.PI) * 47;
+        sun.style.left = `${7 + sunProgress * 86}%`;
+        sun.style.top = `${sunY}%`;
+        sun.style.opacity = String(clamp(1 - (value - 225) / 70, 0, 1));
+
+        const moonProgress = clamp((value - 250) / 270, 0, 1);
+        const moonY = 59 - Math.sin(moonProgress * Math.PI) * 46;
+        moon.style.left = `${8 + moonProgress * 84}%`;
+        moon.style.top = `${moonY}%`;
+        moon.style.opacity = String(clamp(Math.min((value - 245) / 55, (525 - value) / 55), 0, 1));
+      }
+
+      slider.addEventListener("input", event => render(event.target.value));
+      document.querySelectorAll("[data-second]").forEach(button => button.addEventListener("click", () => {
+        slider.value = button.dataset.second;
+        render(button.dataset.second);
+      }));
+      render(slider.value);
+    })();
+  </script>
+</body>
+</html>
