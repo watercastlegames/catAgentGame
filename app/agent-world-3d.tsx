@@ -3307,6 +3307,7 @@ export default function AgentWorld3D({
     scene.background = new THREE.Color(FAR_OCEAN_STYLE_COLOR);
     scene.fog = new THREE.Fog(FAR_OCEAN_STYLE_COLOR, 15, 27);
     const atmosphereBackdrop = createWorldAtmosphereBackdrop();
+    atmosphereBackdrop.mesh.visible = false;
     scene.add(atmosphereBackdrop.mesh);
     const clickableObjects: THREE.Object3D[] = [];
     const billboardObjects: THREE.Object3D[] = [];
@@ -3821,26 +3822,17 @@ export default function AgentWorld3D({
     oceanTexture.colorSpace = THREE.SRGBColorSpace;
     oceanTexture.wrapS = THREE.RepeatWrapping;
     oceanTexture.wrapT = THREE.RepeatWrapping;
-    oceanTexture.repeat.set(6, 6);
+    oceanTexture.repeat.set(18, 18);
     oceanTexture.anisotropy = Math.min(
       4,
       renderer.capabilities.getMaxAnisotropy(),
     );
-    const worldViewportSizeUniform = {
-      value: new THREE.Vector2(1, 1),
-    };
     const oceanMaterial = new THREE.MeshBasicMaterial({
       map: oceanTexture,
-      transparent: true,
+      transparent: false,
       toneMapped: false,
     });
     oceanMaterial.onBeforeCompile = (shader) => {
-      shader.uniforms.worldViewportSize = worldViewportSizeUniform;
-      shader.fragmentShader = shader.fragmentShader.replace(
-        "#include <common>",
-        `#include <common>
-uniform vec2 worldViewportSize;`,
-      );
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <map_fragment>",
         `#ifdef USE_MAP
@@ -3858,11 +3850,6 @@ uniform vec2 worldViewportSize;`,
     0.0,
     1.0
   );
-  float worldScreenY =
-    gl_FragCoord.y / max( worldViewportSize.y, 1.0 );
-  float horizonReveal = smoothstep( 0.68, 0.94, worldScreenY );
-  sampledDiffuseColor.a *= 1.0 - horizonReveal * 0.965;
-
   #ifdef DECODE_VIDEO_TEXTURE
 
     sampledDiffuseColor = sRGBTransferEOTF( sampledDiffuseColor );
@@ -3875,13 +3862,13 @@ uniform vec2 worldViewportSize;`,
       );
     };
     oceanMaterial.customProgramCacheKey = () =>
-      "extended-ocean-atmosphere-horizon-v3";
+      "infinite-ocean-no-horizon-v1";
     disableOutline(oceanMaterial);
     const outerOcean = new THREE.Mesh(
-      new THREE.PlaneGeometry(42, 42),
+      new THREE.PlaneGeometry(120, 120),
       oceanMaterial,
     );
-    outerOcean.name = "extended-ocean-floor";
+    outerOcean.name = "infinite-ocean-floor";
     outerOcean.rotation.x = -Math.PI / 2;
     outerOcean.position.y = -0.07;
     scene.add(outerOcean);
@@ -3906,12 +3893,10 @@ uniform vec2 worldViewportSize;`,
     const oceanTideUniform = { value: 0 };
     groundMaterial.onBeforeCompile = (shader) => {
       shader.uniforms.oceanTideTime = oceanTideUniform;
-      shader.uniforms.worldViewportSize = worldViewportSizeUniform;
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <common>",
         `#include <common>
 uniform float oceanTideTime;
-uniform vec2 worldViewportSize;
 
 float shoreWaterSignal( vec3 color ) {
   float turquoiseLead = ( color.g + color.b ) * 0.5 - color.r;
@@ -3985,11 +3970,29 @@ float shoreWaterSignal( vec3 color ) {
     waterSurface;
   float foamPulse = ( tideBreath * 0.5 + 0.5 ) * shoreFoam;
   sampledDiffuseColor.rgb += vec3( 0.035, 0.065, 0.075 ) * foamPulse;
-  float worldScreenY =
-    gl_FragCoord.y / max( worldViewportSize.y, 1.0 );
-  float horizonReveal = smoothstep( 0.72, 0.955, worldScreenY );
+  float sourceLuma = dot(
+    sampledDiffuseColor.rgb,
+    vec3( 0.2126, 0.7152, 0.0722 )
+  );
+  vec3 unifiedOceanColor = clamp(
+    vec3( 0.1845, 0.5972, 0.5097 ) +
+      ( sourceLuma - 0.36 ) * 0.42 * vec3( 0.68, 0.9, 0.94 ),
+    0.0,
+    1.0
+  );
+  float unifiedWaterMask = max( waterSurface, shoreFoam * 0.32 );
+  sampledDiffuseColor.rgb = mix(
+    sampledDiffuseColor.rgb,
+    unifiedOceanColor,
+    unifiedWaterMask * 0.82
+  );
+  float edgeDistance = min(
+    min( vMapUv.x, 1.0 - vMapUv.x ),
+    min( vMapUv.y, 1.0 - vMapUv.y )
+  );
+  float edgeBlend = 1.0 - smoothstep( 0.0, 0.085, edgeDistance );
   sampledDiffuseColor.a *=
-    1.0 - horizonReveal * waterSurface * 0.94;
+    1.0 - max( waterSurface, shoreFoam ) * edgeBlend;
 
   #ifdef DECODE_VIDEO_TEXTURE
 
@@ -4003,7 +4006,7 @@ float shoreWaterSignal( vec3 color ) {
       );
     };
     groundMaterial.customProgramCacheKey = () =>
-      "shore-tide-atmosphere-horizon-v5";
+      "shore-tide-infinite-ocean-v1";
     disableOutline(groundMaterial);
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(10, 15),
@@ -4021,12 +4024,9 @@ float shoreWaterSignal( vec3 color ) {
       toneMapped: false,
     });
     shoreWaterOverlayMaterial.onBeforeCompile = (shader) => {
-      shader.uniforms.worldViewportSize = worldViewportSizeUniform;
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <common>",
         `#include <common>
-uniform vec2 worldViewportSize;
-
 float shoreOverlayWaterSignal( vec3 color ) {
   float turquoiseLead = ( color.g + color.b ) * 0.5 - color.r;
   return smoothstep( 0.02, 0.14, turquoiseLead );
@@ -4056,9 +4056,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
   float foamMask =
     foamBrightness * smoothstep( 0.035, 0.5, nearbyWater );
   shoreColor.a *= clamp( max( waterMask, foamMask ), 0.0, 1.0 );
-  float worldScreenY =
-    gl_FragCoord.y / max( worldViewportSize.y, 1.0 );
-  shoreColor.a *= 1.0 - smoothstep( 0.72, 0.955, worldScreenY ) * 0.94;
+  float edgeDistance = min(
+    min( vMapUv.x, 1.0 - vMapUv.x ),
+    min( vMapUv.y, 1.0 - vMapUv.y )
+  );
+  shoreColor.a *= smoothstep( 0.0, 0.095, edgeDistance );
 
   #ifdef DECODE_VIDEO_TEXTURE
 
@@ -4072,7 +4074,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       );
     };
     shoreWaterOverlayMaterial.customProgramCacheKey = () =>
-      "shore-water-atmosphere-horizon-v3";
+      "shore-water-infinite-ocean-v1";
     disableOutline(shoreWaterOverlayMaterial);
     const shoreWaterOverlay = new THREE.Mesh(
       new THREE.PlaneGeometry(10, 15),
@@ -6676,7 +6678,6 @@ float shoreOverlayWaterSignal( vec3 color ) {
       camera.bottom = -viewHeight / 2;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
-      renderer.getDrawingBufferSize(worldViewportSizeUniform.value);
     };
 
     const activePointers = new Map<number, THREE.Vector2>();
