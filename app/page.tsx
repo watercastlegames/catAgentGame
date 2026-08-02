@@ -3536,6 +3536,16 @@ export default function Home() {
             />
           </button>
 
+          <a
+            className="developer-fixed-link"
+            href="/developer"
+            aria-label="개발자 정보 페이지로 이동"
+            title="개발자 정보"
+          >
+            <strong aria-hidden="true">?</strong>
+            <span>개발자 정보</span>
+          </a>
+
           <nav
             className={`keycap-menu keycap-menu-pressed-${pressedRadioIndex}`}
             aria-label="하단 메뉴"

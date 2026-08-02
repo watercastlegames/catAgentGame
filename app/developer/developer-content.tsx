@@ -89,7 +89,7 @@ const GAMES: GameCard[] = [
   {
     href: "https://sidak.kr/autodev/GameCreator/hormuz/",
     external: true,
-    icon: "/art/developer/game-hormuz-v1.webp",
+    icon: "/art/developer/game-hormuz-v1.jpg",
     tag: { ko: "BROWSER 3D STRATEGY · FREE", en: "BROWSER 3D STRATEGY · FREE" },
     title: { ko: "HORMUZ · 대통령 상황실", en: "HORMUZ · Presidential Situation Room" },
     body: {
@@ -337,7 +337,7 @@ export default function DeveloperContent() {
           </div>
         </div>
         <figure className="hero-visual">
-          <img src="/concept-base.jpg" alt="" decoding="async" />
+          <img src="/art/developer/hero-world-v1.jpg" alt="" decoding="async" />
           <figcaption>{t("heroCaption")}</figcaption>
         </figure>
       </section>
