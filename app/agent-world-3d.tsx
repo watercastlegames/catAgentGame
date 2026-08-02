@@ -1113,20 +1113,62 @@ void main() {
 }
 
 function createCurvedOceanGeometry() {
-  const size = 120;
+  const radius = 18.45;
   const flatRadius = 7.6;
-  const geometry = new THREE.PlaneGeometry(size, size, 120, 120);
-  geometry.rotateX(-Math.PI / 2);
-  const positions = geometry.getAttribute("position");
-  for (let index = 0; index < positions.count; index += 1) {
-    const x = positions.getX(index);
-    const z = positions.getZ(index);
-    const radialDistance = Math.hypot(x, z);
-    const curveDistance = Math.max(0, radialDistance - flatRadius);
-    const curvedDepth = Math.min(82, curveDistance * curveDistance * 0.095);
-    positions.setY(index, -0.07 - curvedDepth);
+  const oceanDepth = 12.25;
+  const radialSegments = 48;
+  const angularSegments = 128;
+  const positions: number[] = [0, -0.07, 0];
+  const uvs: number[] = [0.5, 0.5];
+  const indices: number[] = [];
+
+  for (let ring = 1; ring <= radialSegments; ring += 1) {
+    const ringRatio = ring / radialSegments;
+    const ringRadius = radius * ringRatio;
+    const curveRatio = THREE.MathUtils.clamp(
+      (ringRadius - flatRadius) / (radius - flatRadius),
+      0,
+      1,
+    );
+    const smoothCurve =
+      curveRatio * curveRatio * (3 - 2 * curveRatio);
+    const ringHeight = -0.07 - oceanDepth * smoothCurve;
+
+    for (let segment = 0; segment <= angularSegments; segment += 1) {
+      const angle = (segment / angularSegments) * Math.PI * 2;
+      const x = Math.sin(angle) * ringRadius;
+      const z = -Math.cos(angle) * ringRadius;
+      positions.push(x, ringHeight, z);
+      uvs.push(x / (radius * 2) + 0.5, z / (radius * 2) + 0.5);
+    }
   }
-  positions.needsUpdate = true;
+
+  const firstRingStart = 1;
+  for (let segment = 0; segment < angularSegments; segment += 1) {
+    indices.push(0, firstRingStart + segment + 1, firstRingStart + segment);
+  }
+
+  const ringStride = angularSegments + 1;
+  for (let ring = 1; ring < radialSegments; ring += 1) {
+    const innerStart = 1 + (ring - 1) * ringStride;
+    const outerStart = innerStart + ringStride;
+    for (let segment = 0; segment < angularSegments; segment += 1) {
+      const innerLeft = innerStart + segment;
+      const innerRight = innerLeft + 1;
+      const outerLeft = outerStart + segment;
+      const outerRight = outerLeft + 1;
+      indices.push(innerLeft, innerRight, outerLeft);
+      indices.push(innerRight, outerRight, outerLeft);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
+  geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
   geometry.computeVertexNormals();
   geometry.computeBoundingSphere();
   return geometry;
@@ -3238,13 +3280,6 @@ export default function AgentWorld3D({
     const fixedWorldDayNightPhase = worldDayNightDebugPhase(
       diagnosticParams.get("worldTime"),
     );
-    const diagnosticNumber = (name: string) => {
-      const value = Number.parseFloat(diagnosticParams.get(name) ?? "");
-      return Number.isFinite(value) ? value : null;
-    };
-    const diagnosticWorldYaw = diagnosticNumber("worldYaw");
-    const diagnosticWorldPitch = diagnosticNumber("worldPitch");
-    const diagnosticWorldZoom = diagnosticNumber("worldZoom");
     let worldDayNightAnchor = createWorldDayNightAnchor(
       Date.now(),
       WORLD_DAY_NIGHT_DEFAULT_PHASE,
@@ -3392,24 +3427,12 @@ export default function AgentWorld3D({
     const cameraOrbitOffset = new THREE.Vector3();
     const worldPitchLimit =
       cameraBaseSpherical.phi * WORLD_INTERACTION_LIMIT_RATIO;
-    let worldYawTarget = THREE.MathUtils.clamp(
-      THREE.MathUtils.degToRad(diagnosticWorldYaw ?? 0),
-      -WORLD_YAW_LIMIT,
-      WORLD_YAW_LIMIT,
-    );
-    let worldYawCurrent = worldYawTarget;
-    let worldPitchTarget = THREE.MathUtils.clamp(
-      THREE.MathUtils.degToRad(diagnosticWorldPitch ?? 0),
-      -worldPitchLimit,
-      worldPitchLimit,
-    );
-    let worldPitchCurrent = worldPitchTarget;
-    let worldZoomTarget = THREE.MathUtils.clamp(
-      diagnosticWorldZoom ?? 1,
-      WORLD_ZOOM_MIN,
-      WORLD_ZOOM_MAX,
-    );
-    let worldZoomCurrent = worldZoomTarget;
+    let worldYawTarget = 0;
+    let worldYawCurrent = 0;
+    let worldPitchTarget = 0;
+    let worldPitchCurrent = 0;
+    let worldZoomTarget = 1;
+    let worldZoomCurrent = 1;
     camera.position.copy(cameraBase);
     camera.lookAt(cameraLookAt);
 
@@ -3877,7 +3900,7 @@ export default function AgentWorld3D({
     oceanTexture.colorSpace = THREE.SRGBColorSpace;
     oceanTexture.wrapS = THREE.RepeatWrapping;
     oceanTexture.wrapT = THREE.RepeatWrapping;
-    oceanTexture.repeat.set(18, 18);
+    oceanTexture.repeat.set(6, 6);
     oceanTexture.anisotropy = Math.min(
       4,
       renderer.capabilities.getMaxAnisotropy(),
@@ -3954,26 +3977,6 @@ uniform float oceanTideTime;
 float shoreWaterSignal( vec3 color ) {
   float turquoiseLead = ( color.g + color.b ) * 0.5 - color.r;
   return smoothstep( 0.025, 0.16, turquoiseLead );
-}
-
-float islandOrganicBoundary( vec2 uv ) {
-  float verticalRatio = abs( uv.y - 0.5 ) * 2.0;
-  float centerShift =
-    sin( uv.y * 6.2831853 ) * 0.012 -
-    sin( uv.y * 12.566371 ) * 0.008;
-  float halfWidth =
-    0.472 -
-    pow( clamp( verticalRatio, 0.0, 1.0 ), 1.65 ) * 0.155 +
-    sin( uv.y * 18.849556 ) * 0.014;
-  float sideMask = 1.0 - smoothstep(
-    halfWidth - 0.038,
-    halfWidth,
-    abs( uv.x - 0.5 - centerShift )
-  );
-  float verticalMask =
-    smoothstep( 0.018, 0.07, uv.y ) *
-    ( 1.0 - smoothstep( 0.94, 0.992, uv.y ) );
-  return sideMask * verticalMask;
 }`,
       );
       shader.fragmentShader = shader.fragmentShader.replace(
@@ -4043,10 +4046,6 @@ float islandOrganicBoundary( vec2 uv ) {
     waterSurface;
   float foamPulse = ( tideBreath * 0.5 + 0.5 ) * shoreFoam;
   sampledDiffuseColor.rgb += vec3( 0.035, 0.065, 0.075 ) * foamPulse;
-  float islandSurfaceMask =
-    1.0 - smoothstep( 0.2, 0.58, waterSurface );
-  sampledDiffuseColor.a *=
-    islandSurfaceMask * islandOrganicBoundary( vMapUv );
 
   #ifdef DECODE_VIDEO_TEXTURE
 
@@ -4060,7 +4059,7 @@ float islandOrganicBoundary( vec2 uv ) {
       );
     };
     groundMaterial.customProgramCacheKey = () =>
-      "shore-tide-curved-ocean-v2";
+      "shore-tide-curved-ocean-v1";
     disableOutline(groundMaterial);
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(10, 15),
@@ -4084,26 +4083,6 @@ float islandOrganicBoundary( vec2 uv ) {
 float shoreOverlayWaterSignal( vec3 color ) {
   float turquoiseLead = ( color.g + color.b ) * 0.5 - color.r;
   return smoothstep( 0.02, 0.14, turquoiseLead );
-}
-
-float shoreOrganicBoundary( vec2 uv ) {
-  float verticalRatio = abs( uv.y - 0.5 ) * 2.0;
-  float centerShift =
-    sin( uv.y * 6.2831853 ) * 0.012 -
-    sin( uv.y * 12.566371 ) * 0.008;
-  float halfWidth =
-    0.472 -
-    pow( clamp( verticalRatio, 0.0, 1.0 ), 1.65 ) * 0.155 +
-    sin( uv.y * 18.849556 ) * 0.014;
-  float sideMask = 1.0 - smoothstep(
-    halfWidth - 0.05,
-    halfWidth,
-    abs( uv.x - 0.5 - centerShift )
-  );
-  float verticalMask =
-    smoothstep( 0.012, 0.065, uv.y ) *
-    ( 1.0 - smoothstep( 0.945, 0.995, uv.y ) );
-  return sideMask * verticalMask;
 }`,
       );
       shader.fragmentShader = shader.fragmentShader.replace(
@@ -4129,24 +4108,7 @@ float shoreOrganicBoundary( vec2 uv ) {
   );
   float foamMask =
     foamBrightness * smoothstep( 0.035, 0.5, nearbyWater );
-  float nearLand = max(
-    1.0 - shoreOverlayWaterSignal(
-      texture2D( map, vMapUv - coastDirection * 0.018 ).rgb
-    ),
-    max(
-      1.0 - shoreOverlayWaterSignal(
-        texture2D( map, vMapUv - coastDirection * 0.038 ).rgb
-      ),
-      1.0 - shoreOverlayWaterSignal(
-        texture2D( map, vMapUv - coastDirection * 0.066 ).rgb
-      )
-    )
-  );
-  float shorelineWater =
-    waterMask * smoothstep( 0.18, 0.8, nearLand );
-  shoreColor.a *=
-    clamp( max( shorelineWater * 0.82, foamMask ), 0.0, 1.0 ) *
-    shoreOrganicBoundary( vMapUv );
+  shoreColor.a *= clamp( max( waterMask, foamMask ), 0.0, 1.0 );
 
   #ifdef DECODE_VIDEO_TEXTURE
 
@@ -4160,7 +4122,7 @@ float shoreOrganicBoundary( vec2 uv ) {
       );
     };
     shoreWaterOverlayMaterial.customProgramCacheKey = () =>
-      "shore-water-curved-ocean-v2";
+      "shore-water-curved-ocean-v1";
     disableOutline(shoreWaterOverlayMaterial);
     const shoreWaterOverlay = new THREE.Mesh(
       new THREE.PlaneGeometry(10, 15),

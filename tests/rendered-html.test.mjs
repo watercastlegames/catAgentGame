@@ -530,15 +530,14 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /ocean-water-tile-v1\.png/);
   assert.match(world3d, /curved-ocean-cyclorama-floor/);
   assert.match(world3d, /createCurvedOceanGeometry\(\)/);
-  assert.match(world3d, /new THREE\.PlaneGeometry\(size, size, 120, 120\)/);
   assert.match(world3d, /new THREE\.CylinderGeometry\(18\.5, 18\.5, 48, 128, 1, true\)/);
-  assert.match(world3d, /shore-tide-curved-ocean-v2/);
+  assert.match(world3d, /shore-tide-curved-ocean-v1/);
   assert.match(world3d, /uniform float oceanTideTime/);
   assert.match(world3d, /shoreWaterSignal/);
   assert.match(world3d, /tideBreath/);
   assert.match(world3d, /tideScale = tideBreath \* 0\.014/);
   assert.match(world3d, /surfaceRipple/);
-  assert.match(world3d, /shore-water-curved-ocean-v2/);
+  assert.match(world3d, /shore-water-curved-ocean-v1/);
   assert.match(world3d, /animated-shore-water-overlay/);
   assert.match(world3d, /shoreOverlayWaterSignal/);
   assert.match(world3d, /shorelineScale/);
@@ -546,9 +545,6 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /oceanTexture\.offset\.set/);
   assert.match(world3d, /world-atmosphere-horizon-cyclorama/);
   assert.match(world3d, /WORLD_DAY_NIGHT_STORAGE_KEY/);
-  assert.match(world3d, /diagnosticNumber\("worldYaw"\)/);
-  assert.match(world3d, /diagnosticNumber\("worldPitch"\)/);
-  assert.match(world3d, /diagnosticNumber\("worldZoom"\)/);
   assert.match(world3d, /worldDayNightPhaseAt\(Date\.now\(\), worldDayNightAnchor\)/);
   assert.match(world3d, /uniform float sunsetAmount/);
   assert.match(world3d, /sunReflectionBand/);
