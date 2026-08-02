@@ -42,6 +42,14 @@ import {
   type WorldObjectLayout,
   type WorldObjectPose,
 } from "./world-object-layout.mjs";
+import {
+  WORLD_DAY_NIGHT_DEFAULT_PHASE,
+  WORLD_DAY_NIGHT_STORAGE_KEY,
+  createWorldDayNightAnchor,
+  sampleWorldDayNight,
+  worldDayNightDebugPhase,
+  worldDayNightPhaseAt,
+} from "./world-day-night.mjs";
 
 export type AgentWorldLocation =
   | "entrance"
@@ -934,6 +942,157 @@ function resolvePositionOutsideObstacles(
 
 function disableOutline(material: THREE.Material) {
   material.userData.outlineParameters = { visible: false };
+}
+
+function createWorldAtmosphereBackdrop() {
+  const uniforms = {
+    atmosphereTime: { value: 0 },
+    skyTopColor: { value: new THREE.Color(0x66c8d3) },
+    skyHorizonColor: { value: new THREE.Color(0xf8e5b6) },
+    distantSeaColor: { value: new THREE.Color(0x50b9c2) },
+    sunlightColor: { value: new THREE.Color(0xffe28b) },
+    moonlightColor: { value: new THREE.Color(0xc8ddff) },
+    daylightAmount: { value: 1 },
+    goldenAmount: { value: 0 },
+    sunsetAmount: { value: 0 },
+    nightAmount: { value: 0 },
+    dawnAmount: { value: 0 },
+    starAmount: { value: 0 },
+    sunPosition: { value: new THREE.Vector2(0.38, 0.86) },
+    moonPosition: { value: new THREE.Vector2(0.18, 0.82) },
+    sunVisibility: { value: 1 },
+    moonVisibility: { value: 0 },
+  };
+  const material = new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: `
+varying vec2 atmosphereUv;
+
+void main() {
+  atmosphereUv = uv;
+  gl_Position = vec4(position.xy, 0.9999, 1.0);
+}`,
+    fragmentShader: `
+varying vec2 atmosphereUv;
+
+uniform float atmosphereTime;
+uniform vec3 skyTopColor;
+uniform vec3 skyHorizonColor;
+uniform vec3 distantSeaColor;
+uniform vec3 sunlightColor;
+uniform vec3 moonlightColor;
+uniform float daylightAmount;
+uniform float goldenAmount;
+uniform float sunsetAmount;
+uniform float nightAmount;
+uniform float dawnAmount;
+uniform float starAmount;
+uniform vec2 sunPosition;
+uniform vec2 moonPosition;
+uniform float sunVisibility;
+uniform float moonVisibility;
+
+float atmosphereHash(vec2 point) {
+  point = fract(point * vec2(123.34, 345.45));
+  point += dot(point, point + 34.345);
+  return fract(point.x * point.y);
+}
+
+float softEllipse(vec2 uv, vec2 center, vec2 radius) {
+  float distanceToCenter = length((uv - center) / radius);
+  return 1.0 - smoothstep(0.82, 1.06, distanceToCenter);
+}
+
+void main() {
+  const float horizon = 0.715;
+  vec2 uv = atmosphereUv;
+  float skyHeight = smoothstep(horizon, 1.0, uv.y);
+  vec3 skyColor = mix(skyHorizonColor, skyTopColor, pow(skyHeight, 0.72));
+  float seaDepth = clamp((horizon - uv.y) / horizon, 0.0, 1.0);
+  vec3 seaBottomColor = distantSeaColor * mix(0.78, 0.62, nightAmount);
+  vec3 seaColor = mix(distantSeaColor * 1.05, seaBottomColor, seaDepth);
+  vec3 color = uv.y >= horizon ? skyColor : seaColor;
+
+  float horizonLine = 1.0 - smoothstep(0.0, 0.0035, abs(uv.y - horizon));
+  color = mix(color, mix(vec3(1.0, 0.91, 0.72), moonlightColor, nightAmount), horizonLine * 0.58);
+
+  float cloudBand = smoothstep(horizon + 0.03, horizon + 0.12, uv.y) *
+    (1.0 - smoothstep(horizon + 0.2, horizon + 0.34, uv.y));
+  float cloudShape =
+    softEllipse(uv, vec2(0.13, horizon + 0.15), vec2(0.09, 0.025)) +
+    softEllipse(uv, vec2(0.21, horizon + 0.16), vec2(0.075, 0.022)) +
+    softEllipse(uv, vec2(0.76, horizon + 0.1), vec2(0.085, 0.023)) +
+    softEllipse(uv, vec2(0.84, horizon + 0.115), vec2(0.06, 0.018));
+  float cloudOpacity = clamp(cloudShape, 0.0, 1.0) * cloudBand * mix(0.32, 0.1, nightAmount);
+  color = mix(color, mix(vec3(1.0, 0.97, 0.89), vec3(0.56, 0.61, 0.76), nightAmount), cloudOpacity);
+
+  vec2 starGridUv = vec2(uv.x * 122.0, (uv.y - horizon) * 178.0);
+  vec2 starCell = floor(starGridUv);
+  vec2 starPoint = fract(starGridUv) - 0.5;
+  float starSeed = atmosphereHash(starCell);
+  float starCore = (1.0 - smoothstep(0.025, 0.11, length(starPoint))) * step(0.982, starSeed);
+  float twinkle = 0.68 + 0.32 * sin(atmosphereTime * (0.7 + starSeed * 1.4) + starSeed * 19.0);
+  float star = starCore * twinkle * starAmount * smoothstep(horizon + 0.025, horizon + 0.14, uv.y);
+  color += mix(vec3(1.0, 0.92, 0.72), vec3(0.78, 0.88, 1.0), starSeed) * star;
+
+  float sunDistance = length(uv - sunPosition);
+  float sunDisc = 1.0 - smoothstep(0.032, 0.039, sunDistance);
+  float sunGlow = exp(-sunDistance * 15.0) * 0.62;
+  float visibleSunDisc = sunVisibility * sunDisc;
+  color += sunlightColor * sunGlow * sunVisibility * (0.42 + goldenAmount * 0.5 + sunsetAmount * 0.45);
+  color = mix(color, sunlightColor, visibleSunDisc * 0.96);
+
+  float moonDistance = length(uv - moonPosition);
+  float moonDisc = 1.0 - smoothstep(0.027, 0.034, moonDistance);
+  float moonGlow = exp(-moonDistance * 18.0) * 0.46;
+  float moonShade = smoothstep(0.005, 0.048, length(uv - (moonPosition + vec2(0.012, 0.005))));
+  color += moonlightColor * moonGlow * moonVisibility * 0.62;
+  color = mix(color, moonlightColor * mix(0.82, 1.0, moonShade), moonDisc * moonVisibility * 0.94);
+
+  float leftIsland = softEllipse(uv, vec2(0.13, horizon + 0.003), vec2(0.12, 0.017));
+  float rightIsland = softEllipse(uv, vec2(0.85, horizon + 0.001), vec2(0.085, 0.013));
+  float distantIsland = clamp(leftIsland + rightIsland, 0.0, 1.0);
+  color = mix(color, mix(vec3(0.26, 0.43, 0.45), vec3(0.18, 0.22, 0.34), nightAmount), distantIsland * 0.72);
+
+  float belowHorizon = clamp((horizon - uv.y) / 0.7, 0.0, 1.0);
+  float reflectionWidth = mix(0.018, 0.18, belowHorizon);
+  float sunReflectionBand = 1.0 - smoothstep(reflectionWidth * 0.25, reflectionWidth, abs(uv.x - sunPosition.x));
+  float sunReflectionStripe = 0.3 + 0.7 * max(0.0, sin(uv.y * 205.0 + sin(uv.x * 41.0) * 1.7));
+  float sunReflection = sunReflectionBand * sunReflectionStripe * belowHorizon *
+    sunVisibility * (0.08 * daylightAmount + 0.5 * goldenAmount + 0.9 * sunsetAmount);
+  color += sunlightColor * sunReflection * 0.64;
+
+  float moonReflectionBand = 1.0 - smoothstep(reflectionWidth * 0.2, reflectionWidth * 0.85, abs(uv.x - moonPosition.x));
+  float moonReflectionStripe = 0.24 + 0.76 * max(0.0, sin(uv.y * 188.0 - sin(uv.x * 37.0)));
+  float moonReflection = moonReflectionBand * moonReflectionStripe * belowHorizon * moonVisibility * nightAmount;
+  color += moonlightColor * moonReflection * 0.34;
+
+  float distantRipple = sin(uv.y * 255.0 + uv.x * 34.0 + atmosphereTime * 0.14) *
+    sin(uv.y * 92.0 - uv.x * 57.0);
+  color += mix(vec3(0.025, 0.045, 0.05), vec3(0.018, 0.03, 0.07), nightAmount) *
+    distantRipple * belowHorizon * 0.32;
+
+  float watercolorGrain = atmosphereHash(floor(gl_FragCoord.xy * 0.58)) - 0.5;
+  color += watercolorGrain * mix(0.013, 0.008, nightAmount);
+  color = mix(color, color * vec3(0.98, 0.96, 0.94), dawnAmount * 0.06);
+
+  gl_FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`,
+    depthTest: false,
+    depthWrite: false,
+    transparent: false,
+    toneMapped: false,
+  });
+  disableOutline(material);
+
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+  mesh.name = "world-atmosphere-horizon-backdrop";
+  mesh.frustumCulled = false;
+  mesh.renderOrder = -1000;
+  mesh.layers.set(WORLD_LAYER);
+  return { mesh, material, uniforms };
 }
 
 function createIllustratedMaterial(color: number) {
@@ -3039,6 +3198,30 @@ export default function AgentWorld3D({
     if (!host) return;
 
     const diagnosticParams = new URLSearchParams(window.location.search);
+    const fixedWorldDayNightPhase = worldDayNightDebugPhase(
+      diagnosticParams.get("worldTime"),
+    );
+    let worldDayNightAnchor = createWorldDayNightAnchor(
+      Date.now(),
+      WORLD_DAY_NIGHT_DEFAULT_PHASE,
+    );
+    if (fixedWorldDayNightPhase === null) {
+      try {
+        const storedAnchor = Number.parseFloat(
+          window.localStorage.getItem(WORLD_DAY_NIGHT_STORAGE_KEY) ?? "",
+        );
+        if (Number.isFinite(storedAnchor)) {
+          worldDayNightAnchor = storedAnchor;
+        } else {
+          window.localStorage.setItem(
+            WORLD_DAY_NIGHT_STORAGE_KEY,
+            String(worldDayNightAnchor),
+          );
+        }
+      } catch {
+        // Private browsing can reject storage. The cycle still runs in-memory.
+      }
+    }
     const interactionDebugMode =
       diagnosticParams.get("interactionDebug") === "1";
     const layoutEditorAuthorized = isWorldLayoutAdminHost(
@@ -3123,6 +3306,8 @@ export default function AgentWorld3D({
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(FAR_OCEAN_STYLE_COLOR);
     scene.fog = new THREE.Fog(FAR_OCEAN_STYLE_COLOR, 15, 27);
+    const atmosphereBackdrop = createWorldAtmosphereBackdrop();
+    scene.add(atmosphereBackdrop.mesh);
     const clickableObjects: THREE.Object3D[] = [];
     const billboardObjects: THREE.Object3D[] = [];
     const workstationGroups = new Map<SeatId, THREE.Group>();
@@ -3579,7 +3764,12 @@ export default function AgentWorld3D({
       addCareFacility: (intent) => addCareFacilityInScene(intent),
     };
 
-    scene.add(new THREE.HemisphereLight(0xfff6dd, 0x536c49, 1.7));
+    const hemisphereLight = new THREE.HemisphereLight(
+      0xfff6dd,
+      0x536c49,
+      1.7,
+    );
+    scene.add(hemisphereLight);
 
     const keyLight = new THREE.DirectionalLight(0xfff2d1, 2.1);
     keyLight.position.set(-4, 10, 7);
@@ -3588,6 +3778,25 @@ export default function AgentWorld3D({
     const fillLight = new THREE.DirectionalLight(0x9fcbe0, 0.65);
     fillLight.position.set(8, 5, -4);
     scene.add(fillLight);
+
+    const moonLight = new THREE.DirectionalLight(0xa9c9ed, 0);
+    moonLight.position.set(-7, 7, -5);
+    scene.add(moonLight);
+
+    const nightLanternLight = new THREE.PointLight(0xffc774, 0, 4.2, 2);
+    nightLanternLight.position.copy(CAMPING_LANTERN_POSITION);
+    nightLanternLight.position.y = 0.9;
+    scene.add(nightLanternLight);
+
+    const nightWorkstationLight = new THREE.PointLight(
+      0xffd397,
+      0,
+      5.4,
+      2,
+    );
+    nightWorkstationLight.position.copy(LOW_MONITOR_STATION_POSITION);
+    nightWorkstationLight.position.y = 1.15;
+    scene.add(nightWorkstationLight);
 
     const textureLoader = new THREE.TextureLoader();
     const replyReadyTexture = textureLoader.load(
@@ -3617,11 +3826,21 @@ export default function AgentWorld3D({
       4,
       renderer.capabilities.getMaxAnisotropy(),
     );
+    const worldViewportSizeUniform = {
+      value: new THREE.Vector2(1, 1),
+    };
     const oceanMaterial = new THREE.MeshBasicMaterial({
       map: oceanTexture,
+      transparent: true,
       toneMapped: false,
     });
     oceanMaterial.onBeforeCompile = (shader) => {
+      shader.uniforms.worldViewportSize = worldViewportSizeUniform;
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <common>",
+        `#include <common>
+uniform vec2 worldViewportSize;`,
+      );
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <map_fragment>",
         `#ifdef USE_MAP
@@ -3639,6 +3858,10 @@ export default function AgentWorld3D({
     0.0,
     1.0
   );
+  float worldScreenY =
+    gl_FragCoord.y / max( worldViewportSize.y, 1.0 );
+  float horizonReveal = smoothstep( 0.68, 0.94, worldScreenY );
+  sampledDiffuseColor.a *= 1.0 - horizonReveal * 0.965;
 
   #ifdef DECODE_VIDEO_TEXTURE
 
@@ -3652,7 +3875,7 @@ export default function AgentWorld3D({
       );
     };
     oceanMaterial.customProgramCacheKey = () =>
-      "extended-ocean-style-locked-v2";
+      "extended-ocean-atmosphere-horizon-v3";
     disableOutline(oceanMaterial);
     const outerOcean = new THREE.Mesh(
       new THREE.PlaneGeometry(42, 42),
@@ -3677,15 +3900,18 @@ export default function AgentWorld3D({
 
     const groundMaterial = new THREE.MeshBasicMaterial({
       map: groundTexture,
+      transparent: true,
       toneMapped: false,
     });
     const oceanTideUniform = { value: 0 };
     groundMaterial.onBeforeCompile = (shader) => {
       shader.uniforms.oceanTideTime = oceanTideUniform;
+      shader.uniforms.worldViewportSize = worldViewportSizeUniform;
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <common>",
         `#include <common>
 uniform float oceanTideTime;
+uniform vec2 worldViewportSize;
 
 float shoreWaterSignal( vec3 color ) {
   float turquoiseLead = ( color.g + color.b ) * 0.5 - color.r;
@@ -3759,6 +3985,11 @@ float shoreWaterSignal( vec3 color ) {
     waterSurface;
   float foamPulse = ( tideBreath * 0.5 + 0.5 ) * shoreFoam;
   sampledDiffuseColor.rgb += vec3( 0.035, 0.065, 0.075 ) * foamPulse;
+  float worldScreenY =
+    gl_FragCoord.y / max( worldViewportSize.y, 1.0 );
+  float horizonReveal = smoothstep( 0.72, 0.955, worldScreenY );
+  sampledDiffuseColor.a *=
+    1.0 - horizonReveal * waterSurface * 0.94;
 
   #ifdef DECODE_VIDEO_TEXTURE
 
@@ -3772,7 +4003,7 @@ float shoreWaterSignal( vec3 color ) {
       );
     };
     groundMaterial.customProgramCacheKey = () =>
-      "shore-tide-breathing-v4";
+      "shore-tide-atmosphere-horizon-v5";
     disableOutline(groundMaterial);
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(10, 15),
@@ -3790,9 +4021,12 @@ float shoreWaterSignal( vec3 color ) {
       toneMapped: false,
     });
     shoreWaterOverlayMaterial.onBeforeCompile = (shader) => {
+      shader.uniforms.worldViewportSize = worldViewportSizeUniform;
       shader.fragmentShader = shader.fragmentShader.replace(
         "#include <common>",
         `#include <common>
+uniform vec2 worldViewportSize;
+
 float shoreOverlayWaterSignal( vec3 color ) {
   float turquoiseLead = ( color.g + color.b ) * 0.5 - color.r;
   return smoothstep( 0.02, 0.14, turquoiseLead );
@@ -3822,6 +4056,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
   float foamMask =
     foamBrightness * smoothstep( 0.035, 0.5, nearbyWater );
   shoreColor.a *= clamp( max( waterMask, foamMask ), 0.0, 1.0 );
+  float worldScreenY =
+    gl_FragCoord.y / max( worldViewportSize.y, 1.0 );
+  shoreColor.a *= 1.0 - smoothstep( 0.72, 0.955, worldScreenY ) * 0.94;
 
   #ifdef DECODE_VIDEO_TEXTURE
 
@@ -3835,7 +4072,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       );
     };
     shoreWaterOverlayMaterial.customProgramCacheKey = () =>
-      "shore-water-overlay-v2";
+      "shore-water-atmosphere-horizon-v3";
     disableOutline(shoreWaterOverlayMaterial);
     const shoreWaterOverlay = new THREE.Mesh(
       new THREE.PlaneGeometry(10, 15),
@@ -6277,6 +6514,157 @@ float shoreOverlayWaterSignal( vec3 color ) {
     let oceanTideTime = 0;
     let outlineGapVisibility = 1;
 
+    const atmospherePalettes = {
+      skyTop: [0x65cbd5, 0x78bdc8, 0x76688a, 0x172744, 0x56678a],
+      horizon: [0xf8e7b8, 0xffd38f, 0xffab79, 0x48577b, 0xdba1a2],
+      sea: [0x52bdc5, 0x4ba3ae, 0x4a7488, 0x294861, 0x427287],
+      fog: [0x77cbbd, 0xd9b384, 0xc18483, 0x29445f, 0x73839c],
+      ground: [0xffffff, 0xffeed4, 0xe9b9b0, 0x8292b1, 0xb8aec2],
+      water: [0xffffff, 0xffdfbd, 0xd9a1aa, 0x879fba, 0xa6adbf],
+      hemisphereSky: [0xfff6dd, 0xffddb0, 0xf3b1a2, 0xaec8ea, 0xc8bfda],
+      hemisphereGround: [0x536c49, 0x806b4b, 0x725a59, 0x314660, 0x565b70],
+      sunlight: [0xfff2d1, 0xffd18c, 0xffa778, 0xa9c8ed, 0xf2b79c],
+    } as const;
+    const atmosphereColors = Object.fromEntries(
+      Object.entries(atmospherePalettes).map(([key, values]) => [
+        key,
+        values.map((value) => new THREE.Color(value)),
+      ]),
+    ) as Record<keyof typeof atmospherePalettes, THREE.Color[]>;
+    const blendedAtmosphereColor = new THREE.Color();
+    const blendAtmosphereColor = (
+      target: THREE.Color,
+      palette: THREE.Color[],
+      sample: ReturnType<typeof sampleWorldDayNight>,
+    ) => {
+      const weights = [
+        sample.daylight * 1.05,
+        sample.golden,
+        sample.sunset * 1.12,
+        sample.night * 1.08,
+        sample.dawn,
+      ];
+      const total = Math.max(
+        0.0001,
+        weights.reduce((sum, weight) => sum + weight, 0),
+      );
+      let red = 0;
+      let green = 0;
+      let blue = 0;
+      palette.forEach((color, index) => {
+        red += color.r * weights[index];
+        green += color.g * weights[index];
+        blue += color.b * weights[index];
+      });
+      target.setRGB(red / total, green / total, blue / total);
+      return target;
+    };
+    const applyWorldDayNight = (
+      sample: ReturnType<typeof sampleWorldDayNight>,
+      animationTime: number,
+    ) => {
+      const { uniforms } = atmosphereBackdrop;
+      uniforms.atmosphereTime.value = animationTime;
+      blendAtmosphereColor(
+        uniforms.skyTopColor.value,
+        atmosphereColors.skyTop,
+        sample,
+      );
+      blendAtmosphereColor(
+        uniforms.skyHorizonColor.value,
+        atmosphereColors.horizon,
+        sample,
+      );
+      blendAtmosphereColor(
+        uniforms.distantSeaColor.value,
+        atmosphereColors.sea,
+        sample,
+      );
+      blendAtmosphereColor(
+        uniforms.sunlightColor.value,
+        atmosphereColors.sunlight,
+        sample,
+      );
+      uniforms.moonlightColor.value.set(0xc8ddff);
+      uniforms.daylightAmount.value = sample.daylight;
+      uniforms.goldenAmount.value = sample.golden;
+      uniforms.sunsetAmount.value = sample.sunset;
+      uniforms.nightAmount.value = sample.night;
+      uniforms.dawnAmount.value = sample.dawn;
+      uniforms.starAmount.value = sample.stars;
+      uniforms.sunPosition.value.set(
+        0.5 + sample.sunX * 0.39,
+        0.715 + sample.sunHeight * 0.2 - sample.sunset * 0.023,
+      );
+      uniforms.moonPosition.value.set(
+        0.5 + sample.moonX * 0.39,
+        0.715 + sample.moonHeight * 0.19,
+      );
+      uniforms.sunVisibility.value = sample.sunVisibility;
+      uniforms.moonVisibility.value = sample.moonVisibility;
+
+      blendAtmosphereColor(
+        blendedAtmosphereColor,
+        atmosphereColors.fog,
+        sample,
+      );
+      if (scene.background instanceof THREE.Color) {
+        scene.background.copy(blendedAtmosphereColor);
+      }
+      if (scene.fog instanceof THREE.Fog) {
+        scene.fog.color.copy(blendedAtmosphereColor);
+      }
+      blendAtmosphereColor(
+        groundMaterial.color,
+        atmosphereColors.ground,
+        sample,
+      );
+      blendAtmosphereColor(
+        oceanMaterial.color,
+        atmosphereColors.water,
+        sample,
+      );
+      shoreWaterOverlayMaterial.color.copy(oceanMaterial.color);
+
+      blendAtmosphereColor(
+        hemisphereLight.color,
+        atmosphereColors.hemisphereSky,
+        sample,
+      );
+      blendAtmosphereColor(
+        hemisphereLight.groundColor,
+        atmosphereColors.hemisphereGround,
+        sample,
+      );
+      hemisphereLight.intensity =
+        0.82 + sample.daylight * 0.88 + sample.golden * 0.12;
+      blendAtmosphereColor(
+        keyLight.color,
+        atmosphereColors.sunlight,
+        sample,
+      );
+      keyLight.intensity =
+        0.28 + sample.daylight * 1.72 + sample.golden * 0.32;
+      keyLight.position.set(
+        -4 + sample.sunX * 7.5,
+        7.5 + sample.sunHeight * 4,
+        7 - sample.sunX * 4,
+      );
+      fillLight.intensity =
+        0.38 + sample.daylight * 0.22 + sample.night * 0.42;
+      fillLight.color.set(sample.night > 0.45 ? 0xa9c9ed : 0x9fcbe0);
+      moonLight.intensity = sample.night * sample.moonVisibility * 0.92;
+      moonLight.position.set(
+        sample.moonX * 8,
+        6 + sample.moonHeight * 5,
+        -5,
+      );
+      nightLanternLight.intensity = sample.warmLights * 1.2;
+      nightWorkstationLight.intensity = sample.warmLights * 0.78;
+      renderer.toneMappingExposure =
+        0.9 + sample.daylight * 0.1 + sample.golden * 0.035;
+    };
+
     const updateSize = () => {
       const width = Math.max(host.clientWidth, 1);
       const height = Math.max(host.clientHeight, 1);
@@ -6288,6 +6676,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       camera.bottom = -viewHeight / 2;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height, false);
+      renderer.getDrawingBufferSize(worldViewportSizeUniform.value);
     };
 
     const activePointers = new Map<number, THREE.Vector2>();
@@ -6615,6 +7004,13 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const measuredDelta = Math.min(clock.getDelta(), 0.05);
       const delta = suppressMonitorInteraction ? 0 : measuredDelta;
       const animationTime = suppressMonitorInteraction ? 0 : clock.elapsedTime;
+      const worldDayNightPhase =
+        fixedWorldDayNightPhase ??
+        worldDayNightPhaseAt(Date.now(), worldDayNightAnchor);
+      applyWorldDayNight(
+        sampleWorldDayNight(worldDayNightPhase),
+        animationTime,
+      );
       const primaryView = seatsRef.current[0] ?? DEFAULT_SEAT_VIEW;
       const isPrimaryBlocked = primaryView.blocked;
       const isPrimaryWorking = primaryView.status === "working";
