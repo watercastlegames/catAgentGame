@@ -78,6 +78,19 @@ export type SeatView = {
 
 export type WorldPlacementMode = "snack" | "laser" | "toy" | null;
 
+type WorldTimeTestMode = "auto" | "dawn" | "day" | "sunset" | "night";
+
+const WORLD_TIME_TEST_OPTIONS: ReadonlyArray<{
+  mode: WorldTimeTestMode;
+  label: string;
+}> = [
+  { mode: "auto", label: "자동" },
+  { mode: "dawn", label: "새벽" },
+  { mode: "day", label: "낮" },
+  { mode: "sunset", label: "노을" },
+  { mode: "night", label: "밤" },
+];
+
 export type SnackPlacement = {
   id: number;
   x: number;
@@ -3113,11 +3126,14 @@ export default function AgentWorld3D({
   const onCatCareEventRef = useRef(onCatCareEvent);
   const onKneadingCompletedRef = useRef(onKneadingCompleted);
   const layoutEditorRuntimeRef = useRef<WorldLayoutEditorRuntime | null>(null);
+  const forcedWorldDayNightPhaseRef = useRef<number | null>(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [failed, setFailed] = useState(false);
   const [ready, setReady] = useState(false);
   const [ambientLabel, setAmbientLabel] = useState("주변을 구경하는 중");
   const [layoutEditMode, setLayoutEditMode] = useState(false);
+  const [worldTimeTestMode, setWorldTimeTestMode] =
+    useState<WorldTimeTestMode>("auto");
   const layoutAdminEnabled = useSyncExternalStore(
     () => () => {},
     () => isWorldLayoutAdminHost(window.location.hostname),
@@ -3201,6 +3217,16 @@ export default function AgentWorld3D({
     const fixedWorldDayNightPhase = worldDayNightDebugPhase(
       diagnosticParams.get("worldTime"),
     );
+    const requestedWorldTimeMode = diagnosticParams.get("worldTime");
+    forcedWorldDayNightPhaseRef.current = fixedWorldDayNightPhase;
+    if (
+      requestedWorldTimeMode === "dawn" ||
+      requestedWorldTimeMode === "day" ||
+      requestedWorldTimeMode === "sunset" ||
+      requestedWorldTimeMode === "night"
+    ) {
+      setWorldTimeTestMode(requestedWorldTimeMode);
+    }
     let worldDayNightAnchor = createWorldDayNightAnchor(
       Date.now(),
       WORLD_DAY_NIGHT_DEFAULT_PHASE,
@@ -7036,7 +7062,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const delta = suppressMonitorInteraction ? 0 : measuredDelta;
       const animationTime = suppressMonitorInteraction ? 0 : clock.elapsedTime;
       const worldDayNightPhase =
-        fixedWorldDayNightPhase ??
+        forcedWorldDayNightPhaseRef.current ??
         worldDayNightPhaseAt(Date.now(), worldDayNightAnchor);
       applyWorldDayNight(
         sampleWorldDayNight(worldDayNightPhase),
@@ -8223,6 +8249,21 @@ float shoreOverlayWaterSignal( vec3 color ) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const selectWorldTimeTestMode = (mode: WorldTimeTestMode) => {
+    forcedWorldDayNightPhaseRef.current = worldDayNightDebugPhase(
+      mode === "auto" ? null : mode,
+    );
+    setWorldTimeTestMode(mode);
+
+    const url = new URL(window.location.href);
+    if (mode === "auto") {
+      url.searchParams.delete("worldTime");
+    } else {
+      url.searchParams.set("worldTime", mode);
+    }
+    window.history.replaceState(window.history.state, "", url);
+  };
+
   return (
     <>
       <div
@@ -8235,6 +8276,26 @@ float shoreOverlayWaterSignal( vec3 color ) {
           seats.length - 1,
         )}마리 고양이가 있는 2.5D 해변 사무실`}
       />
+
+      {layoutAdminEnabled && ready && !failed && (
+        <div
+          className="world-time-test-toolbar"
+          role="group"
+          aria-label="임시 밤낮 시간 테스트"
+        >
+          {WORLD_TIME_TEST_OPTIONS.map(({ mode, label }) => (
+            <button
+              type="button"
+              key={mode}
+              className={worldTimeTestMode === mode ? "is-active" : ""}
+              aria-pressed={worldTimeTestMode === mode}
+              onClick={() => selectWorldTimeTestMode(mode)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {layoutAdminEnabled && ready && !failed && (
         <button

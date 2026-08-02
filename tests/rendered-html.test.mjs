@@ -702,6 +702,11 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /diagnosticParams\.get\("worldZoom"\)/);
   assert.match(world3d, /THREE\.MathUtils\.degToRad\(requestedWorldYawDegrees\)/);
   assert.match(world3d, /let worldYawTarget = initialWorldYaw/);
+  assert.match(world3d, /world-time-test-toolbar/);
+  assert.match(world3d, /임시 밤낮 시간 테스트/);
+  assert.match(world3d, /forcedWorldDayNightPhaseRef\.current/);
+  assert.match(world3d, /url\.searchParams\.set\("worldTime", mode\)/);
+  assert.match(css, /\.world-time-test-toolbar/);
   assert.match(
     world3d,
     /new THREE\.Fog\(FAR_OCEAN_STYLE_COLOR, 15, 27\)/,
