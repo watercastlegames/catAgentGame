@@ -131,15 +131,59 @@
       --stars: 0;
       --warmth: .16;
       --night-glow: 0;
+      --horizon-opacity: .78;
+      --horizon-sky-top: #74cdd7;
+      --horizon-sky-bottom: #f6e2af;
+      --horizon-sea: #52b9c4;
+      --sunset-reflection: .08;
       position: relative; isolation: isolate; overflow: hidden;
       min-height: 610px; border-radius: 20px; background: #49afc0;
     }
     .scene-preview img {
       position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 52%;
+      z-index: 0;
       filter: brightness(var(--scene-brightness)) saturate(var(--scene-saturation)) sepia(var(--scene-sepia));
       transition: filter .18s linear;
     }
-    .scene-tint { position: absolute; inset: 0; background: var(--tint); mix-blend-mode: multiply; pointer-events: none; }
+    .far-horizon {
+      position: absolute; z-index: 1; inset: 0 0 auto; height: 31%; overflow: hidden;
+      opacity: var(--horizon-opacity); pointer-events: none;
+      background:
+        linear-gradient(180deg, var(--horizon-sky-top) 0 52%, var(--horizon-sky-bottom) 56% 61%, var(--horizon-sea) 62% 100%);
+      mask-image: linear-gradient(180deg, #000 0 76%, rgba(0,0,0,.72) 88%, transparent 100%);
+      transition: opacity .18s linear, background .18s linear;
+    }
+    .far-horizon::before {
+      content: ""; position: absolute; left: 0; right: 0; top: 61%; height: 2px;
+      background: rgba(255,247,214,.72);
+      box-shadow: 0 5px 0 rgba(255,255,255,.14), 0 13px 0 rgba(255,255,255,.09);
+    }
+    .far-horizon::after {
+      content: ""; position: absolute; inset: 8% 0 auto; height: 32%; opacity: .45;
+      background:
+        radial-gradient(ellipse at 12% 65%, rgba(255,255,245,.7) 0 8%, transparent 9%),
+        radial-gradient(ellipse at 22% 70%, rgba(255,255,245,.55) 0 10%, transparent 11%),
+        radial-gradient(ellipse at 73% 44%, rgba(255,246,228,.62) 0 8%, transparent 9%),
+        radial-gradient(ellipse at 82% 49%, rgba(255,246,228,.45) 0 11%, transparent 12%);
+      filter: blur(1px);
+    }
+    .distant-islets {
+      position: absolute; z-index: 2; left: 6%; right: 5%; top: 17.4%; height: 3.8%; opacity: .2;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse at 16% 100%, #4d6c75 0 11%, transparent 11.6%),
+        radial-gradient(ellipse at 82% 100%, #4d6c75 0 8%, transparent 8.7%);
+      filter: blur(.4px);
+    }
+    .horizon-reflection {
+      position: absolute; z-index: 4; left: 50%; top: 18%; width: 22%; height: 39%;
+      translate: -50% 0; opacity: var(--sunset-reflection); pointer-events: none;
+      background: repeating-linear-gradient(176deg, transparent 0 13px, rgba(255,233,167,.82) 15px 17px, transparent 19px 29px);
+      clip-path: polygon(42% 0, 58% 0, 94% 100%, 6% 100%);
+      mask-image: linear-gradient(180deg, #000, rgba(0,0,0,.72) 58%, transparent 100%);
+      filter: blur(.6px);
+    }
+    .scene-tint { position: absolute; z-index: 2; inset: 0; background: var(--tint); mix-blend-mode: multiply; pointer-events: none; }
     .sun, .moon {
       position: absolute; z-index: 3; width: 62px; aspect-ratio: 1; border-radius: 50%;
       translate: -50% -50%; pointer-events: none; transition: opacity .2s linear;
@@ -251,6 +295,26 @@
     .spec-card ul { margin: 12px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
     .swatches { display: flex; gap: 7px; margin-top: 15px; }
     .swatches i { width: 35px; height: 35px; border-radius: 11px; border: 2px solid rgba(255,255,255,.8); box-shadow: 0 0 0 1px var(--line); }
+    .horizon-spec { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1.15fr; gap: 22px; align-items: center; }
+    .horizon-plan {
+      position: relative; min-height: 230px; overflow: hidden; border-radius: 18px;
+      background: linear-gradient(180deg, #756989 0%, #db8b7c 43%, #ffc17e 58%, #4d7d91 59%, #2d6179 100%);
+    }
+    .horizon-plan::before {
+      content: ""; position: absolute; width: 76px; height: 76px; left: 64%; top: 43%; translate: -50% -50%;
+      border-radius: 50%; background: #fff3b4; box-shadow: 0 0 42px rgba(255,192,99,.9), 0 0 90px rgba(239,129,93,.42);
+    }
+    .horizon-plan::after {
+      content: ""; position: absolute; left: 52%; top: 58%; width: 26%; height: 42%;
+      background: repeating-linear-gradient(176deg, transparent 0 12px, rgba(255,222,146,.72) 14px 16px, transparent 18px 27px);
+      clip-path: polygon(36% 0, 64% 0, 100% 100%, 0 100%); filter: blur(.7px);
+    }
+    .horizon-plan .horizon-line { position: absolute; z-index: 2; left: 0; right: 0; top: 58%; height: 2px; background: rgba(255,239,199,.8); }
+    .horizon-plan .islet-left, .horizon-plan .islet-right { position: absolute; z-index: 3; top: 54%; height: 5%; border-radius: 50% 50% 0 0; background: #4a626e; opacity: .65; }
+    .horizon-plan .islet-left { left: 5%; width: 24%; }
+    .horizon-plan .islet-right { right: 4%; width: 16%; }
+    .horizon-notes { display: grid; gap: 8px; margin-top: 14px; }
+    .horizon-notes span { padding: 9px 11px; border-radius: 11px; background: #f7efe3; color: var(--muted); font-size: 13px; font-weight: 700; }
 
     .flow { display: grid; grid-template-columns: repeat(5, 1fr); gap: 9px; }
     .flow article { position: relative; min-height: 160px; padding: 20px 17px; border-radius: 18px; background: #fff; border: 1px solid var(--line); }
@@ -282,6 +346,7 @@
       .phase-grid { grid-template-columns: repeat(2, 1fr); }
       .timeline-list { grid-template-columns: repeat(2, 1fr); }
       .flow { grid-template-columns: repeat(2, 1fr); }
+      .horizon-spec { grid-template-columns: 1fr; }
       .flow article::after { display: none; }
     }
     @media (max-width: 600px) {
@@ -347,6 +412,7 @@
         <div class="scene-shell">
           <div class="scene-preview" id="scenePreview">
             <img src="../public/art/beach-island-ocean-v4-style-locked.png" alt="현재 해변 섬 배경" />
+            <div class="far-horizon"></div><div class="distant-islets"></div><div class="horizon-reflection" id="horizonReflection"></div>
             <div class="scene-tint"></div><div class="stars"></div><div class="sea-glint"></div><div class="moon-path"></div><div class="office-glow"></div>
             <div class="sun" id="sun"></div><div class="moon" id="moon"></div>
             <div class="phase-label"><i id="phaseDot"></i><span id="phaseLabel">맑은 햇살</span></div>
@@ -401,6 +467,18 @@
     <section id="visual">
       <div class="section-head"><span class="section-no">05</span><h2>시각 시스템 설계</h2><p>현재 일러스트 질감과 아웃라인은 보존하고, 시간에 따라 필요한 값만 함께 움직입니다.</p></div>
       <div class="spec-grid">
+        <article class="card spec-card horizon-spec">
+          <div>
+            <h3>원경 수평선 선셋 — 필수 장면</h3>
+            <p>월드 상단 18~26%를 먼 바다와 하늘이 만나는 원경으로 확장합니다. 노을에는 태양이 수평선에 반쯤 잠기고, 금빛 반사 띠가 먼 바다에서 현재 섬의 해안까지 하나로 이어져야 합니다.</p>
+            <div class="horizon-notes">
+              <span>① 하늘 그라데이션 → ② 반쯤 잠긴 태양 → ③ 얇은 수평선</span>
+              <span>④ 작은 섬 실루엣 → ⑤ 섬 앞까지 이어지는 긴 반사광</span>
+              <span>카메라가 ±20% 회전해도 원경은 수평을 유지하는 느린 패럴랙스 레이어</span>
+            </div>
+          </div>
+          <div class="horizon-plan" aria-label="먼 바다 수평선과 선셋 구도 예시"><span class="horizon-line"></span><span class="islet-left"></span><span class="islet-right"></span></div>
+        </article>
         <article class="card spec-card"><h3>태양과 방향광</h3><p>태양 위치에 따라 주광의 색·방향·세기를 바꿉니다. 낮에는 크림빛, 노을에는 살구빛, 밤에는 주광을 끄고 달빛으로 교체합니다.</p><div class="swatches"><i style="background:#fff2c5"></i><i style="background:#ffc57a"></i><i style="background:#ed9278"></i><i style="background:#a9c8ed"></i></div></article>
         <article class="card spec-card"><h3>바다 반사와 파도</h3><p>현재 파도 애니메이션은 유지합니다. 여기에 태양·달 방향을 받는 반사 띠와 시간대별 청록/남색 색 보간만 추가합니다.</p><div class="swatches"><i style="background:#51c7ca"></i><i style="background:#41aeb1"></i><i style="background:#356f8e"></i><i style="background:#263e6b"></i></div></article>
         <article class="card spec-card"><h3>밤의 포근한 불빛</h3><p>오두막 모니터·랜턴·자리 주변에 따뜻한 국소 조명을 켭니다. 밤에도 고양이 표정과 책상 소품이 읽히도록 최소 밝기를 보장합니다.</p><ul><li>오두막·랜턴: 따뜻한 주황빛</li><li>모니터: 옅은 하늘빛</li><li>조개 반짝임: 밤에 조금 더 선명</li></ul></article>
@@ -413,7 +491,7 @@
       <div class="flow">
         <article><em>1</em><b>시간 엔진</b><p>10분 phase 계산, 새로고침 유지, 부드러운 보간, QA 시간 고정 옵션.</p></article>
         <article><em>2</em><b>월드 조명</b><p>태양·달 방향광, 환경광, 안개색, 야간 최소 밝기 적용.</p></article>
-        <article><em>3</em><b>바다·배경</b><p>수면 색과 반사 띠, 노을 수평광, 야간 은빛 물결 추가.</p></article>
+        <article><em>3</em><b>원경·바다</b><p>상단 원경 수평선, 지는 태양, 먼 바다부터 섬까지 이어지는 반사 띠와 야간 은빛 물결.</p></article>
         <article><em>4</em><b>야간 디테일</b><p>별, 달, 랜턴, 오두막, 모니터 불빛과 잔잔한 반짝임.</p></article>
         <article><em>5</em><b>실기 검증</b><p>PC·모바일 밝기, 성능, 아웃라인, 팝업 가독성, 리로드 연속성 확인.</p></article>
       </div>
@@ -426,6 +504,7 @@
         <div class="check"><i>✓</i><b>노을·밤·일출 경계에서 색과 밝기가 한 프레임도 튀지 않음</b><span>연속성</span></div>
         <div class="check"><i>✓</i><b>밤에도 고양이 얼굴, 태그, 책상, 오두막 내부가 선명함</b><span>가독성</span></div>
         <div class="check"><i>✓</i><b>바다는 낮 금빛, 밤 은빛 반사가 태양·달 방향에 맞음</b><span>해변 감성</span></div>
+        <div class="check"><i>✓</i><b>노을 때 상단 원경 수평선에 반쯤 잠긴 태양과 먼 바다가 함께 보임</b><span>선셋 원경</span></div>
         <div class="check"><i>✓</i><b>PC·모바일에서 객체 클릭, 이동, 카메라 회전과 충돌 없음</b><span>기능 안정성</span></div>
         <div class="check"><i>✓</i><b>새로고침·팝업 열기 후에도 시간대가 초기화되지 않음</b><span>지속성</span></div>
         <div class="check"><i>✓</i><b>저사양 모바일에서도 신규 효과 때문에 체감 프레임이 급락하지 않음</b><span>성능</span></div>
@@ -449,15 +528,16 @@
       const phaseDot = document.getElementById("phaseDot");
       const sun = document.getElementById("sun");
       const moon = document.getElementById("moon");
+      const horizonReflection = document.getElementById("horizonReflection");
 
       const stops = [
-        { t: 0,   name: "맑은 햇살", virtual: "10:00", brightness: 1.04, saturation: 1.06, sepia: .01, tint: [255, 226, 150, .02], stars: 0, warmth: .16, nightGlow: 0, dot: "#ffd77b" },
-        { t: 160, name: "골든아워", virtual: "16:00", brightness: 1.00, saturation: 1.11, sepia: .09, tint: [248, 176, 95, .11], stars: 0, warmth: .34, nightGlow: 0, dot: "#efbf68" },
-        { t: 230, name: "코랄 노을", virtual: "18:20", brightness: .88, saturation: 1.06, sepia: .12, tint: [212, 102, 101, .25], stars: .08, warmth: .24, nightGlow: .05, dot: "#e78775" },
-        { t: 290, name: "별빛 밤", virtual: "20:00", brightness: .62, saturation: .83, sepia: 0, tint: [39, 50, 91, .46], stars: .86, warmth: .03, nightGlow: .92, dot: "#a9c8ed" },
-        { t: 460, name: "고요한 여명", virtual: "04:30", brightness: .69, saturation: .88, sepia: .02, tint: [80, 78, 125, .38], stars: .55, warmth: .02, nightGlow: .52, dot: "#b9b5dd" },
-        { t: 520, name: "분홍빛 일출", virtual: "06:20", brightness: .84, saturation: .96, sepia: .07, tint: [224, 142, 130, .19], stars: .08, warmth: .19, nightGlow: .08, dot: "#eab0a0" },
-        { t: 600, name: "맑은 햇살", virtual: "10:00", brightness: 1.04, saturation: 1.06, sepia: .01, tint: [255, 226, 150, .02], stars: 0, warmth: .16, nightGlow: 0, dot: "#ffd77b" }
+        { t: 0,   name: "맑은 햇살", virtual: "10:00", brightness: 1.04, saturation: 1.06, sepia: .01, tint: [255, 226, 150, .02], stars: 0, warmth: .16, nightGlow: 0, horizonOpacity: .72, reflection: .08, horizonTop: "#74cdd7", horizonBottom: "#f6e2af", horizonSea: "#52b9c4", dot: "#ffd77b" },
+        { t: 160, name: "골든아워", virtual: "16:00", brightness: 1.00, saturation: 1.11, sepia: .09, tint: [248, 176, 95, .11], stars: 0, warmth: .34, nightGlow: 0, horizonOpacity: .88, reflection: .48, horizonTop: "#77b8c8", horizonBottom: "#ffd28e", horizonSea: "#4e9eaa", dot: "#efbf68" },
+        { t: 230, name: "코랄 노을", virtual: "18:20", brightness: .88, saturation: 1.06, sepia: .12, tint: [212, 102, 101, .25], stars: .08, warmth: .24, nightGlow: .05, horizonOpacity: 1, reflection: .92, horizonTop: "#756989", horizonBottom: "#ffad79", horizonSea: "#4a7488", dot: "#e78775" },
+        { t: 290, name: "별빛 밤", virtual: "20:00", brightness: .62, saturation: .83, sepia: 0, tint: [39, 50, 91, .46], stars: .86, warmth: .03, nightGlow: .92, horizonOpacity: .8, reflection: .08, horizonTop: "#26385f", horizonBottom: "#4b557a", horizonSea: "#31546f", dot: "#a9c8ed" },
+        { t: 460, name: "고요한 여명", virtual: "04:30", brightness: .69, saturation: .88, sepia: .02, tint: [80, 78, 125, .38], stars: .55, warmth: .02, nightGlow: .52, horizonOpacity: .82, reflection: .04, horizonTop: "#50567d", horizonBottom: "#9b8197", horizonSea: "#3e687e", dot: "#b9b5dd" },
+        { t: 520, name: "분홍빛 일출", virtual: "06:20", brightness: .84, saturation: .96, sepia: .07, tint: [224, 142, 130, .19], stars: .08, warmth: .19, nightGlow: .08, horizonOpacity: .92, reflection: .38, horizonTop: "#8a9cba", horizonBottom: "#f1b49e", horizonSea: "#4b8d9f", dot: "#eab0a0" },
+        { t: 600, name: "맑은 햇살", virtual: "10:00", brightness: 1.04, saturation: 1.06, sepia: .01, tint: [255, 226, 150, .02], stars: 0, warmth: .16, nightGlow: 0, horizonOpacity: .72, reflection: .08, horizonTop: "#74cdd7", horizonBottom: "#f6e2af", horizonSea: "#52b9c4", dot: "#ffd77b" }
       ];
 
       const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -490,6 +570,11 @@
         scene.style.setProperty("--stars", lerp(left.stars, right.stars, progress).toFixed(3));
         scene.style.setProperty("--warmth", lerp(left.warmth, right.warmth, progress).toFixed(3));
         scene.style.setProperty("--night-glow", lerp(left.nightGlow, right.nightGlow, progress).toFixed(3));
+        scene.style.setProperty("--horizon-opacity", lerp(left.horizonOpacity, right.horizonOpacity, progress).toFixed(3));
+        scene.style.setProperty("--sunset-reflection", lerp(left.reflection, right.reflection, progress).toFixed(3));
+        scene.style.setProperty("--horizon-sky-top", mixColor(left.horizonTop, right.horizonTop, progress));
+        scene.style.setProperty("--horizon-sky-bottom", mixColor(left.horizonBottom, right.horizonBottom, progress));
+        scene.style.setProperty("--horizon-sea", mixColor(left.horizonSea, right.horizonSea, progress));
         phaseDot.style.background = mixColor(left.dot, right.dot, progress);
         phaseLabel.textContent = name;
         timeReadout.textContent = `${String(minutes).padStart(2,"0")}:${String(seconds).padStart(2,"0")}`;
@@ -500,6 +585,7 @@
         sun.style.left = `${7 + sunProgress * 86}%`;
         sun.style.top = `${sunY}%`;
         sun.style.opacity = String(clamp(1 - (value - 225) / 70, 0, 1));
+        horizonReflection.style.left = sun.style.left;
 
         const moonProgress = clamp((value - 250) / 270, 0, 1);
         const moonY = 59 - Math.sin(moonProgress * Math.PI) * 46;
