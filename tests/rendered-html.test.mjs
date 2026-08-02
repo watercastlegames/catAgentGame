@@ -697,6 +697,11 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.doesNotMatch(world3d, /WORKSTATION_OUTLINE_ALPHA/);
   assert.match(world3d, /FAR_OCEAN_STYLE_COLOR = 0x77cbbd/);
   assert.match(world3d, /infinite-ocean-no-horizon-v1/);
+  assert.match(world3d, /diagnosticParams\.get\("worldYaw"\)/);
+  assert.match(world3d, /diagnosticParams\.get\("worldPitch"\)/);
+  assert.match(world3d, /diagnosticParams\.get\("worldZoom"\)/);
+  assert.match(world3d, /THREE\.MathUtils\.degToRad\(requestedWorldYawDegrees\)/);
+  assert.match(world3d, /let worldYawTarget = initialWorldYaw/);
   assert.match(
     world3d,
     /new THREE\.Fog\(FAR_OCEAN_STYLE_COLOR, 15, 27\)/,

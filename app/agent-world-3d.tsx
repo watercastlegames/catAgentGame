@@ -3349,12 +3349,42 @@ export default function AgentWorld3D({
     const cameraOrbitOffset = new THREE.Vector3();
     const worldPitchLimit =
       cameraBaseSpherical.phi * WORLD_INTERACTION_LIMIT_RATIO;
-    let worldYawTarget = 0;
-    let worldYawCurrent = 0;
-    let worldPitchTarget = 0;
-    let worldPitchCurrent = 0;
-    let worldZoomTarget = 1;
-    let worldZoomCurrent = 1;
+    const requestedWorldYawDegrees = Number.parseFloat(
+      diagnosticParams.get("worldYaw") ?? "",
+    );
+    const requestedWorldPitchDegrees = Number.parseFloat(
+      diagnosticParams.get("worldPitch") ?? "",
+    );
+    const requestedWorldZoom = Number.parseFloat(
+      diagnosticParams.get("worldZoom") ?? "",
+    );
+    const initialWorldYaw = Number.isFinite(requestedWorldYawDegrees)
+      ? THREE.MathUtils.clamp(
+          THREE.MathUtils.degToRad(requestedWorldYawDegrees),
+          -WORLD_YAW_LIMIT,
+          WORLD_YAW_LIMIT,
+        )
+      : 0;
+    const initialWorldPitch = Number.isFinite(requestedWorldPitchDegrees)
+      ? THREE.MathUtils.clamp(
+          THREE.MathUtils.degToRad(requestedWorldPitchDegrees),
+          -worldPitchLimit,
+          worldPitchLimit,
+        )
+      : 0;
+    const initialWorldZoom = Number.isFinite(requestedWorldZoom)
+      ? THREE.MathUtils.clamp(
+          requestedWorldZoom,
+          WORLD_ZOOM_MIN,
+          WORLD_ZOOM_MAX,
+        )
+      : 1;
+    let worldYawTarget = initialWorldYaw;
+    let worldYawCurrent = initialWorldYaw;
+    let worldPitchTarget = initialWorldPitch;
+    let worldPitchCurrent = initialWorldPitch;
+    let worldZoomTarget = initialWorldZoom;
+    let worldZoomCurrent = initialWorldZoom;
     camera.position.copy(cameraBase);
     camera.lookAt(cameraLookAt);
 
