@@ -3542,7 +3542,7 @@ export default function Home() {
             aria-label="개발자 정보 페이지로 이동"
             title="개발자 정보"
           >
-            <strong aria-hidden="true">?</strong>
+            <strong aria-hidden="true">{"</>"}</strong>
             <span>개발자 정보</span>
           </a>
 
