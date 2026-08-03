@@ -544,6 +544,9 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /oceanTexture\.offset\.set/);
   assert.match(world3d, /world-atmosphere-horizon-backdrop/);
   assert.match(world3d, /atmosphereBackdrop\.mesh\.visible = false/);
+  assert.match(world3d, /world-sunset-disc/);
+  assert.match(world3d, /world-sunset-water-reflection/);
+  assert.match(world3d, /sunsetAccentOpacity/);
   assert.match(world3d, /unifiedOceanColor/);
   assert.match(world3d, /edgeBlend/);
   assert.doesNotMatch(world3d, /horizonReveal/);
