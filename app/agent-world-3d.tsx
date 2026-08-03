@@ -1108,142 +1108,6 @@ void main() {
   return { mesh, material, uniforms };
 }
 
-function createWorldSunsetAccent() {
-  const sunUniforms = {
-    accentOpacity: { value: 0 },
-    sunlightColor: { value: new THREE.Color(0xffc86f) },
-  };
-  const sunMaterial = new THREE.ShaderMaterial({
-    uniforms: sunUniforms,
-    vertexShader: `
-varying vec2 sunUv;
-
-void main() {
-  sunUv = uv;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-}`,
-    fragmentShader: `
-varying vec2 sunUv;
-
-uniform float accentOpacity;
-uniform vec3 sunlightColor;
-
-void main() {
-  float sunDistance = length(sunUv - vec2(0.5));
-  float sunDisc = 1.0 - smoothstep(0.205, 0.235, sunDistance);
-  float sunInnerGlow = 1.0 - smoothstep(0.19, 0.37, sunDistance);
-  float sunOuterGlow = 1.0 - smoothstep(0.27, 0.5, sunDistance);
-  float sunAlpha = clamp(
-    sunDisc * 0.96 + sunInnerGlow * 0.42 + sunOuterGlow * 0.18,
-    0.0,
-    1.0
-  ) * accentOpacity;
-  vec3 illustratedSun = mix(
-    sunlightColor * 0.86,
-    vec3(1.0, 0.965, 0.77),
-    sunDisc * 0.82
-  );
-  gl_FragColor = vec4(illustratedSun, sunAlpha);
-  #include <tonemapping_fragment>
-  #include <colorspace_fragment>
-}`,
-    transparent: true,
-    depthTest: true,
-    depthWrite: false,
-    toneMapped: false,
-  });
-  disableOutline(sunMaterial);
-
-  const sun = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), sunMaterial);
-  sun.name = "world-sunset-disc";
-  sun.scale.set(1.24, 1.24, 1);
-  sun.renderOrder = 5;
-  sun.layers.set(WORLD_LAYER);
-
-  const reflectionUniforms = {
-    accentOpacity: { value: 0 },
-    reflectionTime: { value: 0 },
-    sunlightColor: { value: new THREE.Color(0xffc86f) },
-  };
-  const reflectionMaterial = new THREE.ShaderMaterial({
-    uniforms: reflectionUniforms,
-    vertexShader: `
-varying vec2 reflectionUv;
-
-void main() {
-  reflectionUv = uv;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
-}`,
-    fragmentShader: `
-varying vec2 reflectionUv;
-
-uniform float accentOpacity;
-uniform float reflectionTime;
-uniform vec3 sunlightColor;
-
-float reflectionHash(vec2 point) {
-  point = fract(point * vec2(123.34, 345.45));
-  point += dot(point, point + 34.345);
-  return fract(point.x * point.y);
-}
-
-void main() {
-  vec2 centered = reflectionUv - vec2(0.5);
-  float longitudinalFade = smoothstep(0.01, 0.2, reflectionUv.y) *
-    (1.0 - smoothstep(0.82, 0.995, reflectionUv.y));
-  float widening = mix(0.08, 0.48, reflectionUv.y);
-  float horizontalBand = 1.0 - smoothstep(
-    widening * 0.28,
-    widening,
-    abs(centered.x)
-  );
-  float movingRipple = sin(
-    reflectionUv.y * 142.0 +
-    sin(reflectionUv.x * 31.0) * 1.8 +
-    reflectionTime * 0.65
-  );
-  float brokenStripe = smoothstep(-0.12, 0.72, movingRipple);
-  float paperGrain = mix(
-    0.86,
-    1.0,
-    reflectionHash(floor(reflectionUv * vec2(84.0, 128.0)))
-  );
-  float alpha = longitudinalFade * horizontalBand * brokenStripe *
-    paperGrain * accentOpacity * 0.68;
-  vec3 reflectedColor = mix(
-    sunlightColor * 0.82,
-    vec3(1.0, 0.91, 0.66),
-    reflectionUv.y * 0.5
-  );
-  gl_FragColor = vec4(reflectedColor, alpha);
-  #include <tonemapping_fragment>
-  #include <colorspace_fragment>
-}`,
-    transparent: true,
-    depthTest: true,
-    depthWrite: false,
-    toneMapped: false,
-  });
-  disableOutline(reflectionMaterial);
-  const reflection = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.4, 2.65),
-    reflectionMaterial,
-  );
-  reflection.name = "world-sunset-water-reflection";
-  reflection.rotation.x = -Math.PI / 2;
-  reflection.renderOrder = 2;
-  reflection.layers.set(WORLD_LAYER);
-
-  return {
-    sun,
-    sunMaterial,
-    sunUniforms,
-    reflection,
-    reflectionMaterial,
-    reflectionUniforms,
-  };
-}
-
 function createIllustratedMaterial(color: number) {
   const material = new THREE.MeshStandardMaterial({
     color,
@@ -4064,11 +3928,6 @@ export default function AgentWorld3D({
     outerOcean.rotation.x = -Math.PI / 2;
     outerOcean.position.y = -0.07;
     scene.add(outerOcean);
-    const sunsetAccent = createWorldSunsetAccent();
-    sunsetAccent.sun.position.set(0.95, 0.34, -7.55);
-    sunsetAccent.reflection.position.set(0.5, -0.052, -5.28);
-    scene.add(sunsetAccent.reflection, sunsetAccent.sun);
-    billboardObjects.push(sunsetAccent.sun);
 
     const groundTexture = textureLoader.load(
       "/art/beach-island-ocean-v4-style-locked.png",
@@ -6712,13 +6571,6 @@ float shoreOverlayWaterSignal( vec3 color ) {
     let palmLeafSwayTime = 0;
     let oceanTideTime = 0;
     let outlineGapVisibility = 1;
-    let activeWorldDayNightSample = sampleWorldDayNight(
-      WORLD_DAY_NIGHT_DEFAULT_PHASE,
-    );
-    const sunsetViewDirection = new THREE.Vector3();
-    const sunsetViewRight = new THREE.Vector3();
-    const sunsetNearReflection = new THREE.Vector3();
-    const sunsetReflectionDirection = new THREE.Vector3();
 
     const atmospherePalettes = {
       skyTop: [0x65cbd5, 0x78bdc8, 0x76688a, 0x172744, 0x56678a],
@@ -6769,7 +6621,6 @@ float shoreOverlayWaterSignal( vec3 color ) {
       sample: ReturnType<typeof sampleWorldDayNight>,
       animationTime: number,
     ) => {
-      activeWorldDayNightSample = sample;
       const { uniforms } = atmosphereBackdrop;
       uniforms.atmosphereTime.value = animationTime;
       blendAtmosphereColor(
@@ -6809,21 +6660,6 @@ float shoreOverlayWaterSignal( vec3 color ) {
       );
       uniforms.sunVisibility.value = sample.sunVisibility;
       uniforms.moonVisibility.value = sample.moonVisibility;
-      const sunsetAccentOpacity = THREE.MathUtils.clamp(
-        Math.pow(sample.sunset, 0.72) * sample.sunVisibility,
-        0,
-        1,
-      );
-      sunsetAccent.sunUniforms.accentOpacity.value = sunsetAccentOpacity;
-      sunsetAccent.reflectionUniforms.accentOpacity.value =
-        sunsetAccentOpacity * (0.72 + sample.golden * 0.12);
-      sunsetAccent.reflectionUniforms.reflectionTime.value = animationTime;
-      sunsetAccent.sunUniforms.sunlightColor.value.copy(
-        uniforms.sunlightColor.value,
-      );
-      sunsetAccent.reflectionUniforms.sunlightColor.value.copy(
-        uniforms.sunlightColor.value,
-      );
 
       blendAtmosphereColor(
         blendedAtmosphereColor,
@@ -8337,47 +8173,6 @@ float shoreOverlayWaterSignal( vec3 color ) {
       camera.zoom = worldZoomCurrent;
       camera.updateProjectionMatrix();
       camera.lookAt(cameraLookAt);
-      sunsetViewDirection
-        .set(
-          cameraLookAt.x - camera.position.x,
-          0,
-          cameraLookAt.z - camera.position.z,
-        )
-        .normalize();
-      sunsetViewRight.set(
-        -sunsetViewDirection.z,
-        0,
-        sunsetViewDirection.x,
-      );
-      const sunsetHorizontalOffset =
-        1.18 + activeWorldDayNightSample.sunX * 1.38;
-      sunsetAccent.sun.position
-        .copy(cameraLookAt)
-        .addScaledVector(sunsetViewDirection, 7.48)
-        .addScaledVector(sunsetViewRight, sunsetHorizontalOffset);
-      sunsetAccent.sun.position.y =
-        0.25 + activeWorldDayNightSample.sunHeight * 0.56;
-      sunsetNearReflection
-        .copy(cameraLookAt)
-        .addScaledVector(sunsetViewDirection, 4.88)
-        .addScaledVector(sunsetViewRight, sunsetHorizontalOffset * 0.34);
-      sunsetAccent.reflection.position
-        .copy(sunsetNearReflection)
-        .lerp(sunsetAccent.sun.position, 0.5);
-      sunsetAccent.reflection.position.y = -0.012;
-      sunsetReflectionDirection
-        .copy(sunsetAccent.sun.position)
-        .sub(sunsetNearReflection);
-      sunsetReflectionDirection.y = 0;
-      sunsetReflectionDirection.normalize();
-      sunsetAccent.reflection.rotation.set(
-        -Math.PI / 2,
-        0,
-        -Math.atan2(
-          sunsetReflectionDirection.x,
-          -sunsetReflectionDirection.z,
-        ),
-      );
       const worldViewIsMoving =
         activePointers.size > 0 ||
         Math.abs(worldYawTarget - worldYawCurrent) > 0.0005 ||
