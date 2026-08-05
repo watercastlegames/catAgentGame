@@ -675,6 +675,7 @@ export default function Home() {
   const [tutorialDomPoint, setTutorialDomPoint] = useState<{
     x: number;
     y: number;
+    typing: boolean;
   } | null>(null);
   const tutorialGuideRef = useRef<HTMLDivElement | null>(null);
   /* 마지막으로 굴린 시각과 시도 횟수. 창이 닫히면 둘 다 되돌린다. */
@@ -3634,10 +3635,15 @@ export default function Home() {
          보이는지 판정은 진짜 화면 기준으로 한다. 두 상자는 같지 않다 —
          스테이지가 화면 위로 밀려 있어 안내판 top 이 음수인 경우가 있고,
          상자 기준으로 판정했더니 멀쩡히 보이는 입력칸을 화면 밖으로 오해했다. */
-      const x = (box.left + box.width / 2 - stageBox.left) / stageBox.width;
-      const y = (box.top + box.height / 2 - stageBox.top) / stageBox.height;
-      const cx = box.left + box.width / 2;
+      /* 발바닥은 접점 위쪽으로 그림이 뻗는다. 칸 한가운데를 짚으면 칸을 덮어
+         글자가 안 보인다. 오른쪽 모서리 바깥을 짚어 칸을 비워 둔다.
+         화면 오른쪽 끝에 붙은 칸이면 반대로 왼쪽 바깥을 짚는다. */
+      const gap = 12;
+      const preferRight = box.right + gap < window.innerWidth - 56;
+      const cx = preferRight ? box.right + gap : box.left - gap;
       const cy = box.top + box.height / 2;
+      const x = (cx - stageBox.left) / stageBox.width;
+      const y = (cy - stageBox.top) / stageBox.height;
       if (
         cy < 8 ||
         cy > window.innerHeight - 8 ||
@@ -3660,15 +3666,18 @@ export default function Home() {
         setTutorialDomPoint((current) => (current === null ? current : null));
         return;
       }
+      // 이미 그 칸을 누르고 쓰는 중이면 발바닥은 물러난다. 안내 문구는 그대로 둔다.
+      const typing = document.activeElement === target;
       setTutorialDomPoint((current) => {
         if (
           current &&
+          current.typing === typing &&
           Math.abs(current.x - x) < 0.005 &&
           Math.abs(current.y - y) < 0.005
         ) {
           return current;
         }
-        return { x, y };
+        return { x, y, typing };
       });
     };
     measure();
@@ -4191,7 +4200,8 @@ export default function Home() {
           body: (tutorialDomPoint && tutorialStep.domBody) || tutorialStep.body,
           onPopup: Boolean(tutorialDomPoint),
           hand:
-            tutorialDomPoint || tutorialAnchorPoint.visible
+            (tutorialDomPoint && !tutorialDomPoint.typing) ||
+            (!tutorialDomPoint && tutorialAnchorPoint.visible)
               ? {
                   left: `${((tutorialPoint?.x ?? 0.5) * 100).toFixed(2)}%`,
                   top: `${((tutorialPoint?.y ?? 0.5) * 100).toFixed(2)}%`,
