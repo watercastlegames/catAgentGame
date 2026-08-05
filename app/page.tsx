@@ -664,18 +664,24 @@ export default function Home() {
   /* 첫 방문자 손가락 가이드. 저장값 읽기는 마운트 뒤(useEffect)에만 해서
      서버 HTML 과 첫 렌더가 어긋나지 않게 한다. */
   const [tutorialState, setTutorialState] = useState(createTutorialState);
-  const [tutorialAnchorPoint, setTutorialAnchorPoint] = useState<{
+  /* 월드가 매 프레임 보내오는 값은 ref 에만 담는다. 프레임마다 setState 하면
+     화면 전체가 다시 그려진다. 화면에 쓸 좌표는 아래 rAF 루프가 한 번에 만든다. */
+  const tutorialWorldRef = useRef<{
     x: number;
     y: number;
     visible: boolean;
   } | null>(null);
+  const tutorialWorldReadyRef = useRef(false);
+  const [tutorialWorldReady, setTutorialWorldReady] = useState(false);
   const [pmWorkerQuota, setPmWorkerQuota] = useState(() => parseQuota(null));
   const advanceTutorialRef = useRef<((stepId: string) => void) | null>(null);
   const tutorialStateRef = useRef(tutorialState);
-  const [tutorialDomPoint, setTutorialDomPoint] = useState<{
+  /* 발바닥을 실제로 놓을 자리. dom=true 면 창 안의 요소를 짚는 중이다. */
+  const [tutorialPoint, setTutorialPoint] = useState<{
     x: number;
     y: number;
     typing: boolean;
+    dom: boolean;
   } | null>(null);
   const tutorialGuideRef = useRef<HTMLDivElement | null>(null);
   /* 마지막으로 굴린 시각과 시도 횟수. 창이 닫히면 둘 다 되돌린다. */
@@ -3607,79 +3613,110 @@ export default function Home() {
     });
   }
 
-  /* 창이 열려 있는 동안 가리킬 화면 요소를 따라간다.
-     창은 열리고 닫히고 스크롤되므로 위치를 한 번만 재면 어긋난다.
-     대상이 사라지면 null 로 돌려 월드(고양이·조개) 쪽 좌표로 자연스럽게 되돌아간다. */
+  /* 발바닥 자리를 매 프레임 한 곳에서 계산한다.
+
+     좌표계가 셋이라 한데 모아야 한다 —
+       월드는 "캔버스 안의 비율"을 주고, 창 안 요소는 "화면 픽셀"로 재지며,
+       발바닥은 안내판 상자 안에 %로 놓인다. 캔버스는 안내판보다 8px 안쪽에
+       조금 작게 들어가 있어서, 월드 비율을 그대로 %로 쓰면 화면 가장자리로
+       갈수록 어긋난다(카메라를 돌리면 발바닥이 고양이에서 밀리던 원인).
+     그래서 어느 쪽이든 일단 화면 픽셀로 바꾼 뒤, 마지막에 안내판 기준 %로 만든다. */
   useEffect(() => {
     const selector = currentTutorialStep(tutorialState)?.domTarget;
     let raf = 0;
+    const clear = () =>
+      setTutorialPoint((current) => (current === null ? current : null));
+
     const measure = () => {
       raf = window.requestAnimationFrame(measure);
       const stage = tutorialGuideRef.current;
-      // 가리킬 요소가 없는 단계면 좌표를 비워 월드 쪽으로 되돌린다.
-      const target = selector ? document.querySelector(selector) : null;
-      if (!stage || !target) {
-        // 창이 닫히면 다음에 다시 열었을 때 또 굴려 올릴 수 있게 되돌린다.
-        tutorialScrolledRef.current = 0;
-        tutorialScrollTriesRef.current = 0;
-        setTutorialDomPoint((current) => (current === null ? current : null));
+      if (!stage) {
+        clear();
         return;
       }
       const stageBox = stage.getBoundingClientRect();
-      const box = target.getBoundingClientRect();
-      if (!stageBox.width || !stageBox.height || !box.width) {
-        setTutorialDomPoint((current) => (current === null ? current : null));
+      if (!stageBox.width || !stageBox.height) {
+        clear();
         return;
       }
-      /* 자리 계산은 안내판 상자 기준(발바닥이 그 안에 %로 놓이니까),
-         보이는지 판정은 진짜 화면 기준으로 한다. 두 상자는 같지 않다 —
-         스테이지가 화면 위로 밀려 있어 안내판 top 이 음수인 경우가 있고,
-         상자 기준으로 판정했더니 멀쩡히 보이는 입력칸을 화면 밖으로 오해했다. */
-      /* 발바닥은 접점 위쪽으로 그림이 뻗는다. 칸 한가운데를 짚으면 칸을 덮어
-         글자가 안 보인다. 오른쪽 모서리 바깥을 짚어 칸을 비워 둔다.
-         화면 오른쪽 끝에 붙은 칸이면 반대로 왼쪽 바깥을 짚는다. */
-      const gap = 12;
-      const preferRight = box.right + gap < window.innerWidth - 56;
-      const cx = preferRight ? box.right + gap : box.left - gap;
-      const cy = box.top + box.height / 2;
-      const x = (cx - stageBox.left) / stageBox.width;
-      const y = (cy - stageBox.top) / stageBox.height;
-      if (
-        cy < 8 ||
-        cy > window.innerHeight - 8 ||
-        cx < 8 ||
-        cx > window.innerWidth - 8
-      ) {
-        /* 창이 길어서 대상이 화면 밖이면 스스로 굴려 올린다.
-           creating 중이라 첫 시도가 헛돌 수 있어 몇 번은 다시 해보되,
-           세 번까지만 — 사용자가 일부러 다른 데를 보는데 계속 끌어오면 안 된다.
-           smooth 대신 즉시 이동: 창이 막 열린 직후라 아낄 움직임이 없다. */
-        const now = performance.now();
-        if (
-          tutorialScrollTriesRef.current < 3 &&
-          now - tutorialScrolledRef.current > 500
-        ) {
-          tutorialScrolledRef.current = now;
-          tutorialScrollTriesRef.current += 1;
-          target.scrollIntoView({ block: "center", behavior: "auto" });
+      const onScreen = (px: number, py: number) =>
+        px > 8 &&
+        px < window.innerWidth - 8 &&
+        py > 8 &&
+        py < window.innerHeight - 8;
+      const commit = (px: number, py: number, typing: boolean, dom: boolean) => {
+        const x = (px - stageBox.left) / stageBox.width;
+        const y = (py - stageBox.top) / stageBox.height;
+        setTutorialPoint((current) => {
+          if (
+            current &&
+            current.typing === typing &&
+            current.dom === dom &&
+            Math.abs(current.x - x) < 0.003 &&
+            Math.abs(current.y - y) < 0.003
+          ) {
+            return current;
+          }
+          return { x, y, typing, dom };
+        });
+      };
+
+      const target = selector ? document.querySelector(selector) : null;
+      if (target) {
+        const box = target.getBoundingClientRect();
+        if (box.width) {
+          /* 발바닥 그림은 접점 위쪽으로 뻗는다. 칸 한가운데를 짚으면 칸을 덮어
+             글자가 안 보인다. 모서리 바깥을 짚어 칸을 비워 둔다. */
+          const gap = 12;
+          const preferRight = box.right + gap < window.innerWidth - 56;
+          const px = preferRight ? box.right + gap : box.left - gap;
+          const py = box.top + box.height / 2;
+          if (onScreen(px, py)) {
+            // 이미 그 칸에 커서가 있으면 발바닥은 물러난다. 안내 문구는 남는다.
+            commit(px, py, document.activeElement === target, true);
+            return;
+          }
+          /* 창이 길어 대상이 화면 밖이면 스스로 굴려 올린다. 창이 막 열리는
+             중이라 첫 시도가 헛돌 수 있어 몇 번 더 해보되, 세 번까지만 —
+             사용자가 일부러 다른 데를 보는데 계속 끌어오면 안 된다. */
+          const now = performance.now();
+          if (
+            tutorialScrollTriesRef.current < 3 &&
+            now - tutorialScrolledRef.current > 500
+          ) {
+            tutorialScrolledRef.current = now;
+            tutorialScrollTriesRef.current += 1;
+            target.scrollIntoView({ block: "center", behavior: "auto" });
+          }
+          clear();
+          return;
         }
-        setTutorialDomPoint((current) => (current === null ? current : null));
+      }
+
+      // 창이 닫히면 다음에 다시 열었을 때 또 굴려 올릴 수 있게 되돌린다.
+      tutorialScrolledRef.current = 0;
+      tutorialScrollTriesRef.current = 0;
+
+      const world = tutorialWorldRef.current;
+      const canvas = document.querySelector("canvas[data-render-scale]");
+      if (!world?.visible || !canvas) {
+        clear();
         return;
       }
-      // 이미 그 칸을 누르고 쓰는 중이면 발바닥은 물러난다. 안내 문구는 그대로 둔다.
-      const typing = document.activeElement === target;
-      setTutorialDomPoint((current) => {
-        if (
-          current &&
-          current.typing === typing &&
-          Math.abs(current.x - x) < 0.005 &&
-          Math.abs(current.y - y) < 0.005
-        ) {
-          return current;
-        }
-        return { x, y, typing };
-      });
+      const canvasBox = canvas.getBoundingClientRect();
+      if (!canvasBox.width || !canvasBox.height) {
+        clear();
+        return;
+      }
+      const px = canvasBox.left + world.x * canvasBox.width;
+      const py = canvasBox.top + world.y * canvasBox.height;
+      if (!onScreen(px, py)) {
+        clear();
+        return;
+      }
+      commit(px, py, false, false);
     };
+
     measure();
     return () => window.cancelAnimationFrame(raf);
   }, [tutorialState]);
@@ -3688,21 +3725,17 @@ export default function Home() {
     tutorialStateRef.current = tutorialState;
   }, [tutorialState]);
 
-  /* 월드가 매 프레임 좌표를 보내온다. 그대로 setState 하면 프레임마다 다시 그린다.
-     0.5% 미만으로 움직인 건 무시해서 손가락이 떨리지도, 렌더가 폭주하지도 않게 한다. */
+  /* 월드는 매 프레임 부른다. 여기서 setState 하면 초당 60번 다시 그린다.
+     좌표는 ref 에만 담고, 화면에 쓸 값은 위 rAF 루프가 만든다.
+     상태로 올리는 건 "월드가 떴다" 한 번뿐이다 — 로딩 화면 위에 안내가
+     먼저 떠서 고장난 것처럼 보이는 걸 막는 용도다. */
   const handleTutorialAnchor = useCallback(
     (event: { x: number; y: number; visible: boolean }) => {
-      setTutorialAnchorPoint((current) => {
-        if (
-          current &&
-          current.visible === event.visible &&
-          Math.abs(current.x - event.x) < 0.005 &&
-          Math.abs(current.y - event.y) < 0.005
-        ) {
-          return current;
-        }
-        return { x: event.x, y: event.y, visible: event.visible };
-      });
+      tutorialWorldRef.current = event;
+      if (!tutorialWorldReadyRef.current) {
+        tutorialWorldReadyRef.current = true;
+        setTutorialWorldReady(true);
+      }
     },
     [],
   );
@@ -4186,25 +4219,35 @@ export default function Home() {
   }
 
   const tutorialStep = currentTutorialStep(tutorialState);
-  /* 손가락은 대상이 화면에 잡혔을 때만 얹는다. 온보딩 모달이 떠 있는 동안에는 가린다 —
-     두 겹으로 겹치면 뭘 눌러야 할지 더 헷갈린다.
-     tutorialAnchorPoint 가 있어야 띄우는 이유: 월드가 다 뜬 뒤에만 좌표가 오므로,
-     로딩 화면 위에 안내판이 떠서 고장 난 것처럼 보이는 걸 막는다. */
-  const tutorialPoint = tutorialDomPoint ?? tutorialAnchorPoint;
+  /* 발바닥은 대상이 화면에 잡혔을 때만 얹는다. 온보딩 모달이 떠 있는 동안에는
+     가린다 — 두 겹으로 겹치면 뭘 눌러야 할지 더 헷갈린다.
+     tutorialWorldReady 를 함께 보는 이유: 월드가 다 뜬 뒤에만 좌표가 오므로,
+     로딩 화면 위에 안내판이 떠서 고장 난 것처럼 보이는 걸 막는다.
+
+     창이 하나라도 떠 있으면 월드(고양이·조개)는 짚지 않는다.
+     창 뒤의 고양이를 가리켜 봐야 누를 수도 없고, 창 위에 발바닥만 떠서 헷갈린다.
+     창 안의 요소를 가리키는 경우(dom)만 남긴다. */
+  const tutorialPopupOpen =
+    radioOpen ||
+    Boolean(pendingCatStyle) ||
+    Boolean(pendingSeatSlot) ||
+    Boolean(confirmDialog) ||
+    Boolean(visibleApprovalEvent);
+  const tutorialOnPopup = Boolean(tutorialPoint?.dom);
   const tutorialSpot =
-    tutorialStep && tutorialAnchorPoint && !onboardingOpen && !uiPreview
+    tutorialStep && tutorialWorldReady && !onboardingOpen && !uiPreview
       ? {
           // 창이 열렸으면 창 안에서 할 일을 말해준다. 밖 얘기를 계속하면 길을 잃는다.
-          title:
-            (tutorialDomPoint && tutorialStep.domTitle) || tutorialStep.title,
-          body: (tutorialDomPoint && tutorialStep.domBody) || tutorialStep.body,
-          onPopup: Boolean(tutorialDomPoint),
+          title: (tutorialOnPopup && tutorialStep.domTitle) || tutorialStep.title,
+          body: (tutorialOnPopup && tutorialStep.domBody) || tutorialStep.body,
+          onPopup: tutorialOnPopup,
           hand:
-            (tutorialDomPoint && !tutorialDomPoint.typing) ||
-            (!tutorialDomPoint && tutorialAnchorPoint.visible)
+            tutorialPoint &&
+            !tutorialPoint.typing &&
+            (tutorialPoint.dom || !tutorialPopupOpen)
               ? {
-                  left: `${((tutorialPoint?.x ?? 0.5) * 100).toFixed(2)}%`,
-                  top: `${((tutorialPoint?.y ?? 0.5) * 100).toFixed(2)}%`,
+                  left: `${(tutorialPoint.x * 100).toFixed(2)}%`,
+                  top: `${(tutorialPoint.y * 100).toFixed(2)}%`,
                 }
               : null,
         }
