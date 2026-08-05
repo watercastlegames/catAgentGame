@@ -3,8 +3,11 @@ export type TutorialTarget = "cat" | "shell";
 export type TutorialStep = {
   id: string;
   target: TutorialTarget;
+  domTarget: string | null;
   title: string;
   body: string;
+  domTitle?: string;
+  domBody?: string;
   reward: number;
 };
 

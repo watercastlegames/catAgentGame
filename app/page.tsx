@@ -671,6 +671,15 @@ export default function Home() {
   } | null>(null);
   const [pmWorkerQuota, setPmWorkerQuota] = useState(() => parseQuota(null));
   const advanceTutorialRef = useRef<((stepId: string) => void) | null>(null);
+  const tutorialStateRef = useRef(tutorialState);
+  const [tutorialDomPoint, setTutorialDomPoint] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const tutorialGuideRef = useRef<HTMLDivElement | null>(null);
+  /* 마지막으로 굴린 시각과 시도 횟수. 창이 닫히면 둘 다 되돌린다. */
+  const tutorialScrolledRef = useRef(0);
+  const tutorialScrollTriesRef = useRef(0);
   const [uiPreview, setUiPreview] = useState<string | null>(null);
   const [pressedRadioKey, setPressedRadioKey] = useState<RadioPage | null>(
     null,
@@ -3258,7 +3267,13 @@ export default function Home() {
     const catId = residentCatIdForSeat(seatId);
     const boundThreadId = catSessionBindingsRef.current[seatId] ?? null;
     setSelectedSeat(seatId);
-    setCatDetailTab("chat");
+    // 첫 안내에서 고양이를 누른 거면 이름 칸이 있는 탭으로 연다.
+    // 기본 대화 탭에는 이름 칸이 없어서, 눌러도 할 게 없는 화면이 떴었다.
+    setCatDetailTab(
+      currentTutorialStep(tutorialStateRef.current)?.id === "name-cat"
+        ? "style"
+        : "chat",
+    );
     setCatSessionPickerOpen(false);
     setCatPage("detail");
     setRadioPage("cats");
@@ -3590,6 +3605,79 @@ export default function Home() {
       return result.state;
     });
   }
+
+  /* 창이 열려 있는 동안 가리킬 화면 요소를 따라간다.
+     창은 열리고 닫히고 스크롤되므로 위치를 한 번만 재면 어긋난다.
+     대상이 사라지면 null 로 돌려 월드(고양이·조개) 쪽 좌표로 자연스럽게 되돌아간다. */
+  useEffect(() => {
+    const selector = currentTutorialStep(tutorialState)?.domTarget;
+    let raf = 0;
+    const measure = () => {
+      raf = window.requestAnimationFrame(measure);
+      const stage = tutorialGuideRef.current;
+      // 가리킬 요소가 없는 단계면 좌표를 비워 월드 쪽으로 되돌린다.
+      const target = selector ? document.querySelector(selector) : null;
+      if (!stage || !target) {
+        // 창이 닫히면 다음에 다시 열었을 때 또 굴려 올릴 수 있게 되돌린다.
+        tutorialScrolledRef.current = 0;
+        tutorialScrollTriesRef.current = 0;
+        setTutorialDomPoint((current) => (current === null ? current : null));
+        return;
+      }
+      const stageBox = stage.getBoundingClientRect();
+      const box = target.getBoundingClientRect();
+      if (!stageBox.width || !stageBox.height || !box.width) {
+        setTutorialDomPoint((current) => (current === null ? current : null));
+        return;
+      }
+      /* 자리 계산은 안내판 상자 기준(발바닥이 그 안에 %로 놓이니까),
+         보이는지 판정은 진짜 화면 기준으로 한다. 두 상자는 같지 않다 —
+         스테이지가 화면 위로 밀려 있어 안내판 top 이 음수인 경우가 있고,
+         상자 기준으로 판정했더니 멀쩡히 보이는 입력칸을 화면 밖으로 오해했다. */
+      const x = (box.left + box.width / 2 - stageBox.left) / stageBox.width;
+      const y = (box.top + box.height / 2 - stageBox.top) / stageBox.height;
+      const cx = box.left + box.width / 2;
+      const cy = box.top + box.height / 2;
+      if (
+        cy < 8 ||
+        cy > window.innerHeight - 8 ||
+        cx < 8 ||
+        cx > window.innerWidth - 8
+      ) {
+        /* 창이 길어서 대상이 화면 밖이면 스스로 굴려 올린다.
+           creating 중이라 첫 시도가 헛돌 수 있어 몇 번은 다시 해보되,
+           세 번까지만 — 사용자가 일부러 다른 데를 보는데 계속 끌어오면 안 된다.
+           smooth 대신 즉시 이동: 창이 막 열린 직후라 아낄 움직임이 없다. */
+        const now = performance.now();
+        if (
+          tutorialScrollTriesRef.current < 3 &&
+          now - tutorialScrolledRef.current > 500
+        ) {
+          tutorialScrolledRef.current = now;
+          tutorialScrollTriesRef.current += 1;
+          target.scrollIntoView({ block: "center", behavior: "auto" });
+        }
+        setTutorialDomPoint((current) => (current === null ? current : null));
+        return;
+      }
+      setTutorialDomPoint((current) => {
+        if (
+          current &&
+          Math.abs(current.x - x) < 0.005 &&
+          Math.abs(current.y - y) < 0.005
+        ) {
+          return current;
+        }
+        return { x, y };
+      });
+    };
+    measure();
+    return () => window.cancelAnimationFrame(raf);
+  }, [tutorialState]);
+
+  useEffect(() => {
+    tutorialStateRef.current = tutorialState;
+  }, [tutorialState]);
 
   /* 월드가 매 프레임 좌표를 보내온다. 그대로 setState 하면 프레임마다 다시 그린다.
      0.5% 미만으로 움직인 건 무시해서 손가락이 떨리지도, 렌더가 폭주하지도 않게 한다. */
@@ -4093,17 +4181,22 @@ export default function Home() {
      두 겹으로 겹치면 뭘 눌러야 할지 더 헷갈린다.
      tutorialAnchorPoint 가 있어야 띄우는 이유: 월드가 다 뜬 뒤에만 좌표가 오므로,
      로딩 화면 위에 안내판이 떠서 고장 난 것처럼 보이는 걸 막는다. */
+  const tutorialPoint = tutorialDomPoint ?? tutorialAnchorPoint;
   const tutorialSpot =
     tutorialStep && tutorialAnchorPoint && !onboardingOpen && !uiPreview
       ? {
-          title: tutorialStep.title,
-          body: tutorialStep.body,
-          hand: tutorialAnchorPoint?.visible
-            ? {
-                left: `${(tutorialAnchorPoint.x * 100).toFixed(2)}%`,
-                top: `${(tutorialAnchorPoint.y * 100).toFixed(2)}%`,
-              }
-            : null,
+          // 창이 열렸으면 창 안에서 할 일을 말해준다. 밖 얘기를 계속하면 길을 잃는다.
+          title:
+            (tutorialDomPoint && tutorialStep.domTitle) || tutorialStep.title,
+          body: (tutorialDomPoint && tutorialStep.domBody) || tutorialStep.body,
+          onPopup: Boolean(tutorialDomPoint),
+          hand:
+            tutorialDomPoint || tutorialAnchorPoint.visible
+              ? {
+                  left: `${((tutorialPoint?.x ?? 0.5) * 100).toFixed(2)}%`,
+                  top: `${((tutorialPoint?.y ?? 0.5) * 100).toFixed(2)}%`,
+                }
+              : null,
         }
       : null;
 
@@ -6573,7 +6666,14 @@ export default function Home() {
       )}
 
       {tutorialSpot && (
-        <div className="tutorial-guide" role="status" aria-live="polite">
+        <div
+          className={
+            tutorialSpot.onPopup ? "tutorial-guide on-popup" : "tutorial-guide"
+          }
+          ref={tutorialGuideRef}
+          role="status"
+          aria-live="polite"
+        >
           {tutorialSpot.hand && (
             <span
               className="tutorial-hand"

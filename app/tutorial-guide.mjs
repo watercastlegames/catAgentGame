@@ -12,18 +12,27 @@
 export const TUTORIAL_KEY = "agent-forest-tutorial-v1";
 export const TUTORIAL_NAMING_REWARD = 5;
 
-/** 순서가 곧 진행 순서다. */
+/** 순서가 곧 진행 순서다.
+
+   target  = 월드(3D) 안에서 가리킬 것. 화면 좌표는 월드가 매 프레임 알려준다.
+   domTarget = 창이 열린 뒤 가리킬 화면 요소. 그 요소가 실제로 떠 있으면
+               월드 대신 이쪽을 가리킨다 — 창이 열렸는데 발바닥이 창 뒤의
+               고양이를 계속 짚고 있으면 뭘 해야 할지 알 수 없다. */
 export const TUTORIAL_STEPS = [
   {
     id: "name-cat",
     target: "cat",
-    title: "고양이 이름을 지어주세요",
-    body: "고양이를 눌러 이름을 지어주면 조개 5개를 드려요.",
+    domTarget: ".cat-name-editor input",
+    title: "고양이를 눌러보세요",
+    body: "창이 열리면 이름을 지어줄 수 있어요. 지어주면 조개 5개를 드려요.",
+    domTitle: "이름을 지어주세요",
+    domBody: "여기에 이름을 쓰고 다른 곳을 누르면 조개 5개를 드려요.",
     reward: TUTORIAL_NAMING_REWARD,
   },
   {
     id: "collect-shell",
     target: "shell",
+    domTarget: null,
     title: "조개를 주워보세요",
     body: "바닥에 조개가 나타나요. 누르면 주머니에 들어가요.",
     reward: 0,
@@ -31,8 +40,11 @@ export const TUTORIAL_STEPS = [
   {
     id: "first-task",
     target: "cat",
+    domTarget: "#cat-chat-message",
     title: "첫 일을 맡겨보세요",
-    body: "고양이를 누르고 하고 싶은 말을 적으면 대신 해줘요.",
+    body: "고양이를 누르면 말을 걸 수 있어요.",
+    domTitle: "하고 싶은 말을 적어 보내세요",
+    domBody: "궁금한 걸 묻거나 할 일을 맡기면 조개 5개로 대신 해줘요.",
     reward: 0,
   },
 ];
