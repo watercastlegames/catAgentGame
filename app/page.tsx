@@ -86,16 +86,6 @@ import {
   parseActiveSeatCount,
 } from "./seat-progression";
 import {
-  WORKSTATION_DECOR_CATALOG,
-  WORKSTATION_DECOR_KEY,
-  createDefaultWorkstationDecorState,
-  equippedDecorIds,
-  parseWorkstationDecorState,
-  purchaseOrEquipWorkstationDecor,
-  type WorkstationDecorState,
-  type WorkstationSeatId,
-} from "./workstation-decor";
-import {
   CAT_EXERCISE_WHEEL_ID,
   CAT_EXERCISE_WHEEL_PREVIEW_URL,
   CAT_EXERCISE_WHEEL_PRICE,
@@ -151,6 +141,13 @@ import {
   type CompanionBackendId,
 } from "./companion-backends";
 import {
+  AI_CHAT_SHELL_COST,
+  chargeAiChat,
+  isAiChatShellBackend,
+  refundAiChat,
+} from "./ai-chat-economy.mjs";
+import {
+  generatePuterImage,
   inspectPuterConnection,
   loadPuterCompanion,
   signInPuterCompanion,
@@ -158,12 +155,20 @@ import {
   type PuterConnectionState,
 } from "./puter-companion";
 import {
-  PM_WORKER_CHAT_SHELL_COST,
+  IMAGE_PLAY_PRESETS,
+  IMAGE_PLAY_SHELL_COST,
+  buildImagePlayPrompt,
+  prepareImagePlayFile,
+  type ImagePlayPresetId,
+} from "./image-play";
+import {
+  clearPmWorkerSession,
   inspectPmWorkerConnection,
   submitPmWorkerTask,
   type PmWorkerConnectionState,
 } from "./pm-worker-companion";
 import { normalizePmWorkerReply } from "./pm-worker-reply.mjs";
+import { ChatMessageContent } from "./chat-message-content";
 import {
   CAT_CHAT_TOPIC_MEMORY_KEY,
   buildCatChatSuggestions,
@@ -172,8 +177,62 @@ import {
   rememberCatChatTopic,
   seedCatChatTopicMemoryFromEvents,
 } from "./cat-chat-suggestions";
-import { buildCatPersonaPrompt } from "./cat-chat-persona";
+import {
+  buildCatPersonaPrompt,
+  type CatConversationMemory,
+} from "./cat-chat-persona";
 import { isWorldLayoutAdminHost } from "./world-object-layout.mjs";
+import {
+  createRandomResidentCatName,
+  residentCatIdForSeat,
+  residentCatNameForSeat,
+} from "./resident-cats.mjs";
+import {
+  CAT_SESSION_BINDINGS_STORAGE_KEY,
+  bindSessionToCat,
+  migrateRuntimeAssignments,
+  parseCatSessionBindings,
+  seatForSession,
+  unbindSessionFromCat,
+  type CatSessionBindings,
+} from "./cat-session-bindings.mjs";
+import {
+  CODEX_SESSION_CACHE_KEY,
+  readCodexSessionCache,
+  writeCodexSessionCache,
+} from "./codex-session-cache.mjs";
+import {
+  isLocalCodeBackend,
+  localSessionProviderForBackend,
+  sessionMatchesBackend,
+  type LocalSessionProvider,
+} from "./local-ai-sessions.mjs";
+import {
+  CAT_PROGRESSION_KEY,
+  type CatExperienceAction,
+  type CatProgressionStore,
+  catLevelProgress,
+  ensureCatProgressionProfile,
+  grantCatExperience,
+  parseCatProgressionStore,
+} from "./cat-progression.mjs";
+import { generateAifChatGptCliImage } from "./aif-image-companion";
+import {
+  completeTutorialStep,
+  createTutorialState,
+  currentTutorialStep,
+  readTutorialState,
+  skipTutorial,
+  writeTutorialState,
+} from "./tutorial-guide.mjs";
+import {
+  canUsePmWorker,
+  consumeQuota,
+  parseQuota,
+  quotaNotice,
+  readQuota,
+  writeQuota,
+} from "./pm-worker-quota.mjs";
 
 type Department = "general" | "coding" | "design" | "music";
 type AgentStatus =
@@ -213,6 +272,8 @@ type BridgeEvent = {
   turnId?: string | null;
   requestId?: string;
   agentId?: string;
+  agentName?: string;
+  seatId?: SeatId;
   department?: Department;
   status?: AgentStatus;
   location?: AgentWorldLocation;
@@ -220,9 +281,11 @@ type BridgeEvent = {
   detail?: string;
   prompt?: string;
   result?: string;
-  mode?: "codex" | "simulation";
+  mode?: "codex" | "claude" | "simulation";
   version?: string | null;
   available?: boolean;
+  claudeAvailable?: boolean;
+  claudeVersion?: string | null;
   running?: boolean;
   decision?: "approve" | "reject" | "cancel";
   approvalKind?: "command" | "fileChange" | "permissions";
@@ -232,13 +295,40 @@ type BridgeEvent = {
   session?: CodexSession;
   usage?: Usage | null;
   pendingApprovals?: BridgeEvent[];
+  source?: "bridge" | "codex" | string;
 };
+
+function conversationMemoryFromEvents(
+  conversation: BridgeEvent[],
+): CatConversationMemory[] {
+  const userEventTypes = new Set([
+    "chat.user.sent",
+    "task.queued",
+    "pm-chat.queued",
+  ]);
+  const assistantEventTypes = new Set([
+    "task.completed",
+    "pm-chat.completed",
+  ]);
+
+  return conversation.flatMap((event) => {
+    if (userEventTypes.has(event.type)) {
+      const content = (event.prompt || event.detail || "").trim();
+      return content ? [{ role: "user" as const, content }] : [];
+    }
+    if (assistantEventTypes.has(event.type)) {
+      const content = normalizePmWorkerReply(event.result || event.detail || "").trim();
+      return content ? [{ role: "assistant" as const, content }] : [];
+    }
+    return [];
+  });
+}
 type ActiveTask = {
   taskId: string;
   threadId?: string | null;
   prompt: string;
   department: Department;
-  mode: "codex" | "simulation";
+  mode: "codex" | "claude" | "simulation";
   title: string;
   detail: string;
   result: string;
@@ -259,6 +349,7 @@ type SessionRuntime = {
 type CodexSession = {
   id: string;
   sessionId: string;
+  provider: "codex" | "claude";
   title: string;
   preview: string;
   projectName: string;
@@ -274,6 +365,8 @@ type CodexSession = {
 type BridgeHealth = {
   available?: boolean;
   version?: string | null;
+  claudeAvailable?: boolean;
+  claudeVersion?: string | null;
   appServerConnected?: boolean;
   paired?: boolean;
   pendingApprovals?: BridgeEvent[];
@@ -281,7 +374,7 @@ type BridgeHealth = {
 type CompanionTransport = "local" | "cloud";
 type RadioPage = "cats" | "desk" | "work" | "status-log";
 type CatPage = "list" | "detail";
-type CatDetailTab = "chat" | "style" | "care";
+type CatDetailTab = "chat" | "style" | "care" | "image";
 type WorkTab = "connect" | "task";
 type StatusLogTab = "status" | "log";
 type ConfirmDialog =
@@ -397,7 +490,7 @@ function triggerUiButtonPress(target: EventTarget | null) {
   }, 190);
   uiButtonPressTimers.set(button, timer);
 }
-const DEMO_CAT_ID = "agent-forest-demo-cat";
+const DEMO_CAT_ID = residentCatIdForSeat("seat-1");
 // 체형은 프리셋으로만 고른다. 숫자 세 개를 그대로 노출하면 사장님이 만질 물건이 아니게 된다.
 const CAT_SHAPE_PRESETS: Array<{
   id: string;
@@ -509,6 +602,8 @@ export default function Home() {
   >("connecting");
   const [codexVersion, setCodexVersion] = useState<string | null>(null);
   const [codexAvailable, setCodexAvailable] = useState(false);
+  const [claudeVersion, setClaudeVersion] = useState<string | null>(null);
+  const [claudeAvailable, setClaudeAvailable] = useState(false);
   const [department, setDepartment] = useState<Department>("coding");
   const [prompt, setPrompt] = useState("");
   const [catChatTopicMemory, setCatChatTopicMemory] = useState(
@@ -516,7 +611,9 @@ export default function Home() {
   );
   const [runtimes, setRuntimes] = useState<Record<string, SessionRuntime>>({});
   const [events, setEvents] = useState<BridgeEvent[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submittingThreadIds, setSubmittingThreadIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [approvalQueue, setApprovalQueue] = useState<BridgeEvent[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [companionToken, setCompanionToken] = useState<string | null>(null);
@@ -531,11 +628,14 @@ export default function Home() {
   const [sessions, setSessions] = useState<CodexSession[]>([]);
   const [sessionsLoading, setSessionsLoading] = useState(false);
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [catSessionBindings, setCatSessionBindings] =
+    useState<CatSessionBindings>({});
   const [radioOpen, setRadioOpen] = useState(false);
   const [popupAssetsReady, setPopupAssetsReady] = useState(false);
   const [radioPage, setRadioPage] = useState<RadioPage>("cats");
   const [catPage, setCatPage] = useState<CatPage>("list");
   const [catDetailTab, setCatDetailTab] = useState<CatDetailTab>("style");
+  const [catSessionPickerOpen, setCatSessionPickerOpen] = useState(false);
   const [workTab, setWorkTab] = useState<WorkTab>("connect");
   const [statusLogTab, setStatusLogTab] = useState<StatusLogTab>("status");
   const [hudDormant, setHudDormant] = useState(false);
@@ -561,14 +661,32 @@ export default function Home() {
   const [selectedSeat, setSelectedSeat] = useState<SeatId | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
+  /* 첫 방문자 손가락 가이드. 저장값 읽기는 마운트 뒤(useEffect)에만 해서
+     서버 HTML 과 첫 렌더가 어긋나지 않게 한다. */
+  const [tutorialState, setTutorialState] = useState(createTutorialState);
+  const [tutorialAnchorPoint, setTutorialAnchorPoint] = useState<{
+    x: number;
+    y: number;
+    visible: boolean;
+  } | null>(null);
+  const [pmWorkerQuota, setPmWorkerQuota] = useState(() => parseQuota(null));
+  const advanceTutorialRef = useRef<((stepId: string) => void) | null>(null);
   const [uiPreview, setUiPreview] = useState<string | null>(null);
   const [pressedRadioKey, setPressedRadioKey] = useState<RadioPage | null>(
     null,
   );
   const [audioEnabled, setAudioEnabled] = useState(true);
-  // 고양이 외형 — 지금은 섬 전체가 한 마리라 전역 하나. 좌석별로 나눌 때 이 값이 기본값이 된다.
-  const [catStyle, setCatStyle] = useState("Blue");
+  // 외형은 고양이 ID별로 저장한다. 주민 ID와 작업 스레드 ID는 아래 적용 함수에서 함께 갱신한다.
+  const [catStyles, setCatStyles] = useState<Record<string, string>>({});
   const [catNames, setCatNames] = useState<Record<string, string>>({});
+  const [catProgression, setCatProgression] =
+    useState<CatProgressionStore>({});
+  const [imagePlayPreset, setImagePlayPreset] =
+    useState<ImagePlayPresetId>("storybook");
+  const [imagePlayPrompt, setImagePlayPrompt] = useState("");
+  const [imagePlaySource, setImagePlaySource] = useState<string | null>(null);
+  const [imagePlayResult, setImagePlayResult] = useState<string | null>(null);
+  const [imagePlayBusy, setImagePlayBusy] = useState(false);
   const [ownedCatStyles, setOwnedCatStyles] = useState<Set<string>>(
     () => new Set(["Blue"]),
   );
@@ -587,8 +705,6 @@ export default function Home() {
     useState<DailyCounter>(createDailyCounter);
   const [snackLog, setSnackLog] = useState<CatInteractionLog>({});
   const [playLog, setPlayLog] = useState<CatPlayLog>({});
-  const [workstationDecor, setWorkstationDecor] =
-    useState<WorkstationDecorState>(createDefaultWorkstationDecorState);
   const [worldFacilities, setWorldFacilities] =
     useState<WorldFacilityState>(createDefaultWorldFacilityState);
   const [companionBackend, setCompanionBackend] = useState<CompanionBackendId>(
@@ -601,8 +717,13 @@ export default function Home() {
   );
 
   const relayEventCursor = useRef(0);
+  const sessionRefreshPromiseRef = useRef<{
+    provider: LocalSessionProvider;
+    promise: Promise<void>;
+  } | null>(null);
   const taskToThreadRef = useRef(new Map<string, string>());
   const runtimesRef = useRef(runtimes);
+  const catSessionBindingsRef = useRef<CatSessionBindings>({});
   const seatAssignmentsRef = useRef<Record<string, SeatId>>(
     loadSeatAssignments(),
   );
@@ -622,6 +743,8 @@ export default function Home() {
   const modalAudioPrimedRef = useRef(false);
   const previousModalOpenRef = useRef(false);
   const catNeedsRef = useRef<CatNeedsStore>({});
+  const catProgressionRef = useRef<CatProgressionStore>({});
+  const catExperienceEventIdsRef = useRef(new Set<string>());
   const foodBowlStateRef = useRef<FoodBowlState>(createDefaultFoodBowlState());
   const litterLevelRef = useRef(0);
   const litterTierRef = useRef(1);
@@ -642,6 +765,8 @@ export default function Home() {
   const playerCloudSyncRef = useRef<PlayerCloudSync | null>(null);
   const cloudSyncHydratedRef = useRef(false);
   const shellSyncPreviousRef = useRef(0);
+  const catChatThreadRef = useRef<HTMLDivElement | null>(null);
+  const catChatScrollInstantRef = useRef(false);
 
   const approvalEvent = approvalQueue[0] ?? null;
   const visibleApprovalEvent =
@@ -660,10 +785,6 @@ export default function Home() {
         } satisfies BridgeEvent)
       : null);
   const latestEvents = useMemo(() => events.slice(0, 10), [events]);
-  const selectedSession = useMemo(
-    () => sessions.find((session) => session.id === selectedThreadId) ?? null,
-    [selectedThreadId, sessions],
-  );
   const runtimeList = useMemo(
     () =>
       Object.values(runtimes).sort((left, right) => {
@@ -677,10 +798,9 @@ export default function Home() {
   );
   const focusedRuntime = useMemo(() => {
     if (selectedSeat) {
-      const bySeat = runtimeList.find(
-        (runtime) => runtime.seatId === selectedSeat,
+      return (
+        runtimeList.find((runtime) => runtime.seatId === selectedSeat) ?? null
       );
-      if (bySeat) return bySeat;
     }
     return (
       runtimeList.find((runtime) => runtime.threadId === selectedThreadId) ??
@@ -689,8 +809,39 @@ export default function Home() {
       null
     );
   }, [runtimeList, selectedSeat, selectedThreadId]);
-  const focusedCatId = focusedRuntime?.threadId ?? DEMO_CAT_ID;
-  const focusedCatNeeds = catNeeds[focusedCatId] ?? createDefaultCatNeedState();
+  const focusedSeatId: SeatId =
+    selectedSeat ??
+    (focusedRuntime?.seatId && focusedRuntime.seatId !== "queue"
+      ? focusedRuntime.seatId
+      : "seat-1");
+  const focusedResidentCatId = residentCatIdForSeat(focusedSeatId);
+  const focusedCatId = focusedResidentCatId;
+  const focusedAssignedThreadId = catSessionBindings[focusedSeatId] ?? null;
+  const focusedBoundThreadId = sessionMatchesBackend(
+    focusedAssignedThreadId,
+    companionBackend,
+  )
+    ? focusedAssignedThreadId
+    : null;
+  const focusedConversationThreadId =
+    isLocalCodeBackend(companionBackend)
+      ? (focusedBoundThreadId ?? focusedResidentCatId)
+      : focusedResidentCatId;
+  const focusedBoundSession =
+    sessions.find((session) => session.id === focusedBoundThreadId) ?? null;
+  const isSubmitting = submittingThreadIds.has(focusedConversationThreadId);
+  const focusedCatName =
+    catNames[focusedResidentCatId] ??
+    catNames[focusedConversationThreadId] ??
+    focusedRuntime?.agentName ??
+    residentCatNameForSeat(focusedSeatId);
+  const focusedCatStyle =
+    catStyles[focusedResidentCatId] ?? "Blue";
+  const focusedCatProgress = catLevelProgress(
+    ensureCatProgressionProfile(catProgression, focusedResidentCatId).totalXp,
+  );
+  const focusedCatNeeds =
+    catNeeds[focusedResidentCatId] ?? createDefaultCatNeedState();
   const focusedConversation = useMemo(() => {
     const userEventTypes = new Set([
       "chat.user.sent",
@@ -708,7 +859,7 @@ export default function Home() {
 
     for (const event of events) {
       if (
-        event.threadId !== focusedCatId ||
+        event.threadId !== focusedConversationThreadId ||
         !conversationEventTypes.has(event.type)
       ) {
         continue;
@@ -728,13 +879,13 @@ export default function Home() {
     }
 
     return deduped.reverse();
-  }, [events, focusedCatId]);
+  }, [events, focusedConversationThreadId]);
   const catChatSuggestions = useMemo(
     () =>
       buildCatChatSuggestions({
         events,
         memory: catChatTopicMemory,
-        focusedCatId,
+        focusedCatId: focusedConversationThreadId,
         department: focusedRuntime?.department ?? department,
         backend: companionBackend,
       }),
@@ -743,10 +894,38 @@ export default function Home() {
       catChatTopicMemory,
       department,
       events,
-      focusedCatId,
+      focusedConversationThreadId,
       focusedRuntime?.department,
     ],
   );
+  useEffect(() => {
+    if (
+      !radioOpen ||
+      radioPage !== "cats" ||
+      catPage !== "detail" ||
+      catDetailTab !== "chat"
+    ) {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const thread = catChatThreadRef.current;
+      if (!thread) return;
+      thread.scrollTo({
+        top: thread.scrollHeight,
+        behavior: catChatScrollInstantRef.current ? "auto" : "smooth",
+      });
+      catChatScrollInstantRef.current = false;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [
+    catDetailTab,
+    catPage,
+    focusedConversationThreadId,
+    focusedConversation,
+    isSubmitting,
+    radioOpen,
+    radioPage,
+  ]);
   const foodAvailable = foodBowlState.portionsRemaining > 0;
   const litterMaxLevel = litterCapacityForTier(litterTier);
   const litterBoxCount = Math.min(2, litterTier) as 1 | 2;
@@ -768,15 +947,6 @@ export default function Home() {
     () => activeSeatIds(activeSeatCount),
     [activeSeatCount],
   );
-  const workstationDecorBySeat = useMemo(
-    () =>
-      Object.fromEntries(
-        (["seat-1", "seat-2", "seat-3", "seat-4"] as WorkstationSeatId[]).map(
-          (seatId) => [seatId, equippedDecorIds(workstationDecor, seatId)],
-        ),
-      ),
-    [workstationDecor],
-  );
   const companionBackendOptions = useMemo(
     () => visibleCompanionBackends(APP_EDITION),
     [],
@@ -785,34 +955,42 @@ export default function Home() {
     companionBackendOptions.find(
       (backend) => backend.id === companionBackend,
     ) ?? companionBackendOptions[0];
+  const selectedLocalProvider =
+    localSessionProviderForBackend(companionBackend);
+  const selectedLocalProviderAvailable =
+    selectedLocalProvider === "claude" ? claudeAvailable : codexAvailable;
+  const selectedLocalProviderLabel =
+    selectedLocalProvider === "claude" ? "Claude Code" : "Codex";
   const selectedBackendReady =
     companionBackend === "puter"
       ? puterConnectionState === "ready"
       : companionBackend === "pm-worker"
         ? pmWorkerConnectionState === "ready"
-        : companionBackend === "local-session"
+        : isLocalCodeBackend(companionBackend)
           ? Boolean(
               bridgeState === "connected" &&
-              codexAvailable &&
+              selectedLocalProviderAvailable &&
               companionToken &&
-              selectedThreadId,
+              focusedBoundThreadId,
             )
           : false;
   const selectedBackendStatus =
     companionBackend === "puter"
       ? puterConnectionState === "ready"
-        ? "Puter 무료 AI 연결됨"
+        ? `Puter 무료 AI 연결됨 · 대화당 조개 ${AI_CHAT_SHELL_COST}개`
         : "Puter 로그인이 필요해요"
       : companionBackend === "pm-worker"
         ? pmWorkerConnectionState === "ready"
-          ? `PM Worker AI 연결됨 · 대화당 조개 ${PM_WORKER_CHAT_SHELL_COST}개`
+          ? `PM Worker AI 연결됨 · 대화당 조개 ${AI_CHAT_SHELL_COST}개`
           : pmWorkerConnectionState === "loading"
             ? "PM Worker AI 연결 확인 중"
             : "PM Worker AI 연결을 확인해 주세요"
-        : companionBackend === "local-session"
-          ? selectedSession
-            ? `${selectedSession.title} · ${selectedSession.projectName}`
-            : "사용할 내 PC Codex 세션을 연결해 주세요"
+        : isLocalCodeBackend(companionBackend)
+          ? focusedBoundSession
+            ? `${focusedCatName} ↔ ${focusedBoundSession.title} · ${focusedBoundSession.projectName} · 조개 ${AI_CHAT_SHELL_COST}개`
+            : focusedBoundThreadId
+              ? `${focusedCatName} ↔ ${focusedBoundThreadId.slice(0, 8)} · 세션 정보 확인 중`
+            : `${focusedCatName}에게 ${selectedLocalProviderLabel} 세션을 지정해 주세요`
           : "서비스 실행기 배포 대기 중";
   const pressedRadioIndex = pressedRadioKey
     ? RADIO_MENU.findIndex((item) => item.key === pressedRadioKey) + 1
@@ -823,13 +1001,34 @@ export default function Home() {
   }, [runtimes]);
 
   useEffect(() => {
+    catSessionBindingsRef.current = catSessionBindings;
+  }, [catSessionBindings]);
+
+  const setThreadSubmitting = useCallback(
+    (threadId: string, submitting: boolean) => {
+      setSubmittingThreadIds((current) => {
+        const next = new Set(current);
+        if (submitting) next.add(threadId);
+        else next.delete(threadId);
+        return next;
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const imagePlayNeedsPuter =
+      radioPage === "cats" &&
+      catPage === "detail" &&
+      catDetailTab === "image";
     if (
       !radioOpen ||
-      companionBackend !== "puter" ||
-      !(
-        (radioPage === "work" && workTab === "connect") ||
-        (radioPage === "cats" && catPage === "detail")
-      )
+      (!imagePlayNeedsPuter &&
+        (companionBackend !== "puter" ||
+          !(
+            (radioPage === "work" && workTab === "connect") ||
+            (radioPage === "cats" && catPage === "detail")
+          )))
     ) {
       return;
     }
@@ -844,7 +1043,14 @@ export default function Home() {
     return () => {
       disposed = true;
     };
-  }, [catPage, companionBackend, radioOpen, radioPage, workTab]);
+  }, [
+    catDetailTab,
+    catPage,
+    companionBackend,
+    radioOpen,
+    radioPage,
+    workTab,
+  ]);
   useEffect(() => {
     if (
       !radioOpen ||
@@ -896,63 +1102,60 @@ export default function Home() {
     catNeedsRef.current = catNeeds;
   }, [catNeeds]);
   useEffect(() => {
+    catProgressionRef.current = catProgression;
+  }, [catProgression]);
+  useEffect(() => {
     activeSeatCountRef.current = activeSeatCount;
   }, [activeSeatCount]);
   const seatViews = useMemo<SeatView[]>(() => {
-    const unlocked = new Set(unlockedSeatIds);
-    const active = runtimeList
-      .filter(
-        (runtime) => runtime.seatId !== "queue" && unlocked.has(runtime.seatId),
-      )
-      .slice(0, activeSeatCount)
-      .map((runtime) => ({
-        ...(() => {
-          const needs =
-            catNeeds[runtime.threadId] ?? createDefaultCatNeedState();
-          return {
-            hunger: Math.round(needs.hunger),
-            toilet: Math.round(needs.toilet),
-            happiness: Math.round(needs.happiness),
-          };
-        })(),
-        seatId: runtime.seatId,
-        catId: runtime.threadId,
-        agentName: catNames[runtime.threadId] || runtime.agentName,
-        location: runtime.location,
-        status: runtime.status,
-        statusLabel: unreadReplyCatIds.has(runtime.threadId)
+    const runtimeBySeat = new Map(
+      runtimeList
+        .filter((runtime) => runtime.seatId !== "queue")
+        .map((runtime) => [runtime.seatId, runtime]),
+    );
+
+    return unlockedSeatIds.map((seatId) => {
+      const runtime = runtimeBySeat.get(seatId);
+      const catId = residentCatIdForSeat(seatId);
+      const boundThreadId = catSessionBindings[seatId] ?? runtime?.threadId ?? null;
+      const needs = catNeeds[catId] ?? createDefaultCatNeedState();
+      const hasUnreadReply =
+        unreadReplyCatIds.has(catId) ||
+        Boolean(boundThreadId && unreadReplyCatIds.has(boundThreadId));
+
+      return {
+        seatId,
+        catId,
+        agentName:
+          catNames[catId] ||
+          runtime?.agentName ||
+          residentCatNameForSeat(seatId),
+        location: runtime?.location ?? "general",
+        status: runtime?.status ?? "idle",
+        statusLabel: hasUnreadReply
           ? "답변 도착"
-          : STATUS_COPY[runtime.status],
-        blocked: Boolean(runtime.pendingApprovalId),
-        hasUnreadReply: unreadReplyCatIds.has(runtime.threadId),
-      }));
-    return active.length
-      ? active
-      : [
-          {
-            seatId: "seat-1",
-            catId: DEMO_CAT_ID,
-            agentName: catNames[DEMO_CAT_ID] || "코치 모모",
-            location: "general",
-            status: "idle",
-            statusLabel: STATUS_COPY.idle,
-            blocked: false,
-            hasUnreadReply: unreadReplyCatIds.has(DEMO_CAT_ID),
-            hunger: Math.round(
-              (catNeeds[DEMO_CAT_ID] ?? createDefaultCatNeedState()).hunger,
-            ),
-            toilet: Math.round(
-              (catNeeds[DEMO_CAT_ID] ?? createDefaultCatNeedState()).toilet,
-            ),
-            happiness: Math.round(
-              (catNeeds[DEMO_CAT_ID] ?? createDefaultCatNeedState()).happiness,
-            ),
-          },
-        ];
+          : STATUS_COPY[runtime?.status ?? "idle"],
+        blocked: Boolean(runtime?.pendingApprovalId),
+        hasUnreadReply,
+        hunger: Math.round(needs.hunger),
+        toilet: Math.round(needs.toilet),
+        happiness: Math.round(needs.happiness),
+        level: catLevelProgress(
+          ensureCatProgressionProfile(
+            catProgression,
+            residentCatIdForSeat(seatId),
+          ).totalXp,
+        ).level,
+        catStyle:
+          catStyles[catId] ?? "Blue",
+      };
+    });
   }, [
-    activeSeatCount,
     catNames,
     catNeeds,
+    catProgression,
+    catStyles,
+    catSessionBindings,
     runtimeList,
     unreadReplyCatIds,
     unlockedSeatIds,
@@ -1046,6 +1249,54 @@ export default function Home() {
     [resetHudTimer],
   );
 
+  const progressionCatId = useCallback(
+    (catId: string, seatId?: SeatId | "queue" | null) => {
+      const resolvedSeat =
+        seatId && seatId !== "queue"
+          ? seatId
+          : (seatForSession(catSessionBindingsRef.current, catId) ??
+            seatViews.find((seat) => seat.catId === catId)?.seatId);
+      return resolvedSeat && resolvedSeat !== "queue"
+        ? residentCatIdForSeat(resolvedSeat)
+        : catId;
+    },
+    [seatViews],
+  );
+
+  const awardCatExperience = useCallback(
+    (
+      catId: string,
+      action: CatExperienceAction,
+      seatId?: SeatId | "queue" | null,
+    ) => {
+      const stableCatId = progressionCatId(catId, seatId);
+      const result = grantCatExperience(
+        catProgressionRef.current,
+        stableCatId,
+        action,
+      );
+      if (result.gained <= 0) return result;
+      catProgressionRef.current = result.store;
+      setCatProgression(result.store);
+      window.localStorage.setItem(
+        CAT_PROGRESSION_KEY,
+        JSON.stringify(result.store),
+      );
+      if (result.leveledUp) {
+        worldAudioRef.current?.playUi("milestone");
+        const catName =
+          catNames[stableCatId] ??
+          seatViews.find((seat) => seat.catId === catId)?.agentName ??
+          "고양이";
+        window.setTimeout(() => {
+          setToast(`${catName}가 LV.${result.levelAfter}이 되었어요!`);
+        }, 0);
+      }
+      return result;
+    },
+    [catNames, progressionCatId, seatViews],
+  );
+
   const claimDailyQuestionBonus = useCallback(() => {
     const claim = claimDailyFirstQuestionReward(engagementRewardRef.current);
     if (claim.reward <= 0) return 0;
@@ -1078,6 +1329,12 @@ export default function Home() {
     (event: BridgeEvent) => {
       if (event.version !== undefined) setCodexVersion(event.version ?? null);
       if (event.available !== undefined) setCodexAvailable(event.available);
+      if (event.claudeVersion !== undefined) {
+        setClaudeVersion(event.claudeVersion ?? null);
+      }
+      if (event.claudeAvailable !== undefined) {
+        setClaudeAvailable(event.claudeAvailable);
+      }
 
       if (event.type === "bridge.snapshot") {
         for (const pending of event.pendingApprovals ?? []) {
@@ -1089,11 +1346,21 @@ export default function Home() {
         return;
       }
 
+      const boundSeatId = event.threadId
+        ? seatForSession(catSessionBindingsRef.current, event.threadId)
+        : null;
+
       if (event.taskId && event.threadId) {
         taskToThreadRef.current.set(event.taskId, event.threadId);
       }
 
-      setRuntimes((current) => {
+      // A Codex thread may animate only its explicitly assigned cat. Events
+      // without a thread (simulation/system) and locally emitted events with a
+      // seat remain routable.
+      const routesToCat =
+        !event.threadId || Boolean(boundSeatId || event.seatId);
+      if (routesToCat) {
+        setRuntimes((current) => {
         let next = current;
         let runtimeKey = resolveRuntimeKey(event, taskToThreadRef.current);
         if (!runtimeKey) return current;
@@ -1119,13 +1386,21 @@ export default function Home() {
         const existing = next[runtimeKey];
         const taskDepartment =
           event.department ?? existing?.department ?? "general";
+        const availableSeatIds = activeSeatIds(activeSeatCountRef.current);
+        const requestedSeatId =
+          boundSeatId && availableSeatIds.includes(boundSeatId)
+            ? boundSeatId
+            : event.seatId && availableSeatIds.includes(event.seatId)
+            ? event.seatId
+            : null;
         const seatId =
+          requestedSeatId ??
           existing?.seatId ??
           assignSeat(
             next,
             runtimeKey,
             seatAssignmentsRef.current,
-            activeSeatIds(activeSeatCountRef.current),
+            availableSeatIds,
           );
         const taskId = event.taskId ?? existing?.taskId ?? null;
         const activeTask: ActiveTask = existing?.activeTask ?? {
@@ -1175,7 +1450,10 @@ export default function Home() {
           status,
           location,
           department: taskDepartment,
-          agentName: existing?.agentName ?? DEPARTMENTS[taskDepartment].agent,
+          agentName:
+            event.agentName ??
+            existing?.agentName ??
+            DEPARTMENTS[taskDepartment].agent,
           activeTask: {
             ...activeTask,
             taskId: taskId ?? activeTask.taskId,
@@ -1201,19 +1479,24 @@ export default function Home() {
             JSON.stringify(seatAssignmentsRef.current),
           );
         }
-        return updated;
-      });
+          return updated;
+        });
+      }
 
       if (event.type === "approval.required") {
-        setApprovalQueue((queue) => [...enqueueUniqueApproval(queue, event)]);
-        raiseBlockedAlert(event);
+        if (routesToCat) {
+          setApprovalQueue((queue) => [...enqueueUniqueApproval(queue, event)]);
+          raiseBlockedAlert(event);
+        }
       }
       if (event.type === "approval.decided") {
-        setApprovalQueue((queue) => [
-          ...removeApproval(queue, event.requestId),
-        ]);
-        if (event.requestId) alreadyAlertedRef.current.delete(event.requestId);
-        setToast(event.title ?? "결정을 저장했어요.");
+        if (routesToCat) {
+          setApprovalQueue((queue) => [
+            ...removeApproval(queue, event.requestId),
+          ]);
+          if (event.requestId) alreadyAlertedRef.current.delete(event.requestId);
+          setToast(event.title ?? "결정을 저장했어요.");
+        }
       }
       const replyCompleted = [
         "task.completed",
@@ -1223,9 +1506,11 @@ export default function Home() {
         event.type,
       );
       if (replyCompleted || replyFailed) {
-        setIsSubmitting(false);
-        if (replyCompleted) setCompletionSignal((value) => value + 1);
-        if (event.threadId) {
+        if (event.threadId) setThreadSubmitting(event.threadId, false);
+        if (replyCompleted && routesToCat) {
+          setCompletionSignal((value) => value + 1);
+        }
+        if (event.threadId && routesToCat) {
           setUnreadReplyCatIds((current) => {
             const next = new Set(current);
             next.add(event.threadId as string);
@@ -1233,7 +1518,20 @@ export default function Home() {
           });
         }
       }
-      if (event.type === "task.completed") {
+      if (
+        replyCompleted &&
+        routesToCat &&
+        event.threadId &&
+        !catExperienceEventIdsRef.current.has(event.id)
+      ) {
+        catExperienceEventIdsRef.current.add(event.id);
+        awardCatExperience(
+          event.threadId,
+          "chat",
+          boundSeatId ?? event.seatId ?? null,
+        );
+      }
+      if (event.type === "task.completed" && routesToCat) {
         if (event.taskId && !completedTaskIdsRef.current.has(event.taskId)) {
           completedTaskIdsRef.current.add(event.taskId);
           const claim = claimTaskReward(
@@ -1256,7 +1554,7 @@ export default function Home() {
           }
         }
       }
-      if (replyFailed) {
+      if (replyFailed && routesToCat) {
         setToast(event.detail ?? "작업이 완료되지 않았어요.");
       }
       if (event.type === "session.updated" && event.session) {
@@ -1267,7 +1565,7 @@ export default function Home() {
           return [event.session as CodexSession, ...others].slice(0, 30);
         });
       }
-      if (!["bridge.status"].includes(event.type)) {
+      if (routesToCat && !["bridge.status"].includes(event.type)) {
         setEvents((current) => {
           const next = [event, ...current].slice(0, 40);
           window.localStorage.setItem(EVENT_HISTORY_KEY, JSON.stringify(next));
@@ -1275,7 +1573,7 @@ export default function Home() {
         });
       }
     },
-    [grantShellReward, raiseBlockedAlert],
+    [awardCatExperience, grantShellReward, raiseBlockedAlert, setThreadSubmitting],
   );
 
   const runFreeDemo = useCallback(
@@ -1432,13 +1730,25 @@ export default function Home() {
       );
       activeSeatCountRef.current = restoredSeatCount;
       setActiveSeatCount(restoredSeatCount);
+      let restoredProgression = parseCatProgressionStore(
+        window.localStorage.getItem(CAT_PROGRESSION_KEY),
+      );
+      for (const seatId of activeSeatIds(restoredSeatCount)) {
+        restoredProgression = grantCatExperience(
+          restoredProgression,
+          residentCatIdForSeat(seatId),
+          "visit",
+        ).store;
+      }
+      catProgressionRef.current = restoredProgression;
+      setCatProgression(restoredProgression);
+      window.localStorage.setItem(
+        CAT_PROGRESSION_KEY,
+        JSON.stringify(restoredProgression),
+      );
       const restoredDecorChoice =
         window.localStorage.getItem(DECOR_KEY) ?? "coral";
       setDecorChoice(restoredDecorChoice);
-      const restoredWorkstationDecor = parseWorkstationDecorState(
-        window.localStorage.getItem(WORKSTATION_DECOR_KEY),
-      );
-      setWorkstationDecor(restoredWorkstationDecor);
       setWorldFacilities(
         parseWorldFacilityState(
           window.localStorage.getItem(WORLD_FACILITY_STORAGE_KEY),
@@ -1452,28 +1762,52 @@ export default function Home() {
       const restoredNeeds = parseCatNeedsStore(
         window.localStorage.getItem(NEEDS_KEY),
       );
-      const nextNeeds = {
-        ...restoredNeeds,
-        [DEMO_CAT_ID]: ensureCatNeedState(restoredNeeds, DEMO_CAT_ID),
-      };
+      const nextNeeds = activeSeatIds(restoredSeatCount).reduce<CatNeedsStore>(
+        (current, seatId) => {
+          const catId = residentCatIdForSeat(seatId);
+          current[catId] = ensureCatNeedState(current, catId);
+          return current;
+        },
+        { ...restoredNeeds },
+      );
       catNeedsRef.current = nextNeeds;
       setCatNeeds(nextNeeds);
       try {
         const restoredNames = JSON.parse(
           window.localStorage.getItem(CAT_NAME_KEY) ?? "{}",
         ) as Record<string, string>;
-        setCatNames(
-          Object.fromEntries(
-            Object.entries(restoredNames)
-              .filter(
-                ([id, name]) =>
-                  id && typeof name === "string" && name.trim().length > 0,
-              )
-              .map(([id, name]) => [id, name.trim().slice(0, 6)]),
-          ),
+        const nextNames = Object.fromEntries(
+          Object.entries(restoredNames)
+            .filter(
+              ([id, name]) =>
+                id && typeof name === "string" && name.trim().length > 0,
+            )
+            .map(([id, name]) => [id, name.trim().slice(0, 6)]),
         );
+        for (const seatId of activeSeatIds(restoredSeatCount)) {
+          const residentCatId = residentCatIdForSeat(seatId);
+          if (!nextNames[residentCatId]) {
+            nextNames[residentCatId] = createRandomResidentCatName(
+              Object.values(nextNames),
+            );
+          }
+        }
+        setCatNames(nextNames);
+        window.localStorage.setItem(CAT_NAME_KEY, JSON.stringify(nextNames));
       } catch {
         window.localStorage.removeItem(CAT_NAME_KEY);
+        const recoveredNames = activeSeatIds(restoredSeatCount).reduce<
+          Record<string, string>
+        >((current, seatId) => {
+          current[residentCatIdForSeat(seatId)] =
+            createRandomResidentCatName(Object.values(current));
+          return current;
+        }, {});
+        setCatNames(recoveredNames);
+        window.localStorage.setItem(
+          CAT_NAME_KEY,
+          JSON.stringify(recoveredNames),
+        );
       }
       let savedEventsForTopicMemory: BridgeEvent[] = [];
       try {
@@ -1506,7 +1840,28 @@ export default function Home() {
       const savedTransport = window.localStorage.getItem(
         COMPANION_TRANSPORT_KEY,
       );
+      const restoredBindings = parseCatSessionBindings(
+        window.localStorage.getItem(CAT_SESSION_BINDINGS_STORAGE_KEY),
+      );
+      const nextBindings =
+        Object.keys(restoredBindings).length > 0
+          ? restoredBindings
+          : migrateRuntimeAssignments(loadSeatAssignments());
+      catSessionBindingsRef.current = nextBindings;
+      setCatSessionBindings(nextBindings);
+      if (Object.keys(nextBindings).length > 0) {
+        window.localStorage.setItem(
+          CAT_SESSION_BINDINGS_STORAGE_KEY,
+          JSON.stringify(nextBindings),
+        );
+      } else {
+        window.localStorage.removeItem(CAT_SESSION_BINDINGS_STORAGE_KEY);
+      }
       const savedSession = window.localStorage.getItem(SELECTED_SESSION_KEY);
+      const cachedSessions = readCodexSessionCache(
+        window.localStorage.getItem(CODEX_SESSION_CACHE_KEY),
+      ) as CodexSession[];
+      if (cachedSessions.length > 0) setSessions(cachedSessions);
       if (savedToken) setCompanionToken(savedToken);
       if (savedTransport === "cloud") setCompanionTransport("cloud");
       if (savedSession) setSelectedThreadId(savedSession);
@@ -1521,6 +1876,8 @@ export default function Home() {
       ) {
         setOnboardingOpen(true);
       }
+      setTutorialState(readTutorialState());
+      setPmWorkerQuota(readQuota());
 
       void cloudSync
         .bootstrap({
@@ -1555,25 +1912,46 @@ export default function Home() {
             SHELL_KEY,
             String(mergedState.shellBalance),
           );
-          catNeedsRef.current = mergedState.catNeeds;
-          setCatNeeds(mergedState.catNeeds);
+          const mergedSeatCount = parseActiveSeatCount(
+            String(
+              mergedState.decor?.seats?.activeSeatCount ?? restoredSeatCount,
+            ),
+          );
+          const mergedCatNeeds = activeSeatIds(mergedSeatCount).reduce<CatNeedsStore>(
+            (current, seatId) => {
+              const catId = residentCatIdForSeat(seatId);
+              current[catId] = ensureCatNeedState(current, catId);
+              return current;
+            },
+            { ...mergedState.catNeeds },
+          );
+          catNeedsRef.current = mergedCatNeeds;
+          setCatNeeds(mergedCatNeeds);
           window.localStorage.setItem(
             NEEDS_KEY,
-            JSON.stringify(mergedState.catNeeds),
+            JSON.stringify(mergedCatNeeds),
           );
           const mergedTheme = mergedState.decor?.seats?.theme;
           if (typeof mergedTheme === "string") {
             setDecorChoice(mergedTheme);
             window.localStorage.setItem(DECOR_KEY, mergedTheme);
           }
-          const mergedSeatCount = parseActiveSeatCount(
-            String(
-              mergedState.decor?.seats?.activeSeatCount ?? restoredSeatCount,
-            ),
-          );
           activeSeatCountRef.current = mergedSeatCount;
           setActiveSeatCount(mergedSeatCount);
           window.localStorage.setItem(ACTIVE_SEAT_KEY, String(mergedSeatCount));
+          setCatNames((current) => {
+            const next = { ...current };
+            for (const seatId of activeSeatIds(mergedSeatCount)) {
+              const residentCatId = residentCatIdForSeat(seatId);
+              if (!next[residentCatId]) {
+                next[residentCatId] = createRandomResidentCatName(
+                  Object.values(next),
+                );
+              }
+            }
+            window.localStorage.setItem(CAT_NAME_KEY, JSON.stringify(next));
+            return next;
+          });
           cloudSyncHydratedRef.current = true;
         });
     });
@@ -1617,9 +1995,14 @@ export default function Home() {
             computeCatNeedState(state, now),
           ]),
         ) as CatNeedsStore;
-        const activeThreadIds = runtimeList.length
-          ? runtimeList.map((runtime) => runtime.threadId)
-          : [DEMO_CAT_ID];
+        const activeThreadIds = Array.from(
+          new Set([
+            ...activeSeatIds(activeSeatCount).map(residentCatIdForSeat),
+            ...runtimeList
+              .filter((runtime) => runtime.seatId !== "queue")
+              .map((runtime) => runtime.threadId),
+          ]),
+        );
         activeThreadIds.forEach((threadId) => {
           next[threadId] = ensureCatNeedState(next, threadId, now);
         });
@@ -1648,7 +2031,7 @@ export default function Home() {
       window.removeEventListener("beforeunload", flushNeeds);
       flushNeeds();
     };
-  }, [runtimeList]);
+  }, [activeSeatCount, runtimeList]);
 
   useEffect(() => {
     queueMicrotask(resetHudTimer);
@@ -1727,25 +2110,43 @@ export default function Home() {
       try {
         const saved = JSON.parse(
           window.localStorage.getItem(CAT_LOOK_KEY) ?? "{}",
-        ) as { style?: string };
-        if (saved.style && CAT_STYLES.some((item) => item.id === saved.style)) {
-          setCatStyle(saved.style);
-          setOwnedCatStyles(
-            parseOwnedCatStyles(
-              window.localStorage.getItem(CAT_STYLE_OWNERSHIP_KEY),
-              saved.style,
-            ),
-          );
-        } else {
-          setOwnedCatStyles(
-            parseOwnedCatStyles(
-              window.localStorage.getItem(CAT_STYLE_OWNERSHIP_KEY),
-              "Blue",
-            ),
-          );
+        ) as { style?: string; styles?: Record<string, string> };
+        const validStyleIds = new Set<string>(
+          CAT_STYLES.map((item) => item.id),
+        );
+        const restoredStyles = Object.fromEntries(
+          Object.entries(saved.styles ?? {}).filter(
+            ([catId, style]) => catId && validStyleIds.has(style),
+          ),
+        );
+        // v1의 전역 외형은 첫 고양이에게만 승계한다. 다른 고양이까지 같이
+        // 바뀌던 동작을 반복하지 않도록 나머지는 각자 Blue에서 시작한다.
+        const firstResidentCatId = residentCatIdForSeat("seat-1");
+        if (
+          !restoredStyles[firstResidentCatId] &&
+          saved.style &&
+          validStyleIds.has(saved.style)
+        ) {
+          restoredStyles[firstResidentCatId] = saved.style;
         }
+        for (const seatId of activeSeatIds(activeSeatCountRef.current)) {
+          const residentCatId = residentCatIdForSeat(seatId);
+          restoredStyles[residentCatId] ??= "Blue";
+        }
+        setCatStyles(restoredStyles);
+        window.localStorage.setItem(
+          CAT_LOOK_KEY,
+          JSON.stringify({ styles: restoredStyles, updatedAt: Date.now() }),
+        );
+        setOwnedCatStyles(
+          parseOwnedCatStyles(
+            window.localStorage.getItem(CAT_STYLE_OWNERSHIP_KEY),
+            restoredStyles[firstResidentCatId] ?? "Blue",
+          ),
+        );
       } catch {
         window.localStorage.removeItem(CAT_LOOK_KEY);
+        setCatStyles({ [residentCatIdForSeat("seat-1")]: "Blue" });
         setOwnedCatStyles(
           parseOwnedCatStyles(
             window.localStorage.getItem(CAT_STYLE_OWNERSHIP_KEY),
@@ -1758,23 +2159,42 @@ export default function Home() {
 
   const catShape = CAT_SHAPE_PRESETS[0].shape;
 
-  const applyCatLook = useCallback((style: string) => {
-    setCatStyle(style);
-    window.localStorage.setItem(
-      CAT_LOOK_KEY,
-      JSON.stringify({ style, updatedAt: Date.now() }),
-    );
-  }, []);
+  const applyCatLook = useCallback(
+    (style: string) => {
+      setCatStyles((current) => {
+        const next = {
+          ...current,
+          [focusedCatId]: style,
+          [focusedResidentCatId]: style,
+        };
+        window.localStorage.setItem(
+          CAT_LOOK_KEY,
+          JSON.stringify({ styles: next, updatedAt: Date.now() }),
+        );
+        return next;
+      });
+    },
+    [focusedCatId, focusedResidentCatId],
+  );
 
   const requestCatLook = useCallback(
     (style: string) => {
       if (ownedCatStyles.has(style)) {
+        if (focusedCatStyle === style) return;
         applyCatLook(style);
+        awardCatExperience(focusedCatId, "style", focusedSeatId);
         return;
       }
       setPendingCatStyle(style);
     },
-    [applyCatLook, ownedCatStyles],
+    [
+      applyCatLook,
+      awardCatExperience,
+      focusedCatId,
+      focusedCatStyle,
+      focusedSeatId,
+      ownedCatStyles,
+    ],
   );
 
   const confirmCatStylePurchase = useCallback(() => {
@@ -1801,6 +2221,7 @@ export default function Home() {
         ? claimFirstPurchaseBonus("cat-style", "고양이 스타일")
         : 0;
     applyCatLook(pendingCatStyle);
+    awardCatExperience(focusedCatId, "style", focusedSeatId);
     worldAudioRef.current?.playUi(
       purchase.charged ? "purchaseSuccess" : "itemEquip",
     );
@@ -1812,7 +2233,10 @@ export default function Home() {
     setPendingCatStyle(null);
   }, [
     applyCatLook,
+    awardCatExperience,
     claimFirstPurchaseBonus,
+    focusedCatId,
+    focusedSeatId,
     ownedCatStyles,
     pendingCatStyle,
     shells,
@@ -1911,12 +2335,13 @@ export default function Home() {
         window.localStorage.setItem(NEEDS_KEY, JSON.stringify(next));
         return next;
       });
+      awardCatExperience(catId, "play");
       worldAudioRef.current?.playCat("purr");
       setToast(
         `간식을 먹고 행복도가 ${completed.happinessGain} 올랐어요. 오늘 ${completed.count}/8회`,
       );
     },
-    [],
+    [awardCatExperience],
   );
 
   const beginLaserPlay = useCallback(() => {
@@ -1979,12 +2404,13 @@ export default function Home() {
         window.localStorage.setItem(NEEDS_KEY, JSON.stringify(next));
         return next;
       });
+      awardCatExperience(catId, "play");
       worldAudioRef.current?.playCat("purr");
       setToast(
         `레이저 놀이 완료! 행복도 +${result.happinessGain} · 오늘 ${result.count}/${PLAY_DAILY_CAP_PER_CAT}회`,
       );
     },
-    [],
+    [awardCatExperience],
   );
 
   const beginToyHunt = useCallback(() => {
@@ -2046,12 +2472,13 @@ export default function Home() {
         window.localStorage.setItem(NEEDS_KEY, JSON.stringify(next));
         return next;
       });
+      awardCatExperience(catId, "play");
       worldAudioRef.current?.playCat("purr");
       setToast(
         `장난감 사냥 완료! 행복도 +${result.happinessGain} · 오늘 ${result.count}/${PLAY_DAILY_CAP_PER_CAT}회`,
       );
     },
-    [],
+    [awardCatExperience],
   );
 
   const refillFoodBowl = useCallback(
@@ -2209,6 +2636,7 @@ export default function Home() {
       });
 
       if (event.outcome === "meal-completed") {
+        awardCatExperience(event.catId, "care", event.seatId);
         worldAudioRef.current?.playUi("catEat");
         const nextFoodBowl = consumeFoodPortion(foodBowlStateRef.current);
         foodBowlStateRef.current = nextFoodBowl;
@@ -2226,6 +2654,7 @@ export default function Home() {
         worldAudioRef.current?.playCat("demand");
         setToast("밥그릇이 비어서 고양이의 행복도가 줄었어요.");
       } else if (event.outcome === "toilet-completed") {
+        awardCatExperience(event.catId, "care", event.seatId);
         worldAudioRef.current?.playUi("toiletDone");
         const nextLevel = addLitterWaste(
           litterLevelRef.current,
@@ -2245,7 +2674,7 @@ export default function Home() {
         setToast("화장실이 가득 차서 사용할 수 없어요. 행복도가 줄었어요.");
       }
     },
-    [],
+    [awardCatExperience],
   );
 
   const handleKneadingCompleted = useCallback(
@@ -2263,6 +2692,26 @@ export default function Home() {
         window.localStorage.setItem(NEEDS_KEY, JSON.stringify(next));
         return next;
       });
+    },
+    [],
+  );
+
+  const handleCatWheelPlay = useCallback(
+    (event: { catId: string; seatId: SeatId }) => {
+      const now = Date.now();
+      setCatNeeds((current) => {
+        const before = ensureCatNeedState(current, event.catId, now);
+        const nextState = updateCatNeedState(
+          before,
+          { happiness: before.happiness + 3 },
+          now,
+        );
+        const next = { ...current, [event.catId]: nextState };
+        catNeedsRef.current = next;
+        window.localStorage.setItem(NEEDS_KEY, JSON.stringify(next));
+        return next;
+      });
+      worldAudioRef.current?.playCat("purr");
     },
     [],
   );
@@ -2392,6 +2841,8 @@ export default function Home() {
         if (disposed) return;
         setCodexAvailable(Boolean(health.available));
         setCodexVersion(health.version ?? null);
+        setClaudeAvailable(Boolean(health.claudeAvailable));
+        setClaudeVersion(health.claudeVersion ?? null);
         setBridgeState(health.paired ? "connected" : "disconnected");
         if (health.pendingApprovals?.length) {
           consumeBridgeEvent({
@@ -2508,39 +2959,86 @@ export default function Home() {
     return () => clearTimeout(timer);
   }, [toast]);
 
-  const refreshSessions = useCallback(async () => {
-    if (!companionToken) return;
-    setSessionsLoading(true);
-    try {
-      const response = await apiFetch("/v2/sessions?limit=20");
-      const body = (await response.json()) as {
-        error?: string;
-        data?: CodexSession[];
-      };
-      if (!response.ok)
-        throw new Error(body.error ?? "세션을 불러오지 못했어요.");
-      const nextSessions = (body.data ?? []) as CodexSession[];
-      setSessions(nextSessions);
-      setSelectedThreadId((current) => {
-        if (current && nextSessions.some((session) => session.id === current)) {
-          return current;
-        }
-        const next = nextSessions[0]?.id ?? null;
-        if (next) window.localStorage.setItem(SELECTED_SESSION_KEY, next);
-        return next;
-      });
-    } catch (error) {
-      setToast(
-        error instanceof Error ? error.message : "세션을 불러오지 못했어요.",
-      );
-    } finally {
-      setSessionsLoading(false);
+  const refreshSessions = useCallback((providerOverride?: LocalSessionProvider) => {
+    if (!companionToken) return Promise.resolve();
+    const provider =
+      providerOverride ?? localSessionProviderForBackend(companionBackend);
+    if (!provider) return Promise.resolve();
+    if (sessionRefreshPromiseRef.current?.provider === provider) {
+      return sessionRefreshPromiseRef.current.promise;
     }
-  }, [apiFetch, companionToken]);
+
+    const request = (async () => {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 8_000);
+      setSessionsLoading(true);
+      try {
+        const response = await apiFetch(
+          `/v2/sessions?limit=20&provider=${provider}`,
+          {
+          signal: controller.signal,
+          },
+        );
+        const body = (await response.json()) as {
+          error?: string;
+          data?: CodexSession[];
+        };
+        if (!response.ok)
+          throw new Error(body.error ?? "세션을 불러오지 못했어요.");
+        const nextSessions = ((body.data ?? []) as CodexSession[]).filter(
+          (session) =>
+            (session.provider ??
+              (session.id.startsWith("claude:") ? "claude" : "codex")) ===
+            provider,
+        );
+        setSessions(nextSessions);
+        setSelectedThreadId((current) => {
+          if (current && nextSessions.some((session) => session.id === current)) {
+            return current;
+          }
+          const next = nextSessions[0]?.id ?? null;
+          if (next) window.localStorage.setItem(SELECTED_SESSION_KEY, next);
+          return next;
+        });
+      } catch (error) {
+        const timedOut =
+          error instanceof DOMException && error.name === "AbortError";
+        setToast(
+          timedOut
+            ? "PC Companion 응답이 늦어 새로고침을 멈췄어요. 기존 세션 목록은 그대로 사용할 수 있어요."
+            : error instanceof Error
+              ? error.message
+              : "세션을 불러오지 못했어요.",
+        );
+      } finally {
+        window.clearTimeout(timeout);
+        setSessionsLoading(false);
+      }
+    })();
+
+    sessionRefreshPromiseRef.current = { provider, promise: request };
+    void request.finally(() => {
+      if (sessionRefreshPromiseRef.current?.promise === request) {
+        sessionRefreshPromiseRef.current = null;
+      }
+    });
+    return request;
+  }, [apiFetch, companionBackend, companionToken]);
 
   useEffect(() => {
-    if (companionToken) queueMicrotask(() => void refreshSessions());
-  }, [companionToken, refreshSessions]);
+    if (!companionToken || sessions.length === 0) return;
+    window.localStorage.setItem(
+      CODEX_SESSION_CACHE_KEY,
+      writeCodexSessionCache(sessions),
+    );
+  }, [companionToken, sessions]);
+
+  useEffect(() => {
+    const provider = localSessionProviderForBackend(companionBackend);
+    if (companionToken && provider) {
+      queueMicrotask(() => void refreshSessions(provider));
+    }
+  }, [companionBackend, companionToken, refreshSessions]);
 
   async function pairWithCode(code: string) {
     let response: Response | null = null;
@@ -2645,10 +3143,12 @@ export default function Home() {
     window.localStorage.removeItem(COMPANION_TOKEN_KEY);
     window.localStorage.removeItem(COMPANION_TRANSPORT_KEY);
     window.localStorage.removeItem(SELECTED_SESSION_KEY);
+    window.localStorage.removeItem(CODEX_SESSION_CACHE_KEY);
     setCompanionToken(null);
     setCompanionTransport("local");
     setSelectedThreadId(null);
     setSessions([]);
+    setSubmittingThreadIds(new Set());
     setBridgeState("disconnected");
   }
 
@@ -2682,6 +3182,61 @@ export default function Home() {
     }
   }
 
+  async function selectImagePlayFile(file: File | null) {
+    if (!file) return;
+    try {
+      const prepared = await prepareImagePlayFile(file);
+      setImagePlaySource(prepared);
+      setImagePlayResult(null);
+      setToast("사진을 준비했어요. 원하는 놀이를 골라 주세요.");
+    } catch (error) {
+      setToast(
+        error instanceof Error ? error.message : "사진을 불러오지 못했어요.",
+      );
+    }
+  }
+
+  async function runImagePlay() {
+    if (imagePlayBusy) return;
+    if (puterConnectionState !== "ready") {
+      setToast("이미지 놀이를 시작하려면 무료 AI에 로그인해 주세요.");
+      return;
+    }
+    if (shells < IMAGE_PLAY_SHELL_COST) {
+      worldAudioRef.current?.playUi("purchaseFail");
+      setToast(`조개 ${IMAGE_PLAY_SHELL_COST - shells}개가 더 필요해요.`);
+      return;
+    }
+    setImagePlayBusy(true);
+    try {
+      const generated = await generatePuterImage(
+        buildImagePlayPrompt(
+          imagePlayPreset,
+          imagePlayPrompt,
+          Boolean(imagePlaySource),
+        ),
+        imagePlaySource ?? undefined,
+      );
+      const nextShells = shells - IMAGE_PLAY_SHELL_COST;
+      setImagePlayResult(generated);
+      setShells(nextShells);
+      window.localStorage.setItem(SHELL_KEY, String(nextShells));
+      playerCloudSyncRef.current?.recordShellDelta(
+        -IMAGE_PLAY_SHELL_COST,
+        "image-play",
+      );
+      worldAudioRef.current?.playUi("purchaseSuccess");
+      setToast(`이미지가 완성됐어요 · 조개 ${IMAGE_PLAY_SHELL_COST}개 사용`);
+    } catch (error) {
+      worldAudioRef.current?.playUi("purchaseFail");
+      setToast(
+        error instanceof Error ? error.message : "이미지 생성에 실패했어요.",
+      );
+    } finally {
+      setImagePlayBusy(false);
+    }
+  }
+
   async function retryPmWorkerConnection() {
     setPmWorkerConnectionState("loading");
     const state = await inspectPmWorkerConnection();
@@ -2700,22 +3255,60 @@ export default function Home() {
   }
 
   function openCatDetail(seatId: SeatId) {
-    const runtime = runtimeList.find((item) => item.seatId === seatId);
+    const catId = residentCatIdForSeat(seatId);
+    const boundThreadId = catSessionBindingsRef.current[seatId] ?? null;
     setSelectedSeat(seatId);
     setCatDetailTab("chat");
+    setCatSessionPickerOpen(false);
     setCatPage("detail");
     setRadioPage("cats");
+    catChatScrollInstantRef.current = true;
     setRadioOpen(true);
-    if (runtime?.threadId) {
-      setUnreadReplyCatIds((current) => {
-        if (!current.has(runtime.threadId)) return current;
-        const next = new Set(current);
-        next.delete(runtime.threadId);
-        return next;
-      });
-      setSelectedThreadId(runtime.threadId);
-      window.localStorage.setItem(SELECTED_SESSION_KEY, runtime.threadId);
+    awardCatExperience(catId, "visit", seatId);
+    setUnreadReplyCatIds((current) => {
+      if (!current.has(catId) && !(boundThreadId && current.has(boundThreadId))) {
+        return current;
+      }
+      const next = new Set(current);
+      next.delete(catId);
+      if (boundThreadId) next.delete(boundThreadId);
+      return next;
+    });
+    if (boundThreadId) {
+      setSelectedThreadId(boundThreadId);
+      window.localStorage.setItem(SELECTED_SESSION_KEY, boundThreadId);
     }
+  }
+
+  function clearFocusedCatConversation() {
+    if (isSubmitting) return;
+    const conversationTypes = new Set([
+      "chat.user.sent",
+      "task.queued",
+      "task.completed",
+      "task.failed",
+      "pm-chat.queued",
+      "pm-chat.completed",
+      "pm-chat.failed",
+    ]);
+    setEvents((current) => {
+      const next = current.filter(
+        (event) =>
+          event.threadId !== focusedConversationThreadId ||
+          !conversationTypes.has(event.type),
+      );
+      window.localStorage.setItem(EVENT_HISTORY_KEY, JSON.stringify(next));
+      return next;
+    });
+    clearPmWorkerSession(focusedResidentCatId);
+    setUnreadReplyCatIds((current) => {
+      const next = new Set(current);
+      next.delete(focusedResidentCatId);
+      next.delete(focusedConversationThreadId);
+      return next;
+    });
+    catChatScrollInstantRef.current = true;
+    setToast("이 고양이와 나눈 대화를 비웠어요.");
   }
 
   function requestDisconnectCompanion() {
@@ -2746,6 +3339,38 @@ export default function Home() {
       setActiveSeatCount(nextCount);
       setShells(nextShells);
       setSelectedSeat(pendingSeatSlot.seatId);
+      const residentCatId = residentCatIdForSeat(pendingSeatSlot.seatId);
+      const residentCatName =
+        catNames[residentCatId] ??
+        createRandomResidentCatName(Object.values(catNames));
+      const nextCatNames = {
+        ...catNames,
+        [residentCatId]: residentCatName,
+      };
+      setCatNames(nextCatNames);
+      window.localStorage.setItem(CAT_NAME_KEY, JSON.stringify(nextCatNames));
+      setCatStyles((current) => {
+        const next = { ...current, [residentCatId]: current[residentCatId] ?? "Blue" };
+        window.localStorage.setItem(
+          CAT_LOOK_KEY,
+          JSON.stringify({ styles: next, updatedAt: Date.now() }),
+        );
+        return next;
+      });
+      setCatNeeds((current) => {
+        const next = {
+          ...current,
+          [residentCatId]: ensureCatNeedState(current, residentCatId),
+        };
+        catNeedsRef.current = next;
+        window.localStorage.setItem(NEEDS_KEY, JSON.stringify(next));
+        return next;
+      });
+      awardCatExperience(
+        residentCatId,
+        "visit",
+        pendingSeatSlot.seatId,
+      );
       window.localStorage.setItem(ACTIVE_SEAT_KEY, String(nextCount));
       window.localStorage.setItem(SHELL_KEY, String(nextShells));
       const firstPurchaseBonus = claimFirstPurchaseBonus("seat", "새 자리");
@@ -2754,7 +3379,7 @@ export default function Home() {
       );
       setConfirmDialog(null);
       setToast(
-        `자리 ${pendingSeatSlot.seatId.slice(-1)}과 ${pendingSeatSlot.title}을 열었어요.${firstPurchaseBonus ? ` · 첫 구매 보상 +${firstPurchaseBonus}` : ""}`,
+        `자리 ${pendingSeatSlot.seatId.slice(-1)}과 ${pendingSeatSlot.title}을 열고 ${residentCatName}가 합류했어요.${firstPurchaseBonus ? ` · 첫 구매 보상 +${firstPurchaseBonus}` : ""}`,
       );
     } finally {
       window.setTimeout(() => {
@@ -2782,6 +3407,7 @@ export default function Home() {
         window.localStorage.setItem(SHELL_KEY, String(next));
         return next;
       });
+      advanceTutorialRef.current?.("collect-shell");
       setShellCollectTokens((current) => [
         ...current,
         { id, x, y, amount: claim.reward },
@@ -2803,31 +3429,123 @@ export default function Home() {
     setToast("관리자 조개 5개를 추가했어요.");
   }, [grantShellReward, layoutAdminEnabled]);
 
-  async function selectSession(threadId: string) {
+  function persistCatSessionBindings(next: CatSessionBindings) {
+    catSessionBindingsRef.current = next;
+    setCatSessionBindings(next);
+    window.localStorage.setItem(
+      CAT_SESSION_BINDINGS_STORAGE_KEY,
+      JSON.stringify(next),
+    );
+  }
+
+  function assignSessionToCat(
+    seatId: SeatId,
+    threadId: string,
+    allowActiveReplacement = false,
+  ) {
+    const current = catSessionBindingsRef.current;
+    const previousThreadId = current[seatId] ?? null;
+    if (
+      !allowActiveReplacement &&
+      ((previousThreadId && submittingThreadIds.has(previousThreadId)) ||
+        submittingThreadIds.has(threadId))
+    ) {
+      setToast("작업 중인 AI 세션은 완료된 뒤 담당 고양이를 바꿀 수 있어요.");
+      return;
+    }
+
+    const next = bindSessionToCat(current, seatId, threadId);
+    persistCatSessionBindings(next);
+    if (previousThreadId && previousThreadId !== threadId) {
+      delete seatAssignmentsRef.current[previousThreadId];
+    }
+    for (const [candidateThreadId, candidateSeatId] of Object.entries(
+      seatAssignmentsRef.current,
+    )) {
+      if (candidateSeatId === seatId && candidateThreadId !== threadId) {
+        delete seatAssignmentsRef.current[candidateThreadId];
+      }
+    }
+    seatAssignmentsRef.current[threadId] = seatId;
+    window.localStorage.setItem(
+      SEAT_ASSIGNMENTS_KEY,
+      JSON.stringify(seatAssignmentsRef.current),
+    );
+    setRuntimes((currentRuntimes) =>
+      Object.fromEntries(
+        Object.entries(currentRuntimes).map(([key, runtime]) => [
+          key,
+          key === threadId
+            ? { ...runtime, seatId }
+            : runtime.seatId === seatId
+              ? { ...runtime, seatId: "queue" as const }
+              : runtime,
+        ]),
+      ),
+    );
+    setSelectedSeat(seatId);
     setSelectedThreadId(threadId);
     window.localStorage.setItem(SELECTED_SESSION_KEY, threadId);
-    try {
-      const response = await apiFetch(
-        `/v2/sessions/${encodeURIComponent(threadId)}/resume`,
-        { method: "POST" },
-      );
-      const body = (await response.json()) as {
-        error?: string;
-        session?: { title?: string };
-      };
-      if (!response.ok) throw new Error(body.error ?? "세션을 열지 못했어요.");
-      setToast(`“${body.session?.title ?? "Codex 세션"}”을 연결했어요.`);
-    } catch (error) {
-      setToast(
-        error instanceof Error ? error.message : "세션을 열지 못했어요.",
-      );
+    const session = sessions.find((candidate) => candidate.id === threadId);
+    const catId = residentCatIdForSeat(seatId);
+    const catName = catNames[catId] ?? residentCatNameForSeat(seatId);
+    const providerLabel = threadId.startsWith("claude:")
+      ? "Claude Code"
+      : "Codex";
+    setToast(
+      `${catName} ↔ ${session?.title ?? `${providerLabel} 세션`} 연결을 저장했어요.`,
+    );
+  }
+
+  function unassignSessionFromCat(seatId: SeatId) {
+    const threadId = catSessionBindingsRef.current[seatId];
+    if (threadId && submittingThreadIds.has(threadId)) {
+      setToast("작업 중인 세션은 완료된 뒤 연결을 해제할 수 있어요.");
+      return;
     }
+    const next = unbindSessionFromCat(catSessionBindingsRef.current, seatId);
+    persistCatSessionBindings(next);
+    if (threadId) {
+      delete seatAssignmentsRef.current[threadId];
+      window.localStorage.setItem(
+        SEAT_ASSIGNMENTS_KEY,
+        JSON.stringify(seatAssignmentsRef.current),
+      );
+      setRuntimes((current) => {
+        if (!current[threadId]) return current;
+        return {
+          ...current,
+          [threadId]: { ...current[threadId], seatId: "queue" },
+        };
+      });
+    }
+    const catId = residentCatIdForSeat(seatId);
+    setToast(
+      `${catNames[catId] ?? residentCatNameForSeat(seatId)}의 AI 세션 연결을 해제했어요.`,
+    );
+  }
+
+  function selectSession(threadId: string) {
+    setSelectedThreadId(threadId);
+    window.localStorage.setItem(SELECTED_SESSION_KEY, threadId);
+    const session = sessions.find((candidate) => candidate.id === threadId);
+    const providerLabel = threadId.startsWith("claude:")
+      ? "Claude Code"
+      : "Codex";
+    setToast(
+      `${session?.title ?? `${providerLabel} 세션`}을 선택했어요. 아래 고양이에게 지정해 주세요.`,
+    );
   }
 
   async function createNewSession() {
+    const provider = localSessionProviderForBackend(companionBackend);
+    if (!provider) return;
     setSessionsLoading(true);
     try {
-      const response = await apiFetch("/v2/sessions", { method: "POST" });
+      const response = await apiFetch(
+        `/v2/sessions?provider=${provider}`,
+        { method: "POST" },
+      );
       const body = (await response.json()) as {
         error?: string;
         session: CodexSession;
@@ -2838,7 +3556,7 @@ export default function Home() {
       setSessions((current) => [session, ...current]);
       setSelectedThreadId(session.id);
       window.localStorage.setItem(SELECTED_SESSION_KEY, session.id);
-      setToast("이 프로젝트의 새 Codex 세션을 만들었어요.");
+      assignSessionToCat(focusedSeatId, session.id);
     } catch (error) {
       setToast(
         error instanceof Error ? error.message : "새 세션을 만들지 못했어요.",
@@ -2848,6 +3566,82 @@ export default function Home() {
     }
   }
 
+  /* 단계를 실제로 해냈을 때만 부른다. 순서가 안 맞으면 tutorial-guide 가 알아서 무시한다.
+     조개 줍기는 useCallback 안에서 불려서, 낡은 클로저를 잡지 않도록 ref 로 건넨다. */
+  advanceTutorialRef.current = advanceTutorial;
+  function advanceTutorial(stepId: string) {
+    setTutorialState((current) => {
+      const result = completeTutorialStep(current, stepId);
+      if (result.state === current) return current;
+      writeTutorialState(result.state);
+      if (result.reward > 0) {
+        setShells((balance) => {
+          const next = balance + result.reward;
+          window.localStorage.setItem(SHELL_KEY, String(next));
+          return next;
+        });
+        playerCloudSyncRef.current?.recordShellDelta(
+          result.reward,
+          `tutorial:${stepId}`,
+        );
+        worldAudioRef.current?.playUi("purchaseSuccess");
+        setToast(`조개 ${result.reward}개를 받았어요!`);
+      }
+      return result.state;
+    });
+  }
+
+  /* 월드가 매 프레임 좌표를 보내온다. 그대로 setState 하면 프레임마다 다시 그린다.
+     0.5% 미만으로 움직인 건 무시해서 손가락이 떨리지도, 렌더가 폭주하지도 않게 한다. */
+  const handleTutorialAnchor = useCallback(
+    (event: { x: number; y: number; visible: boolean }) => {
+      setTutorialAnchorPoint((current) => {
+        if (
+          current &&
+          current.visible === event.visible &&
+          Math.abs(current.x - event.x) < 0.005 &&
+          Math.abs(current.y - event.y) < 0.005
+        ) {
+          return current;
+        }
+        return { x: event.x, y: event.y, visible: event.visible };
+      });
+    },
+    [],
+  );
+
+  function skipTutorialGuide() {
+    const next = skipTutorial(tutorialState);
+    setTutorialState(next);
+    writeTutorialState(next);
+  }
+
+  function chargeChatShells(reason: string) {
+    const charge = chargeAiChat(shells);
+    if (!charge.ok) return false;
+    setShells(charge.balance);
+    window.localStorage.setItem(SHELL_KEY, String(charge.balance));
+    playerCloudSyncRef.current?.recordShellDelta(-charge.cost, reason);
+    worldAudioRef.current?.playUi("purchaseSuccess");
+    // 조개가 실제로 빠져나간 순간이 "첫 업무를 맡겼다"의 유일한 확실한 신호다.
+    advanceTutorial("first-task");
+    if (companionBackend === "pm-worker") {
+      const nextQuota = consumeQuota(pmWorkerQuota);
+      setPmWorkerQuota(nextQuota);
+      writeQuota(nextQuota);
+    }
+    return true;
+  }
+
+  function refundChatShells(reason: string) {
+    setShells((current) => {
+      const refunded = refundAiChat(current);
+      window.localStorage.setItem(SHELL_KEY, String(refunded));
+      return refunded;
+    });
+    playerCloudSyncRef.current?.recordShellDelta(AI_CHAT_SHELL_COST, reason);
+  }
+
   async function startTask(event: FormEvent) {
     event.preventDefault();
     if (!prompt.trim() || isSubmitting) return;
@@ -2855,8 +3649,28 @@ export default function Home() {
       setToast("이 서비스 실행기는 아직 서버 배포가 필요해요.");
       return;
     }
-    if (companionBackend === "local-session" && !selectedThreadId) {
-      setToast("먼저 사용할 Codex 세션을 선택해 주세요.");
+    if (isLocalCodeBackend(companionBackend) && !selectedLocalProviderAvailable) {
+      setToast(
+        `${selectedLocalProviderLabel}가 PC Companion에 연결되어 있지 않아요.`,
+      );
+      return;
+    }
+    if (isLocalCodeBackend(companionBackend) && !focusedBoundThreadId) {
+      setToast(
+        `${focusedCatName}에게 사용할 ${selectedLocalProviderLabel} 세션을 먼저 지정해 주세요.`,
+      );
+      return;
+    }
+    if (
+      companionBackend === "puter" &&
+      puterConnectionState !== "ready"
+    ) {
+      setToast("Puter 무료 AI 연결 화면에서 로그인을 먼저 완료해 주세요.");
+      return;
+    }
+    // 맛보기용 공용 워커는 사장님 구독으로 돌아간다. 한 사람 하루 5회로 묶는다.
+    if (companionBackend === "pm-worker" && !canUsePmWorker(pmWorkerQuota)) {
+      setToast(quotaNotice(pmWorkerQuota));
       return;
     }
     if (
@@ -2867,27 +3681,26 @@ export default function Home() {
       return;
     }
     if (
-      companionBackend === "pm-worker" &&
-      shells < PM_WORKER_CHAT_SHELL_COST
+      isAiChatShellBackend(companionBackend) &&
+      shells < AI_CHAT_SHELL_COST
     ) {
       worldAudioRef.current?.playUi("purchaseFail");
       setToast(
-        `PM Worker AI와 대화하려면 조개 ${PM_WORKER_CHAT_SHELL_COST}개가 필요해요.`,
+        `${selectedCompanionBackend?.title ?? "AI"}와 대화하려면 조개 ${AI_CHAT_SHELL_COST}개가 필요해요.`,
       );
       return;
     }
     const message = prompt.trim();
-    const catName =
-      catNames[focusedCatId] ??
-      focusedRuntime?.agentName ??
-      "코치 모모";
+    const catName = focusedCatName;
+    const taskSeatId = focusedSeatId;
     const personaPrompt = buildCatPersonaPrompt({
       catName,
       userPrompt: message,
+      conversationHistory: conversationMemoryFromEvents(focusedConversation),
     });
     setCatChatTopicMemory((current) => {
       const next = rememberCatChatTopic(current, {
-        catId: focusedCatId,
+        catId: focusedConversationThreadId,
         prompt: message,
       });
       window.localStorage.setItem(
@@ -2896,8 +3709,12 @@ export default function Home() {
       );
       return next;
     });
-    setIsSubmitting(true);
+    setThreadSubmitting(focusedConversationThreadId, true);
     if (companionBackend === "puter") {
+      if (!chargeChatShells("puter-chat")) {
+        setThreadSubmitting(focusedConversationThreadId, false);
+        return;
+      }
       const taskId = `puter-${crypto.randomUUID()}`;
       const threadId = focusedCatId;
       const emitPuterEvent = (partial: Partial<BridgeEvent>) =>
@@ -2907,6 +3724,8 @@ export default function Home() {
           occurredAt: new Date().toISOString(),
           taskId,
           threadId,
+          seatId: taskSeatId,
+          agentName: catName,
           department,
           mode: "simulation",
           ...partial,
@@ -2923,7 +3742,7 @@ export default function Home() {
         location: "general",
         prompt: message,
         title: "무료 AI에게 질문을 전달했어요",
-        detail: "Puter AI 응답을 기다리고 있어요.",
+        detail: `대화 비용으로 조개 ${AI_CHAT_SHELL_COST}개를 사용했어요.`,
       });
       emitPuterEvent({
         type: "agent.status",
@@ -2946,9 +3765,10 @@ export default function Home() {
           result,
         });
         setToast(
-          `무료 AI 답변이 도착했어요.${firstQuestionBonus ? ` · 오늘 첫 질문 보상 +${firstQuestionBonus}` : ""}`,
+          `무료 AI 답변이 도착했어요 · 조개 ${AI_CHAT_SHELL_COST}개 사용${firstQuestionBonus ? ` · 오늘 첫 질문 보상 +${firstQuestionBonus}` : ""}`,
         );
       } catch (error) {
+        refundChatShells("puter-chat-refund");
         emitPuterEvent({
           type: "task.failed",
           status: "failed",
@@ -2956,21 +3776,26 @@ export default function Home() {
           title: "무료 AI 연결에 실패했어요",
           detail:
             error instanceof Error
-              ? error.message
-              : "잠시 후 다시 시도해 주세요.",
+              ? `${error.message} 사용한 조개는 돌려드렸어요.`
+              : "사용한 조개는 돌려드렸어요.",
         });
         setToast(
-          error instanceof Error ? error.message : "무료 AI 연결에 실패했어요.",
+          error instanceof Error
+            ? `${error.message} 조개는 돌려드렸어요.`
+            : "무료 AI 연결에 실패해 조개를 돌려드렸어요.",
         );
       } finally {
-        setIsSubmitting(false);
+        setThreadSubmitting(threadId, false);
       }
       return;
     }
     if (companionBackend === "pm-worker") {
+      if (!chargeChatShells("pm-worker-chat")) {
+        setThreadSubmitting(focusedConversationThreadId, false);
+        return;
+      }
       const taskId = `pm-worker-${crypto.randomUUID()}`;
       const threadId = focusedCatId;
-      const nextShells = shells - PM_WORKER_CHAT_SHELL_COST;
       const emitPmWorkerEvent = (partial: Partial<BridgeEvent>) =>
         consumeBridgeEvent({
           id: `${taskId}-${partial.type ?? "event"}-${Date.now()}`,
@@ -2978,18 +3803,13 @@ export default function Home() {
           occurredAt: new Date().toISOString(),
           taskId,
           threadId,
+          seatId: taskSeatId,
+          agentName: catName,
           department,
           mode: "simulation",
           ...partial,
         });
 
-      setShells(nextShells);
-      window.localStorage.setItem(SHELL_KEY, String(nextShells));
-      playerCloudSyncRef.current?.recordShellDelta(
-        -PM_WORKER_CHAT_SHELL_COST,
-        "pm-worker-chat",
-      );
-      worldAudioRef.current?.playUi("purchaseSuccess");
       emitPmWorkerEvent({
         type: "chat.user.sent",
         prompt: message,
@@ -3002,7 +3822,7 @@ export default function Home() {
         location: "general",
         prompt: message,
         title: "PM Worker AI에게 질문했어요",
-        detail: `대화 비용으로 조개 ${PM_WORKER_CHAT_SHELL_COST}개를 사용했어요.`,
+        detail: `대화 비용으로 조개 ${AI_CHAT_SHELL_COST}개를 사용했어요.`,
       });
       emitPmWorkerEvent({
         type: "agent.status",
@@ -3014,7 +3834,11 @@ export default function Home() {
       setPrompt("");
       setRadioOpen(false);
       try {
-        const result = await submitPmWorkerTask(personaPrompt, focusedCatId);
+        const result = await submitPmWorkerTask(
+          personaPrompt,
+          focusedCatId,
+          message,
+        );
         const firstQuestionBonus = claimDailyQuestionBonus();
         emitPmWorkerEvent({
           type: "pm-chat.completed",
@@ -3025,18 +3849,10 @@ export default function Home() {
           result: result.reply,
         });
         setToast(
-          `답변이 도착했어요 · 조개 ${PM_WORKER_CHAT_SHELL_COST}개 사용${firstQuestionBonus ? ` · 오늘 첫 질문 보상 +${firstQuestionBonus}` : ""}`,
+          `답변이 도착했어요 · 조개 ${AI_CHAT_SHELL_COST}개 사용${firstQuestionBonus ? ` · 오늘 첫 질문 보상 +${firstQuestionBonus}` : ""}`,
         );
       } catch (error) {
-        setShells((current) => {
-          const refunded = current + PM_WORKER_CHAT_SHELL_COST;
-          window.localStorage.setItem(SHELL_KEY, String(refunded));
-          return refunded;
-        });
-        playerCloudSyncRef.current?.recordShellDelta(
-          PM_WORKER_CHAT_SHELL_COST,
-          "pm-worker-chat-refund",
-        );
+        refundChatShells("pm-worker-chat-refund");
         emitPmWorkerEvent({
           type: "pm-chat.failed",
           status: "failed",
@@ -3053,12 +3869,20 @@ export default function Home() {
             : "PM Worker AI 연결에 실패해 조개를 돌려드렸어요.",
         );
       } finally {
-        setIsSubmitting(false);
+        setThreadSubmitting(threadId, false);
       }
       return;
     }
+    const localChargeSucceeded =
+      companionBackend === "local-claude"
+        ? chargeChatShells("local-claude-chat")
+        : chargeChatShells("local-session-chat");
+    if (!localChargeSucceeded) {
+      setThreadSubmitting(focusedConversationThreadId, false);
+      return;
+    }
     const taskId = `local-chat-${crypto.randomUUID()}`;
-    const threadId = selectedThreadId as string;
+    const threadId = focusedBoundThreadId as string;
     const emitLocalEvent = (partial: Partial<BridgeEvent>) =>
       consumeBridgeEvent({
         id: `${taskId}-${partial.type ?? "event"}-${Date.now()}`,
@@ -3066,8 +3890,10 @@ export default function Home() {
         occurredAt: new Date().toISOString(),
         taskId,
         threadId,
+        seatId: taskSeatId,
+        agentName: catName,
         department,
-        mode: "codex",
+        mode: companionBackend === "local-claude" ? "claude" : "codex",
         ...partial,
       });
     emitLocalEvent({
@@ -3096,22 +3922,39 @@ export default function Home() {
             displayPrompt: message,
             department,
             threadId,
+            seatId: taskSeatId,
+            agentName: catName,
           }),
         },
       );
-      const body = (await response.json()) as { error?: string };
+      const body = (await response.json()) as {
+        error?: string;
+        threadId?: string;
+        rolledOver?: boolean;
+        replacedThreadId?: string | null;
+      };
       if (!response.ok)
         throw new Error(body.error ?? "작업을 시작하지 못했어요.");
-      const firstQuestionBonus = claimDailyQuestionBonus();
-      if (firstQuestionBonus > 0) {
-        setToast(`오늘 첫 질문 보상으로 조개 ${firstQuestionBonus}개를 받았어요.`);
+      if (body.threadId && body.threadId !== threadId) {
+        setThreadSubmitting(threadId, false);
+        assignSessionToCat(taskSeatId, body.threadId, true);
+        setThreadSubmitting(body.threadId, true);
       }
+      const firstQuestionBonus = claimDailyQuestionBonus();
+      setToast(
+        `${body.rolledOver ? "큰 세션을 새 경량 세션으로 이어서 " : ""}${selectedLocalProviderLabel} 작업을 접수했어요 · 조개 ${AI_CHAT_SHELL_COST}개 사용${firstQuestionBonus ? ` · 오늘 첫 질문 보상 +${firstQuestionBonus}` : ""}`,
+      );
     } catch (error) {
+      if (companionBackend === "local-claude") {
+        refundChatShells("local-claude-chat-refund");
+      } else {
+        refundChatShells("local-session-chat-refund");
+      }
       emitLocalEvent({
         type: "task.failed",
         status: "failed",
         location: "queue",
-        title: "PC Codex 연결에 실패했어요",
+        title: `PC ${selectedLocalProviderLabel} 연결에 실패했어요`,
         detail:
           error instanceof Error
             ? error.message
@@ -3120,21 +3963,22 @@ export default function Home() {
       setToast(
         error instanceof Error ? error.message : "브리지에 연결하지 못했어요.",
       );
+      setThreadSubmitting(threadId, false);
     }
   }
 
   async function interruptTask() {
-    if (!selectedThreadId) return;
+    if (!focusedBoundThreadId) return;
     try {
       const response = await apiFetch(
-        `/v2/sessions/${encodeURIComponent(selectedThreadId)}/interrupt`,
+        `/v2/sessions/${encodeURIComponent(focusedBoundThreadId)}/interrupt`,
         { method: "POST" },
       );
       const body = (await response.json()) as { error?: string };
       if (!response.ok)
         throw new Error(body.error ?? "작업을 중단하지 못했어요.");
-      setIsSubmitting(false);
-      setToast("현재 Codex 작업을 중단했어요.");
+      setThreadSubmitting(focusedBoundThreadId, false);
+      setToast(`현재 ${selectedLocalProviderLabel} 작업을 중단했어요.`);
     } catch (error) {
       setToast(
         error instanceof Error ? error.message : "작업을 중단하지 못했어요.",
@@ -3178,47 +4022,6 @@ export default function Home() {
     }
   }
 
-  function chooseWorkstationDecor(itemId: string) {
-    const seatId = (selectedSeat ?? "seat-1") as WorkstationSeatId;
-    const result = purchaseOrEquipWorkstationDecor({
-      state: workstationDecor,
-      seatId,
-      itemId,
-      shells,
-      unlockedSeatCount: activeSeatCount,
-    });
-    if (!result.ok) {
-      worldAudioRef.current?.playUi("purchaseFail");
-      setToast(
-        result.reason === "locked"
-          ? `자리 ${result.required}개를 열면 구매할 수 있어요.`
-          : result.reason === "insufficient-shells"
-            ? `이 소품을 구매하려면 조개 ${result.required}개가 필요해요.`
-            : "소품 정보를 찾지 못했어요.",
-      );
-      return;
-    }
-    setWorkstationDecor(result.state);
-    setShells(result.balance);
-    window.localStorage.setItem(
-      WORKSTATION_DECOR_KEY,
-      JSON.stringify(result.state),
-    );
-    window.localStorage.setItem(SHELL_KEY, String(result.balance));
-    const firstPurchaseBonus =
-      result.charged > 0
-        ? claimFirstPurchaseBonus("workstation-decor", "자리 소품")
-        : 0;
-    worldAudioRef.current?.playUi(
-      result.charged > 0 ? "purchaseSuccess" : "itemEquip",
-    );
-    setToast(
-      result.equipped
-        ? `${result.charged > 0 ? "구매하고 " : ""}자리 ${seatId.slice(-1)}에 소품을 배치했어요.${firstPurchaseBonus ? ` · 첫 구매 보상 +${firstPurchaseBonus}` : ""}`
-        : `자리 ${seatId.slice(-1)}에서 소품을 치웠어요.`,
-    );
-  }
-
   function chooseCompanionBackend(backendId: CompanionBackendId) {
     const backend = companionBackendOptions.find(
       (candidate) => candidate.id === backendId,
@@ -3230,11 +4033,32 @@ export default function Home() {
     setToast(
       backend.available === "server-pending"
         ? "서비스 실행기는 아직 서버 배포가 필요해요. 다른 연결을 선택할 수 있어요."
-        : backend.id === "puter"
-          ? "무료 AI 대화가 선택됐어요. 파일 수정과 명령 실행은 지원하지 않아요."
+          : backend.id === "puter"
+          ? `무료 AI 대화가 선택됐어요. 질문마다 조개 ${AI_CHAT_SHELL_COST}개를 사용해요.`
           : backend.id === "pm-worker"
-            ? `PM Worker AI가 선택됐어요. 질문마다 조개 ${PM_WORKER_CHAT_SHELL_COST}개를 사용해요.`
-            : "내 PC Codex 세션 연결이 선택됐어요.",
+            ? `PM Worker AI가 선택됐어요. 질문마다 조개 ${AI_CHAT_SHELL_COST}개를 사용해요.`
+            : backend.id === "local-claude"
+              ? `내 PC Claude Code 세션 연결이 선택됐어요. 질문마다 조개 ${AI_CHAT_SHELL_COST}개를 사용해요.`
+              : `내 PC Codex 세션 연결이 선택됐어요. 질문마다 조개 ${AI_CHAT_SHELL_COST}개를 사용해요.`,
+    );
+  }
+
+  function chooseCatCompanionBackend(backendId: CompanionBackendId) {
+    chooseCompanionBackend(backendId);
+    if (!isLocalCodeBackend(backendId)) {
+      setCatSessionPickerOpen(false);
+      return;
+    }
+    const providerAvailable =
+      backendId === "local-claude" ? claudeAvailable : codexAvailable;
+    if (!companionToken || bridgeState !== "connected" || !providerAvailable) {
+      setCatSessionPickerOpen(false);
+      openSelectedBackendConnection();
+      return;
+    }
+    setCatSessionPickerOpen(true);
+    void refreshSessions(
+      backendId === "local-claude" ? "claude" : "codex",
     );
   }
 
@@ -3263,6 +4087,25 @@ export default function Home() {
     setRadioOpen(true);
     resetHudTimer();
   }
+
+  const tutorialStep = currentTutorialStep(tutorialState);
+  /* 손가락은 대상이 화면에 잡혔을 때만 얹는다. 온보딩 모달이 떠 있는 동안에는 가린다 —
+     두 겹으로 겹치면 뭘 눌러야 할지 더 헷갈린다.
+     tutorialAnchorPoint 가 있어야 띄우는 이유: 월드가 다 뜬 뒤에만 좌표가 오므로,
+     로딩 화면 위에 안내판이 떠서 고장 난 것처럼 보이는 걸 막는다. */
+  const tutorialSpot =
+    tutorialStep && tutorialAnchorPoint && !onboardingOpen && !uiPreview
+      ? {
+          title: tutorialStep.title,
+          body: tutorialStep.body,
+          hand: tutorialAnchorPoint?.visible
+            ? {
+                left: `${(tutorialAnchorPoint.x * 100).toFixed(2)}%`,
+                top: `${(tutorialAnchorPoint.y * 100).toFixed(2)}%`,
+              }
+            : null,
+        }
+      : null;
 
   return (
     <main
@@ -3321,7 +4164,7 @@ export default function Home() {
                   ? STATUS_COPY[focusedRuntime.status]
                   : "대기 중"}
               </span>
-              <strong>{focusedRuntime?.agentName ?? "코치 모모"}</strong>
+              <strong>{focusedCatName}</strong>
             </div>
           </div>
         )}
@@ -3332,9 +4175,8 @@ export default function Home() {
           }`}
         >
           <AgentWorld3D
-            // 외형이 바뀌면 씬을 통째로 다시 만든다 — FBX가 달라지고 정점도 새로 부풀려야 한다.
-            key={`${catStyle}-${catShapeId}-${foodBowlCount}-${litterBoxCount}`}
-            catStyle={catStyle}
+            // 고양이별 FBX 구성이 바뀌면 씬을 다시 만들어 각 좌석의 외형을 따로 로드한다.
+            key={`${seatViews.map((seat) => `${seat.catId}:${seat.catStyle}`).join("|")}-${catShapeId}-${foodBowlCount}-${litterBoxCount}`}
             catShape={catShape}
             seats={seatViews}
             activeSeatCount={activeSeatCount}
@@ -3355,12 +4197,14 @@ export default function Home() {
             exerciseWheelOwned={worldFacilities.owned.includes(
               CAT_EXERCISE_WHEEL_ID,
             )}
-            workstationDecor={workstationDecorBySeat}
             onFoodBowlClick={refillFoodBowl}
             onLitterBoxClick={cleanLitterFacility}
             onCatCareEvent={handleCatCareEvent}
             onKneadingCompleted={handleKneadingCompleted}
+            onCatWheelPlay={handleCatWheelPlay}
             onShellCollect={collectBeachShell}
+            tutorialAnchor={tutorialStep?.target ?? null}
+            onTutorialAnchor={handleTutorialAnchor}
             worldShellSpawningEnabled={
               worldShellDaily.count < WORLD_SHELL_DAILY_CAP
             }
@@ -3698,11 +4542,15 @@ export default function Home() {
                           />
                           <span>
                             <strong>빈 자리 {index + 1}</strong>
-                            <small>Codex 세션 연결</small>
+                            <small>AI 세션 연결</small>
                           </span>
                         </button>
                       );
                     }
+                    const boundSession = sessions.find(
+                      (session) =>
+                        session.id === catSessionBindings[seatId],
+                    );
                     const attention =
                       Boolean(seat.hasUnreadReply) ||
                       (seat.hunger ?? 0) >= 70 ||
@@ -3722,8 +4570,16 @@ export default function Home() {
                       >
                         <span className="cat-card-avatar" aria-hidden="true" />
                         <span className="cat-card-copy">
-                          <strong>{seat.agentName}</strong>
+                          <strong>
+                            {seat.agentName}
+                            <i className="cat-level-badge">LV.{seat.level ?? 1}</i>
+                          </strong>
                           <small>{seat.statusLabel}</small>
+                          <small className="cat-card-session-name">
+                            {boundSession
+                              ? `Codex · ${boundSession.title}`
+                              : "Codex · 미연결"}
+                          </small>
                           <span className="cat-card-gauges" aria-hidden="true">
                             <i>
                               <b style={{ width: `${seat.hunger ?? 0}%` }} />
@@ -3782,9 +4638,7 @@ export default function Home() {
                     <span className="cat-card-avatar" aria-hidden="true" />
                     <span>
                       <b>
-                        {catNames[focusedCatId] ??
-                          focusedRuntime?.agentName ??
-                          "코치 모모"}
+                        {focusedCatName}
                       </b>
                       <small>
                         자리 {(selectedSeat ?? "seat-1").slice(-1)} ·{" "}
@@ -3793,15 +4647,34 @@ export default function Home() {
                           : "대기 중"}
                       </small>
                     </span>
-                    <em>행복 {Math.round(focusedCatNeeds.happiness)}</em>
+                    <span className="cat-profile-meta">
+                      <em>LV.{focusedCatProgress.level}</em>
+                      <em>행복 {Math.round(focusedCatNeeds.happiness)}</em>
+                    </span>
+                  </div>
+                  <div
+                    className="cat-level-progress"
+                    role="progressbar"
+                    aria-label={`${focusedCatName} 레벨 경험치`}
+                    aria-valuemin={0}
+                    aria-valuemax={focusedCatProgress.requiredXp || 1}
+                    aria-valuenow={focusedCatProgress.currentXp}
+                  >
+                    <span>
+                      <b>친밀도 경험치</b>
+                      <small>
+                        {focusedCatProgress.requiredXp > 0
+                          ? `${focusedCatProgress.currentXp} / ${focusedCatProgress.requiredXp} XP`
+                          : "최고 레벨"}
+                      </small>
+                    </span>
+                    <i>
+                      <b style={{ width: `${focusedCatProgress.percent}%` }} />
+                    </i>
                   </div>
                   <div
                     className="cat-needs-summary"
-                    aria-label={`${
-                      catNames[focusedCatId] ??
-                      focusedRuntime?.agentName ??
-                      "코치 모모"
-                    } 욕구 상태`}
+                    aria-label={`${focusedCatName} 욕구 상태`}
                   >
                     {(
                       [
@@ -3886,6 +4759,18 @@ export default function Home() {
                     >
                       케어
                     </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={catDetailTab === "image"}
+                      className={catDetailTab === "image" ? "selected" : ""}
+                      onClick={() => {
+                        worldAudioRef.current?.playUi("tabSwitch");
+                        setCatDetailTab("image");
+                      }}
+                    >
+                      이미지 놀이
+                    </button>
                   </div>
 
                   {catDetailTab === "chat" && (
@@ -3897,9 +4782,12 @@ export default function Home() {
                       >
                         {companionBackendOptions
                           .filter((backend) =>
-                            ["local-session", "puter", "pm-worker"].includes(
-                              backend.id,
-                            ),
+                            [
+                              "local-session",
+                              "local-claude",
+                              "puter",
+                              "pm-worker",
+                            ].includes(backend.id),
                           )
                           .map((backend) => (
                             <button
@@ -3912,7 +4800,9 @@ export default function Home() {
                                   : ""
                               }
                               key={backend.id}
-                              onClick={() => chooseCompanionBackend(backend.id)}
+                              onClick={() =>
+                                chooseCatCompanionBackend(backend.id)
+                              }
                             >
                               <strong>{backend.title}</strong>
                               <small>{backend.badge}</small>
@@ -3939,18 +4829,118 @@ export default function Home() {
                           <strong>{selectedCompanionBackend?.title}</strong>
                           <small>{selectedBackendStatus}</small>
                         </div>
-                        {!selectedBackendReady && (
+                        {isLocalCodeBackend(companionBackend) &&
+                        companionToken &&
+                        bridgeState === "connected" &&
+                        selectedLocalProviderAvailable ? (
+                          <button
+                            type="button"
+                            aria-expanded={catSessionPickerOpen}
+                            onClick={() => {
+                              const nextOpen = !catSessionPickerOpen;
+                              setCatSessionPickerOpen(nextOpen);
+                              if (nextOpen && selectedLocalProvider) {
+                                void refreshSessions(selectedLocalProvider);
+                              }
+                            }}
+                          >
+                            {catSessionPickerOpen
+                              ? "선택 닫기"
+                              : focusedBoundThreadId
+                                ? "세션 교체"
+                                : "세션 선택"}
+                          </button>
+                        ) : !selectedBackendReady ? (
                           <button
                             type="button"
                             onClick={openSelectedBackendConnection}
                           >
                             연결하러 가기
                           </button>
-                        )}
+                        ) : null}
                       </div>
+
+                      {isLocalCodeBackend(companionBackend) &&
+                        catSessionPickerOpen &&
+                        companionToken &&
+                        bridgeState === "connected" &&
+                        selectedLocalProviderAvailable && (
+                          <section
+                            className="cat-session-quick-switch"
+                            aria-label={`${focusedCatName} ${selectedLocalProviderLabel} 세션 교체`}
+                          >
+                            <header>
+                              <div>
+                                <strong>{focusedCatName} 담당 세션</strong>
+                                <small>
+                                  이 고양이가 작업할 {selectedLocalProviderLabel}{" "}
+                                  프로젝트를 바로 바꿔요.
+                                </small>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  selectedLocalProvider &&
+                                  void refreshSessions(selectedLocalProvider)
+                                }
+                                disabled={sessionsLoading}
+                              >
+                                {sessionsLoading ? "확인 중…" : "새로고침"}
+                              </button>
+                            </header>
+                            <select
+                              aria-label={`${focusedCatName}의 ${selectedLocalProviderLabel} 세션 선택`}
+                              value={focusedBoundThreadId ?? ""}
+                              disabled={sessionsLoading && sessions.length === 0}
+                              onChange={(event) => {
+                                const threadId = event.target.value;
+                                if (threadId) {
+                                  assignSessionToCat(focusedSeatId, threadId);
+                                } else {
+                                  unassignSessionFromCat(focusedSeatId);
+                                }
+                                setCatSessionPickerOpen(false);
+                              }}
+                            >
+                              <option value="">세션 연결 안 함</option>
+                              {focusedBoundThreadId && !focusedBoundSession ? (
+                                <option value={focusedBoundThreadId}>
+                                  저장된 세션 · {focusedBoundThreadId.slice(0, 8)}
+                                </option>
+                              ) : null}
+                              {sessions.map((session) => {
+                                const owner = seatForSession(
+                                  catSessionBindings,
+                                  session.id,
+                                );
+                                const occupied = Boolean(
+                                  owner && owner !== focusedSeatId,
+                                );
+                                return (
+                                  <option
+                                    value={session.id}
+                                    disabled={occupied}
+                                    key={session.id}
+                                  >
+                                    {session.title} · {session.projectName}
+                                    {occupied ? " · 다른 고양이 담당" : ""}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                            <p>
+                              {focusedBoundSession
+                                ? `현재 ${focusedBoundSession.projectName} 프로젝트에 연결되어 있어요.`
+                                : sessionsLoading
+                                  ? `내 PC의 ${selectedLocalProviderLabel} 세션을 확인하고 있어요.`
+                                  : "연결할 세션을 선택해 주세요."}
+                            </p>
+                          </section>
+                        )}
 
                       <div
                         className="cat-chat-thread"
+                        ref={catChatThreadRef}
                         aria-label="고양이와 나눈 업무 대화"
                         aria-live="polite"
                       >
@@ -3983,13 +4973,11 @@ export default function Home() {
                                 key={event.id}
                               >
                                 <small>
-                                  {userMessage
-                                    ? "나"
-                                    : (catNames[focusedCatId] ??
-                                      focusedRuntime?.agentName ??
-                                      "코치 모모")}
+                                  {userMessage ? "나" : focusedCatName}
                                 </small>
-                                <p>{content}</p>
+                                <p>
+                                  <ChatMessageContent content={content ?? ""} />
+                                </p>
                               </article>
                             );
                           })
@@ -4006,13 +4994,22 @@ export default function Home() {
                         {isSubmitting && (
                           <article className="cat-chat-message from-cat thinking">
                             <small>
-                              {catNames[focusedCatId] ??
-                                focusedRuntime?.agentName ??
-                                "코치 모모"}
+                              {focusedCatName}
                             </small>
                             <p>답변을 준비하고 있어요…</p>
                           </article>
                         )}
+                      </div>
+
+                      <div className="cat-chat-thread-actions">
+                        <span>가장 최근 대화가 아래에 표시돼요.</span>
+                        <button
+                          type="button"
+                          onClick={clearFocusedCatConversation}
+                          disabled={focusedConversation.length === 0 || isSubmitting}
+                        >
+                          대화 지우기
+                        </button>
                       </div>
 
                       <section
@@ -4020,8 +5017,16 @@ export default function Home() {
                         aria-label="추천 대화"
                       >
                         <header>
-                          <strong>오늘은 이런 얘기 어때요?</strong>
-                          <small>대화할수록 좋아하는 주제를 기억해요</small>
+                          <strong>
+                            {focusedConversation.length > 0
+                              ? "최근 대화와 이어서 어때요?"
+                              : "오늘은 이런 얘기 어때요?"}
+                          </strong>
+                          <small>
+                            {focusedConversation.length > 0
+                              ? "방금 이야기와 관심사를 바탕으로 골랐어요"
+                              : "대화할수록 좋아하는 주제를 기억해요"}
+                          </small>
                         </header>
                         <div>
                           {catChatSuggestions.map((suggestion) => (
@@ -4053,28 +5058,26 @@ export default function Home() {
                         />
                         <div className="cat-chat-composer-footer">
                           <span>
-                            {companionBackend === "pm-worker"
-                              ? `전송할 때 조개 ${PM_WORKER_CHAT_SHELL_COST}개`
-                              : companionBackend === "puter"
-                                ? "무료 대화 · 파일 변경 없음"
-                                : "연결된 Codex 프로젝트에서 실행"}
+                            {companionBackend === "puter"
+                              ? `전송할 때 조개 ${AI_CHAT_SHELL_COST}개 · 파일 변경 없음`
+                              : companionBackend === "pm-worker"
+                                ? `전송할 때 조개 ${AI_CHAT_SHELL_COST}개 · PM Worker`
+                                : `전송할 때 조개 ${AI_CHAT_SHELL_COST}개 · 연결된 ${selectedLocalProviderLabel} 프로젝트에서 실행`}
                           </span>
                           <span>{prompt.length}/2,000</span>
                           <button
                             type="submit"
                             disabled={
                               !selectedBackendReady ||
-                              (companionBackend === "pm-worker" &&
-                                shells < PM_WORKER_CHAT_SHELL_COST) ||
+                              (isAiChatShellBackend(companionBackend) &&
+                                shells < AI_CHAT_SHELL_COST) ||
                               isSubmitting ||
                               !prompt.trim()
                             }
                           >
                             {isSubmitting
                               ? "고양이가 확인 중…"
-                              : companionBackend === "pm-worker"
-                                ? `보내기 · 조개 ${PM_WORKER_CHAT_SHELL_COST}`
-                                : "보내기"}
+                              : `보내기 · 조개 ${AI_CHAT_SHELL_COST}`}
                           </button>
                         </div>
                       </form>
@@ -4088,11 +5091,7 @@ export default function Home() {
                         <input
                           type="text"
                           maxLength={6}
-                          value={
-                            catNames[focusedCatId] ??
-                            focusedRuntime?.agentName ??
-                            "코치 모모"
-                          }
+                          value={focusedCatName}
                           onChange={(event) => {
                             const nextName = event.target.value
                               .replace(/[\u0000-\u001f\u007f]/g, "")
@@ -4100,12 +5099,18 @@ export default function Home() {
                             const nextNames = {
                               ...catNames,
                               [focusedCatId]: nextName,
+                              [focusedResidentCatId]: nextName,
                             };
                             setCatNames(nextNames);
                             window.localStorage.setItem(
                               CAT_NAME_KEY,
                               JSON.stringify(nextNames),
                             );
+                          }}
+                          onBlur={(event) => {
+                            // 글자마다 주면 아직 다 못 쳤는데 다음 단계로 넘어간다. 다 쓰고 손 뗄 때 준다.
+                            if (event.target.value.trim())
+                              advanceTutorial("name-cat");
                           }}
                           aria-label="고양이 이름, 최대 6글자"
                         />
@@ -4120,7 +5125,7 @@ export default function Home() {
                       >
                         {CAT_STYLES.map((style) => {
                           const owned = ownedCatStyles.has(style.id);
-                          const selected = catStyle === style.id;
+                          const selected = focusedCatStyle === style.id;
                           return (
                             <button
                               type="button"
@@ -4280,6 +5285,157 @@ export default function Home() {
                         </button>
                       </div>
                     </>
+                  )}
+
+                  {catDetailTab === "image" && (
+                    <section className="image-play-panel" aria-label="AI 이미지 놀이">
+                      <header className="image-play-heading">
+                        <div>
+                          <strong>사진으로 놀아볼까요?</strong>
+                          <small>사진 없이 상상만으로도 만들 수 있어요.</small>
+                        </div>
+                        <span>{IMAGE_PLAY_SHELL_COST} 조개</span>
+                      </header>
+
+                      {puterConnectionState !== "ready" && (
+                        <div className="image-play-connect">
+                          <span>무료 AI 로그인이 필요해요.</span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void (puterConnectionState === "error"
+                                ? retryPuterPreparation()
+                                : connectPuter())
+                            }
+                            disabled={puterConnectionState === "loading"}
+                          >
+                            {puterConnectionState === "loading"
+                              ? "준비 중…"
+                              : puterConnectionState === "error"
+                                ? "다시 준비"
+                                : "무료 AI 로그인"}
+                          </button>
+                        </div>
+                      )}
+
+                      <div className="image-play-upload-row">
+                        <label className="image-play-upload-button">
+                          <span>사진 선택</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => {
+                              void selectImagePlayFile(
+                                event.currentTarget.files?.[0] ?? null,
+                              );
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </label>
+                        <label className="image-play-upload-button">
+                          <span>바로 촬영</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            onChange={(event) => {
+                              void selectImagePlayFile(
+                                event.currentTarget.files?.[0] ?? null,
+                              );
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </label>
+                        {imagePlaySource && (
+                          <button
+                            type="button"
+                            className="image-play-remove"
+                            onClick={() => {
+                              setImagePlaySource(null);
+                              setImagePlayResult(null);
+                            }}
+                          >
+                            사진 빼기
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="image-play-preview-grid">
+                        <figure>
+                          {imagePlaySource ? (
+                            <img src={imagePlaySource} alt="선택한 원본 사진" />
+                          ) : (
+                            <div className="image-play-placeholder" aria-hidden="true">
+                              <span>＋</span>
+                              <small>사진 선택</small>
+                            </div>
+                          )}
+                          <figcaption>원본</figcaption>
+                        </figure>
+                        <figure>
+                          {imagePlayResult ? (
+                            <img src={imagePlayResult} alt="AI로 완성한 놀이 이미지" />
+                          ) : (
+                            <div className="image-play-placeholder result" aria-hidden="true">
+                              <span>{imagePlayBusy ? "…" : "✦"}</span>
+                              <small>{imagePlayBusy ? "만드는 중" : "완성 이미지"}</small>
+                            </div>
+                          )}
+                          <figcaption>결과</figcaption>
+                        </figure>
+                      </div>
+
+                      <div
+                        className="image-play-presets"
+                        role="radiogroup"
+                        aria-label="이미지 놀이 선택"
+                      >
+                        {IMAGE_PLAY_PRESETS.map((preset) => (
+                          <button
+                            type="button"
+                            role="radio"
+                            aria-checked={imagePlayPreset === preset.id}
+                            className={imagePlayPreset === preset.id ? "selected" : ""}
+                            key={preset.id}
+                            onClick={() => setImagePlayPreset(preset.id)}
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <label className="image-play-prompt">
+                        <span>더 넣고 싶은 상상</span>
+                        <textarea
+                          value={imagePlayPrompt}
+                          onChange={(event) => setImagePlayPrompt(event.target.value)}
+                          maxLength={300}
+                          rows={2}
+                          placeholder="예: 선글라스를 쓰고 수박 주스를 마시게 해줘"
+                        />
+                      </label>
+
+                      <div className="image-play-actions">
+                        {imagePlayResult && (
+                          <a href={imagePlayResult} download="agent-forest-image-play.png">
+                            저장하기
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void runImagePlay()}
+                          disabled={
+                            imagePlayBusy ||
+                            puterConnectionState !== "ready" ||
+                            shells < IMAGE_PLAY_SHELL_COST
+                          }
+                        >
+                          {imagePlayBusy
+                            ? "고양이가 그리고 있어요…"
+                            : `만들기 · ${IMAGE_PLAY_SHELL_COST} 조개`}
+                        </button>
+                      </div>
+                    </section>
                   )}
                 </div>
               </section>
@@ -4474,67 +5630,6 @@ export default function Home() {
                     </article>
                   </div>
                 </section>
-                <div className="decor-catalog-heading">
-                  <strong>
-                    자리 {(selectedSeat ?? "seat-1").slice(-1)} 소품
-                  </strong>
-                  <small>소품 종류마다 한 개씩 배치할 수 있어요.</small>
-                </div>
-                <div
-                  className="desk-item-grid workstation-decor-grid"
-                  role="group"
-                  aria-label="자리 꾸미기 소품 12종"
-                >
-                  {WORKSTATION_DECOR_CATALOG.map((item) => {
-                    const seatId = (selectedSeat ??
-                      "seat-1") as WorkstationSeatId;
-                    const owned = workstationDecor.owned.includes(item.id);
-                    const equipped =
-                      workstationDecor.equipped[seatId]?.[item.slot] ===
-                      item.id;
-                    const locked = activeSeatCount < item.unlockSeatCount;
-                    return (
-                      <button
-                        type="button"
-                        className={[
-                          "desk-item-card",
-                          "decor-catalog-card",
-                          equipped ? "equipped" : "",
-                          locked ? "locked" : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
-                        key={item.id}
-                        onClick={() => chooseWorkstationDecor(item.id)}
-                        aria-pressed={equipped}
-                      >
-                        <span
-                          className="desk-item-preview"
-                          style={{
-                            backgroundImage: `url("${item.preview}")`,
-                            backgroundPosition: "center",
-                          }}
-                          aria-hidden="true"
-                        />
-                        <strong>{item.title}</strong>
-                        <small>{item.description}</small>
-                        <em>
-                          {locked
-                            ? `자리 ${item.unlockSeatCount}개 필요`
-                            : equipped
-                              ? "사용 중 · 누르면 해제"
-                              : owned
-                                ? "보유 · 배치하기"
-                                : `${item.price} 조개`}
-                        </em>
-                      </button>
-                    );
-                  })}
-                </div>
-                <p className="desk-safety-note">
-                  구매한 소품은 모든 자리에서 함께 사용할 수 있고, 좌석별 배치는
-                  따로 저장됩니다.
-                </p>
               </section>
             )}
 
@@ -4620,10 +5715,10 @@ export default function Home() {
                   <div className="composer-meta">
                     <span>
                       {companionBackend === "puter"
-                        ? "대화형 답변 전용 · 프로젝트 변경 없음"
+                        ? `대화형 답변 전용 · 프로젝트 변경 없음 · 조개 ${AI_CHAT_SHELL_COST}개`
                         : companionBackend === "pm-worker"
-                          ? `ProjectManager AI 대화 · 전송당 조개 ${PM_WORKER_CHAT_SHELL_COST}개`
-                          : "현재 PC 세션의 보안 설정 사용"}
+                          ? `ProjectManager AI 대화 · 전송당 조개 ${AI_CHAT_SHELL_COST}개`
+                          : `현재 PC 세션의 보안 설정 사용 · 조개 ${AI_CHAT_SHELL_COST}개`}
                     </span>
                     <span>{prompt.length}/2,000</span>
                   </div>
@@ -4636,13 +5731,14 @@ export default function Home() {
                       (companionBackend === "puter" &&
                         puterConnectionState !== "ready") ||
                       (companionBackend === "pm-worker" &&
-                        (pmWorkerConnectionState !== "ready" ||
-                          shells < PM_WORKER_CHAT_SHELL_COST)) ||
-                      (companionBackend === "local-session" &&
+                        pmWorkerConnectionState !== "ready") ||
+                      (isLocalCodeBackend(companionBackend) &&
                         (bridgeState !== "connected" ||
-                          !codexAvailable ||
+                          !selectedLocalProviderAvailable ||
                           !companionToken ||
-                          !selectedThreadId)) ||
+                          !focusedBoundThreadId)) ||
+                      (isAiChatShellBackend(companionBackend) &&
+                        shells < AI_CHAT_SHELL_COST) ||
                       isSubmitting ||
                       !prompt.trim()
                     }
@@ -4650,11 +5746,11 @@ export default function Home() {
                     {isSubmitting
                       ? "작업 진행 중"
                       : companionBackend === "puter"
-                        ? "무료 AI에게 질문하기"
+                        ? `무료 AI에게 질문 · 조개 ${AI_CHAT_SHELL_COST}`
                         : companionBackend === "pm-worker"
-                          ? `PM Worker에게 질문 · 조개 ${PM_WORKER_CHAT_SHELL_COST}`
-                          : companionBackend === "local-session"
-                            ? "선택한 Codex 세션에서 실행"
+                          ? `PM Worker에게 질문 · 조개 ${AI_CHAT_SHELL_COST}`
+                          : isLocalCodeBackend(companionBackend)
+                            ? `선택한 ${selectedLocalProviderLabel} 세션에서 실행 · 조개 ${AI_CHAT_SHELL_COST}`
                             : "서비스 실행기 준비 중"}
                   </button>
                   <button
@@ -4681,8 +5777,13 @@ export default function Home() {
                   {companionBackendOptions.map((backend) => {
                     const selected = companionBackend === backend.id;
                     const connectionTone =
-                      backend.id === "local-session"
-                        ? bridgeState
+                      isLocalCodeBackend(backend.id)
+                        ? bridgeState === "connected" &&
+                          (backend.id === "local-claude"
+                            ? claudeAvailable
+                            : codexAvailable)
+                          ? "connected"
+                          : "disconnected"
                         : backend.id === "puter"
                           ? puterConnectionState === "ready"
                             ? "connected"
@@ -4764,9 +5865,29 @@ export default function Home() {
                             : pmWorkerConnectionState === "loading"
                               ? "connecting"
                               : "disconnected"
-                          : bridgeState
+                        : bridgeState === "connected" &&
+                            selectedLocalProviderAvailable
+                          ? "connected"
+                          : "disconnected"
                     }`}
                   />
+                </div>
+                <div className="connection-guide-banner">
+                  <span className="connection-guide-icon" aria-hidden="true" />
+                  <div>
+                    <strong>다른 PC에도 Agent Forest를 설치할까요?</strong>
+                    <small>
+                      Codex·Claude Code 설치부터 고양이별 세션 연결까지 안내해요.
+                    </small>
+                  </div>
+                  <a
+                    href="/install-guide"
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="다른 PC 설치 가이드 HTML 새 창에서 열기"
+                  >
+                    가이드 HTML 열기
+                  </a>
                 </div>
                 {companionBackend === "puter" ? (
                   <div className="install-letter backend-ready-note">
@@ -4781,8 +5902,8 @@ export default function Home() {
                     </strong>
                     <p>
                       {puterConnectionState === "ready"
-                        ? "업무 지시 탭에서 질문하면 고양이가 답변을 가져옵니다. 실제 파일 수정은 Agent Forest 메인 AI를 선택해 주세요."
-                        : "Puter 로그인 창에서 최초 한 번만 연결하면 무료 대화를 사용할 수 있어요."}
+                        ? `업무 지시 탭에서 조개 ${AI_CHAT_SHELL_COST}개로 질문하면 고양이가 답변을 가져옵니다. 실제 파일 수정은 Agent Forest 메인 AI를 선택해 주세요.`
+                        : `Puter 로그인 창에서 최초 한 번만 연결하면 사용할 수 있어요. AI 연결은 무료이고 게임 내 질문은 조개 ${AI_CHAT_SHELL_COST}개예요.`}
                     </p>
                     {puterConnectionState !== "ready" && (
                       <button
@@ -4814,7 +5935,7 @@ export default function Home() {
                     <p>
                       ProjectManager 서버의 대화형 AI 워커를 사용합니다. 고양이
                       상세 화면에서 질문할 때마다 조개{" "}
-                      {PM_WORKER_CHAT_SHELL_COST}개가 차감되며, 연결 실패 시에는
+                      {AI_CHAT_SHELL_COST}개가 차감되며, 연결 실패 시에는
                       자동으로 돌려드려요.
                     </p>
                     {pmWorkerConnectionState !== "ready" && (
@@ -4837,8 +5958,22 @@ export default function Home() {
                     />
                     <strong>서비스 실행기 준비 중</strong>
                     <p>
-                      서버 실행기가 배포되기 전까지 무료 AI 또는 내 PC Codex
+                      서버 실행기가 배포되기 전까지 무료 AI 또는 내 PC AI
                       세션을 선택해 주세요.
+                    </p>
+                  </div>
+                ) : companionToken &&
+                  isLocalCodeBackend(companionBackend) &&
+                  !selectedLocalProviderAvailable ? (
+                  <div className="ui-empty-state state-error">
+                    <span
+                      className="ui-empty-icon offline"
+                      aria-hidden="true"
+                    />
+                    <strong>{selectedLocalProviderLabel} 연결 필요</strong>
+                    <p>
+                      {selectedLocalProviderLabel} CLI 설치와 로그인을 확인한 뒤 PC
+                      Companion을 다시 시작해 주세요.
                     </p>
                   </div>
                 ) : !companionToken ? (
@@ -4881,10 +6016,121 @@ export default function Home() {
                   </>
                 ) : (
                   <>
+                    <section
+                      className="cat-session-binding-board"
+                      aria-label={`고양이별 ${selectedLocalProviderLabel} 세션 연결`}
+                    >
+                      <header>
+                        <div>
+                          <strong>고양이별 담당 세션</strong>
+                          <small>
+                            한 {selectedLocalProviderLabel} 세션은 한 고양이에게만
+                            연결돼요.
+                          </small>
+                        </div>
+                        <span>
+                          {
+                            unlockedSeatIds.filter(
+                              (seatId) =>
+                                sessionMatchesBackend(
+                                  catSessionBindings[seatId],
+                                  companionBackend,
+                                ),
+                            ).length
+                          }
+                          /{unlockedSeatIds.length}
+                        </span>
+                      </header>
+                      <div className="cat-session-binding-list">
+                        {unlockedSeatIds.map((seatId) => {
+                          const catId = residentCatIdForSeat(seatId);
+                          const catName =
+                            catNames[catId] ?? residentCatNameForSeat(seatId);
+                          const assignedThreadId =
+                            catSessionBindings[seatId] ?? "";
+                          const boundThreadId = sessionMatchesBackend(
+                            assignedThreadId,
+                            companionBackend,
+                          )
+                            ? assignedThreadId
+                            : "";
+                          const boundSession = sessions.find(
+                            (session) => session.id === boundThreadId,
+                          );
+                          const busy = Boolean(
+                            boundThreadId &&
+                              submittingThreadIds.has(boundThreadId),
+                          );
+                          return (
+                            <article
+                              className={`cat-session-binding-row ${
+                                boundSession ? "is-bound" : "is-empty"
+                              }`}
+                              key={seatId}
+                            >
+                              <span className="cat-session-seat-avatar" aria-hidden="true" />
+                              <div className="cat-session-binding-copy">
+                                <strong>
+                                  {catName}
+                                  <i>{seatId.slice(-1)}번 자리</i>
+                                </strong>
+                                <select
+                                  aria-label={`${catName} ${selectedLocalProviderLabel} 세션`}
+                                  value={boundThreadId}
+                                  disabled={busy || sessionsLoading}
+                                  onChange={(event) => {
+                                    const threadId = event.target.value;
+                                    if (threadId) assignSessionToCat(seatId, threadId);
+                                    else unassignSessionFromCat(seatId);
+                                  }}
+                                >
+                                  <option value="">세션 연결 안 함</option>
+                                  {boundThreadId && !boundSession ? (
+                                    <option value={boundThreadId}>
+                                      저장된 세션 · {boundThreadId.slice(0, 8)}
+                                    </option>
+                                  ) : null}
+                                  {sessions.map((session) => {
+                                    const owner = seatForSession(
+                                      catSessionBindings,
+                                      session.id,
+                                    );
+                                    return (
+                                      <option
+                                        value={session.id}
+                                        disabled={Boolean(owner && owner !== seatId)}
+                                        key={session.id}
+                                      >
+                                        {session.title} · {session.projectName}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                                <small>
+                                  {boundSession
+                                    ? `${boundSession.projectName} · ${sessionStatusLabel(boundSession.status)} · ${boundSession.id.slice(0, 8)}`
+                                    : `연결할 ${selectedLocalProviderLabel} 세션을 선택해 주세요`}
+                                </small>
+                              </div>
+                              <span
+                                className={`cat-session-binding-state ${
+                                  busy ? "working" : boundSession ? "ready" : "offline"
+                                }`}
+                              >
+                                {busy ? "작업 중" : boundSession ? "연결됨" : "미연결"}
+                              </span>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    </section>
                     <div className="session-actions">
                       <button
                         type="button"
-                        onClick={() => void refreshSessions()}
+                        onClick={() =>
+                          selectedLocalProvider &&
+                          void refreshSessions(selectedLocalProvider)
+                        }
                         disabled={sessionsLoading}
                       >
                         {sessionsLoading ? "불러오는 중…" : "새로고침"}
@@ -4907,7 +6153,7 @@ export default function Home() {
                     <div
                       className="session-list"
                       role="listbox"
-                      aria-label="Codex 세션"
+                      aria-label={`${selectedLocalProviderLabel} 세션`}
                     >
                       {sessions.length ? (
                         sessions.map((session) => (
@@ -4949,7 +6195,7 @@ export default function Home() {
                           </strong>
                           <p>
                             {sessionsLoading
-                              ? "내 PC의 Codex 세션을 불러오고 있어요."
+                              ? `내 PC의 ${selectedLocalProviderLabel} 세션을 불러오고 있어요.`
                               : "연결 코드를 확인한 뒤 다시 시도해 주세요."}
                           </p>
                         </div>
@@ -5000,8 +6246,17 @@ export default function Home() {
                     <span className="section-kicker">CURRENT TASK</span>
                     <h2>진행 상황</h2>
                     <small>
-                      {codexAvailable
-                        ? `Codex ${codexVersion ?? "연결됨"}`
+                      {codexAvailable || claudeAvailable
+                        ? [
+                            codexAvailable
+                              ? `Codex ${codexVersion ?? "연결됨"}`
+                              : null,
+                            claudeAvailable
+                              ? `Claude Code ${claudeVersion ?? "연결됨"}`
+                              : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")
                         : "무료 화면 시연"}
                     </small>
                   </div>
@@ -5258,12 +6513,12 @@ export default function Home() {
             aria-labelledby="onboarding-title"
           >
             <span className="style-purchase-title" id="onboarding-title">
-              내 PC와 첫 연결
+              어서 오세요
             </span>
             <button
               type="button"
               className="game-popup-close"
-              aria-label="첫 연결 안내 닫기"
+              aria-label="시작 안내 닫기"
               onClick={() => {
                 window.localStorage.setItem(ONBOARDING_KEY, "done");
                 setOnboardingOpen(false);
@@ -5273,20 +6528,20 @@ export default function Home() {
             </button>
             <div className="onboarding-copy">
               <span className="onboarding-cat" aria-hidden="true" />
-              <strong>고양이에게 첫 업무 자리를 만들어 주세요</strong>
+              <strong>고양이가 대신 일해주는 사무실이에요</strong>
               <p>
-                PC Companion에 표시된 여섯 자리 연결 코드를 입력하면 Codex
-                세션이 고양이로 나타나요.
+                준비할 건 없어요. 먼저 고양이 이름을 지어주세요. 이름을 지으면
+                조개 5개를 드려요.
               </p>
-              <ol aria-label="연결 순서">
+              <ol aria-label="처음 할 일">
                 <li>
-                  <b>1</b> PC Companion 실행
+                  <b>1</b> 고양이 이름 지어주기
                 </li>
                 <li>
-                  <b>2</b> 여섯 자리 코드 확인
+                  <b>2</b> 바닥에 나타난 조개 줍기
                 </li>
                 <li>
-                  <b>3</b> 연결 화면에서 한 번 입력
+                  <b>3</b> 첫 일 맡겨보기
                 </li>
               </ol>
               <button
@@ -5295,15 +6550,48 @@ export default function Home() {
                 onClick={() => {
                   window.localStorage.setItem(ONBOARDING_KEY, "done");
                   setOnboardingOpen(false);
+                }}
+              >
+                시작하기
+              </button>
+              <button
+                type="button"
+                className="onboarding-secondary"
+                onClick={() => {
+                  window.localStorage.setItem(ONBOARDING_KEY, "done");
+                  setOnboardingOpen(false);
                   setRadioPage("work");
                   setWorkTab("connect");
                   setRadioOpen(true);
                 }}
               >
-                연결 시작하기
+                내 PC의 Codex와 연결할래요
               </button>
             </div>
           </section>
+        </div>
+      )}
+
+      {tutorialSpot && (
+        <div className="tutorial-guide" role="status" aria-live="polite">
+          {tutorialSpot.hand && (
+            <span
+              className="tutorial-hand"
+              style={tutorialSpot.hand}
+              aria-hidden="true"
+            />
+          )}
+          <div className="tutorial-tip">
+            <b>{tutorialSpot.title}</b>
+            <p>{tutorialSpot.body}</p>
+            <button
+              type="button"
+              className="tutorial-skip"
+              onClick={skipTutorialGuide}
+            >
+              나중에 할게요
+            </button>
+          </div>
         </div>
       )}
 

@@ -50,6 +50,12 @@ import {
   worldDayNightDebugPhase,
   worldDayNightPhaseAt,
 } from "./world-day-night.mjs";
+import {
+  WORKSTATION_SCREEN_LAYOUT_STORAGE_KEY,
+  parseWorkstationScreenLayout,
+  type WorkstationScreenLayout,
+  type WorkstationScreenPose,
+} from "./workstation-screen-layout.mjs";
 
 export type AgentWorldLocation =
   | "entrance"
@@ -74,6 +80,8 @@ export type SeatView = {
   hunger?: number;
   toilet?: number;
   happiness?: number;
+  level?: number;
+  catStyle?: string;
 };
 
 export type WorldPlacementMode = "snack" | "laser" | "toy" | null;
@@ -113,6 +121,15 @@ type AgentWorld3DProps = {
     x: number;
     y: number;
   }) => void;
+  /** 손가락 가이드가 가리킬 대상. 매 프레임 화면 비율(0~1)로 알려준다.
+      화면 밖이면 visible=false 로 보내 가이드가 엉뚱한 곳을 짚지 않게 한다. */
+  tutorialAnchor?: "cat" | "shell" | null;
+  onTutorialAnchor?: (event: {
+    target: "cat" | "shell";
+    x: number;
+    y: number;
+    visible: boolean;
+  }) => void;
   worldShellSpawningEnabled: boolean;
   placementMode: WorldPlacementMode;
   interactionCatId?: string;
@@ -147,6 +164,10 @@ type AgentWorld3DProps = {
     outcome: CatCareOutcome;
   }) => void;
   onKneadingCompleted?: (event: {
+    catId: string;
+    seatId: SeatId;
+  }) => void;
+  onCatWheelPlay?: (event: {
     catId: string;
     seatId: SeatId;
   }) => void;
@@ -206,6 +227,7 @@ const DEFAULT_SEAT_VIEW: SeatView = {
   hunger: 0,
   toilet: 0,
   happiness: 30,
+  level: 1,
 };
 
 const TENT_WORKSTATION_POSITION = new THREE.Vector3(-2.05, 0, -3.65);
@@ -214,11 +236,11 @@ const FOLDING_LAPTOP_STATION_POSITION = new THREE.Vector3(2.18, 0, -0.18);
 const LOW_MONITOR_STATION_POSITION = new THREE.Vector3(2.12, 0, 3.42);
 const LOW_MONITOR_STATION_ROTATION_Y = -0.06;
 const LOW_MONITOR_SCREEN_LOCAL_POSITION = new THREE.Vector3(
-  0.05,
-  0.846,
+  0.048,
+  0.878,
   -0.481,
 );
-const LOW_MONITOR_SCREEN_SIZE = new THREE.Vector2(0.62, 0.36);
+const LOW_MONITOR_SCREEN_SIZE = new THREE.Vector2(0.71, 0.465);
 const LOW_MONITOR_KEYCAP_START_X = -0.23;
 const LOW_MONITOR_KEYCAP_SPACING = 0.2;
 const LOW_MONITOR_KEYCAP_Y = 0.579;
@@ -228,6 +250,93 @@ const LOW_MONITOR_KNEADING_LOCAL_TARGET = new THREE.Vector3(
   LOW_MONITOR_KEYCAP_Y,
   LOW_MONITOR_KEYCAP_Z,
 );
+type WorkstationInteractionLayout = {
+  seatId: SeatId;
+  stationPosition: THREE.Vector3;
+  stationRotationY: number;
+  screenPosition: THREE.Vector3;
+  screenSize: THREE.Vector2;
+  screenRotationX: number;
+  animatedKeycaps: boolean;
+};
+
+type MonitorScreenCalibrationRuntime = {
+  setEnabled: (enabled: boolean) => void;
+  selectSeat: (seatId: SeatId) => void;
+  nudgeSelected: (deltaX: number, deltaY: number) => void;
+  nudgeDepthSelected: (deltaZ: number) => void;
+  resizeSelected: (deltaWidth: number, deltaHeight: number) => void;
+  scaleSelected: (deltaRatio: number) => void;
+  tiltSelected: (radians: number) => void;
+  resetSelected: () => void;
+  saveLayout: () => void;
+};
+
+type MonitorScreenCalibrationMetrics = WorkstationScreenPose & {
+  rotationDegrees: number;
+};
+
+// Each workstation model is a single baked mesh, so the live work display is
+// mounted as a small independent plane directly over that model's screen.
+// Positions are in the normalized workstation group's local coordinates.
+const WORKSTATION_INTERACTION_LAYOUTS: Record<
+  SeatId,
+  WorkstationInteractionLayout
+> = {
+  "seat-1": {
+    seatId: "seat-1",
+    stationPosition: LOW_MONITOR_STATION_POSITION,
+    stationRotationY: LOW_MONITOR_STATION_ROTATION_Y,
+    screenPosition: LOW_MONITOR_SCREEN_LOCAL_POSITION,
+    screenSize: LOW_MONITOR_SCREEN_SIZE,
+    screenRotationX: 0,
+    animatedKeycaps: true,
+  },
+  "seat-2": {
+    seatId: "seat-2",
+    stationPosition: TENT_WORKSTATION_POSITION,
+    stationRotationY: 0.08,
+    screenPosition: new THREE.Vector3(0, 0.66, -0.078),
+    screenSize: new THREE.Vector2(0.615, 0.37),
+    screenRotationX: 0,
+    animatedKeycaps: false,
+  },
+  "seat-3": {
+    seatId: "seat-3",
+    stationPosition: ROUND_LAPTOP_STATION_POSITION,
+    stationRotationY: 0.08,
+    screenPosition: new THREE.Vector3(-0.06, 0.792, -0.755),
+    // This laptop has a visibly wider baked bezel than the other three
+    // workstations. Fill a little more of its recessed display so the
+    // remaining frame reads at the same screen-space thickness.
+    screenSize: new THREE.Vector2(0.72, 0.56),
+    screenRotationX: -0.2,
+    animatedKeycaps: false,
+  },
+  "seat-4": {
+    seatId: "seat-4",
+    stationPosition: FOLDING_LAPTOP_STATION_POSITION,
+    stationRotationY: -0.12,
+    screenPosition: new THREE.Vector3(-0.447, 0.86, -0.46),
+    screenSize: new THREE.Vector2(0.61, 0.395),
+    screenRotationX: -0.32,
+    animatedKeycaps: false,
+  },
+};
+const MONITOR_SCREEN_SIZE_LIMITS = {
+  minWidth: 0.12,
+  maxWidth: 1.3,
+  minHeight: 0.08,
+  maxHeight: 1,
+};
+const MONITOR_SCREEN_POSITION_LIMITS = {
+  minX: -1.5,
+  maxX: 1.5,
+  minY: 0.05,
+  maxY: 1.8,
+  minZ: -1.5,
+  maxZ: 0.5,
+};
 const CAMPING_SUPPLY_CLUSTER_POSITION = new THREE.Vector3(-2.72, 0, 3.42);
 const CAMPING_LANTERN_POSITION = new THREE.Vector3(-3.42, 0, -1.82);
 const CODING_DESK_TARGET = new THREE.Vector3(2.12, 0, 4.12);
@@ -268,6 +377,8 @@ const AMBIENT_ARRIVAL_DISTANCE = 0.045;
 const TASK_ARRIVAL_DISTANCE = 0.025;
 const CARE_ARRIVAL_DISTANCE = 0.075;
 const CARE_MOVE_SPEED = 0.62;
+const CARE_EATING_TURN_SPEED = 14;
+const CAT_MIN_SEPARATION = 0.44;
 const LASER_CHASE_DURATION_SECONDS = 20;
 const LASER_CHASE_MOVE_SPEED = 0.88;
 const FOOD_USE_SECONDS = 5.2;
@@ -326,6 +437,13 @@ const LITTER_BOX_USE_POSITION = new THREE.Vector3(3.05, 0, -2.5);
 const LITTER_BOX_WAIT_POSITION = new THREE.Vector3(2.54, 0, -1.52);
 const CAT_EXERCISE_WHEEL_POSITION = new THREE.Vector3(0, 0, 3.72);
 const CAT_EXERCISE_WHEEL_ROTATION_Y = -0.28;
+const CAT_EXERCISE_WHEEL_USE_POSITION = new THREE.Vector3(0.03, 0, 3.57);
+const CAT_EXERCISE_WHEEL_EXIT_POSITION = new THREE.Vector3(-0.45, 0, 2.55);
+const CAT_EXERCISE_WHEEL_CAT_LIFT = 0.38;
+const CAT_EXERCISE_WHEEL_RUN_SECONDS = 12;
+const CAT_EXERCISE_WHEEL_FIRST_VISIT_SECONDS = 10;
+const CAT_EXERCISE_WHEEL_REVISIT_MIN_SECONDS = 90;
+const CAT_EXERCISE_WHEEL_REVISIT_MAX_SECONDS = 150;
 // Keep the illustrated front face and the right hinge cap visible, matching
 // plump-closed-scallop-ref-v1.png. Math.PI exposed the generated back plate.
 const COLLECTIBLE_SHELL_REFERENCE_YAW = THREE.MathUtils.degToRad(-10);
@@ -337,8 +455,10 @@ const DESK_KEYCAP_TEXTURE_URLS = [
 ];
 const AUTONOMOUS_STATUSES = new Set(["idle", "completed", "failed"]);
 const SEAT_WORLD_POSITIONS: Record<SeatId, THREE.Vector3> = {
-  "seat-1": new THREE.Vector3(-2.05, 0, -2.48),
-  "seat-2": new THREE.Vector3(2.12, 0, 4.12),
+  // 자리 1은 우측 하단 모니터, 자리 2는 좌측 상단 텐트다.
+  // 두 값을 뒤집으면 두 번째 고양이가 텐트 대신 1번 자리로 향한다.
+  "seat-1": new THREE.Vector3(2.12, 0, 4.12),
+  "seat-2": new THREE.Vector3(-2.05, 0, -2.48),
   "seat-3": new THREE.Vector3(-2.2, 0, 0.78),
   "seat-4": new THREE.Vector3(2.18, 0, 1.18),
 };
@@ -357,40 +477,53 @@ const MARKER_BEACON_RENDER_ORDER = 241;
 // 모니터 회전과 화면 크기, 이름표 높이까지 반영해 화면 상단과 일정한 간격을 유지한다.
 const MARKER_LABEL_LOCAL_Y = 1.17;
 const MARKER_LABEL_HEIGHT = 0.31;
-const MARKER_DESK_LIFT_Y = 0.12;
 const MONITOR_MARKER_GAP = 0.075;
-const LOW_MONITOR_SCREEN_WORLD_POSITION =
-  LOW_MONITOR_SCREEN_LOCAL_POSITION.clone()
-    .applyAxisAngle(
-      new THREE.Vector3(0, 1, 0),
-      LOW_MONITOR_STATION_ROTATION_Y,
-    )
-    .add(LOW_MONITOR_STATION_POSITION);
+const WORKSTATION_LOCAL_UP = new THREE.Vector3(0, 1, 0);
+
+function workstationScreenWorldPosition(
+  layout: WorkstationInteractionLayout,
+) {
+  return layout.screenPosition
+    .clone()
+    .applyAxisAngle(WORKSTATION_LOCAL_UP, layout.stationRotationY)
+    .add(layout.stationPosition);
+}
+
+function workstationWorkingMarkerWorldPosition(
+  layout: WorkstationInteractionLayout,
+) {
+  const screenCenter = workstationScreenWorldPosition(layout);
+  const screenTopOffset = new THREE.Vector3(
+    0,
+    layout.screenSize.y / 2,
+    0,
+  )
+    .applyAxisAngle(new THREE.Vector3(1, 0, 0), layout.screenRotationX)
+    .applyAxisAngle(WORKSTATION_LOCAL_UP, layout.stationRotationY);
+  return screenCenter.add(screenTopOffset).add(
+    new THREE.Vector3(
+      0,
+      MONITOR_MARKER_GAP + MARKER_LABEL_HEIGHT / 2 - MARKER_LABEL_LOCAL_Y,
+      0,
+    ),
+  );
+}
+
 const LOW_MONITOR_WORKING_MARKER_WORLD_POSITION =
-  LOW_MONITOR_SCREEN_WORLD_POSITION.clone();
-LOW_MONITOR_WORKING_MARKER_WORLD_POSITION.y =
-  LOW_MONITOR_SCREEN_WORLD_POSITION.y +
-  LOW_MONITOR_SCREEN_SIZE.y / 2 +
-  MONITOR_MARKER_GAP +
-  MARKER_LABEL_HEIGHT / 2 -
-  MARKER_LABEL_LOCAL_Y;
+  workstationWorkingMarkerWorldPosition(
+    WORKSTATION_INTERACTION_LAYOUTS["seat-1"],
+  );
 
 const SEAT_WORKING_MARKER_WORLD_POSITIONS: Record<SeatId, THREE.Vector3> = {
-  "seat-1": new THREE.Vector3(
-    TENT_WORKSTATION_POSITION.x,
-    MARKER_DESK_LIFT_Y,
-    TENT_WORKSTATION_POSITION.z,
+  "seat-1": LOW_MONITOR_WORKING_MARKER_WORLD_POSITION,
+  "seat-2": workstationWorkingMarkerWorldPosition(
+    WORKSTATION_INTERACTION_LAYOUTS["seat-2"],
   ),
-  "seat-2": LOW_MONITOR_WORKING_MARKER_WORLD_POSITION,
-  "seat-3": new THREE.Vector3(
-    ROUND_LAPTOP_STATION_POSITION.x,
-    MARKER_DESK_LIFT_Y,
-    ROUND_LAPTOP_STATION_POSITION.z,
+  "seat-3": workstationWorkingMarkerWorldPosition(
+    WORKSTATION_INTERACTION_LAYOUTS["seat-3"],
   ),
-  "seat-4": new THREE.Vector3(
-    FOLDING_LAPTOP_STATION_POSITION.x,
-    MARKER_DESK_LIFT_Y,
-    FOLDING_LAPTOP_STATION_POSITION.z,
+  "seat-4": workstationWorkingMarkerWorldPosition(
+    WORKSTATION_INTERACTION_LAYOUTS["seat-4"],
   ),
 };
 const MARKER_MOVE_EASE = 7.5;
@@ -712,10 +845,10 @@ const LITTER_BOX_OBSTACLE: SceneObstacle = {
 };
 const CAT_EXERCISE_WHEEL_OBSTACLE: SceneObstacle = {
   id: "cat-exercise-wheel",
-  minX: CAT_EXERCISE_WHEEL_POSITION.x - 0.78,
-  maxX: CAT_EXERCISE_WHEEL_POSITION.x + 0.78,
-  minZ: CAT_EXERCISE_WHEEL_POSITION.z - 0.46,
-  maxZ: CAT_EXERCISE_WHEEL_POSITION.z + 0.46,
+  minX: CAT_EXERCISE_WHEEL_POSITION.x - 1.17,
+  maxX: CAT_EXERCISE_WHEEL_POSITION.x + 1.17,
+  minZ: CAT_EXERCISE_WHEEL_POSITION.z - 0.69,
+  maxZ: CAT_EXERCISE_WHEEL_POSITION.z + 0.69,
 };
 const MESHY_WORKSTATION_PLACEMENTS: MeshyWorkstationPlacement[] = [
   {
@@ -838,8 +971,8 @@ const MESHY_DECORATION_ASSETS: MeshyDecorationAsset[] = [
         id: CAT_EXERCISE_WHEEL_OBSTACLE.id,
         position: CAT_EXERCISE_WHEEL_POSITION,
         rotationY: CAT_EXERCISE_WHEEL_ROTATION_Y,
-        height: 1.42,
-        shadowRadius: 0.78,
+        height: 2.13,
+        shadowRadius: 1.08,
         obstacle: CAT_EXERCISE_WHEEL_OBSTACLE,
       },
     ],
@@ -1114,6 +1247,22 @@ function createIllustratedMaterial(color: number) {
     roughness: 1,
     metalness: 0,
   });
+  material.userData.renderingStyle = "illustrated-lit";
+  material.userData.outlineParameters = {
+    thickness: ILLUSTRATION_OUTLINE_THICKNESS,
+    color: ILLUSTRATION_OUTLINE_COLOR.toArray(),
+    alpha: ILLUSTRATION_OUTLINE_ALPHA,
+    visible: true,
+  };
+  return material;
+}
+
+function createUnlitIllustratedMaterial(color: number) {
+  const material = new THREE.MeshBasicMaterial({
+    color,
+    toneMapped: true,
+  });
+  material.userData.renderingStyle = "illustrated-unlit";
   material.userData.outlineParameters = {
     thickness: ILLUSTRATION_OUTLINE_THICKNESS,
     color: ILLUSTRATION_OUTLINE_COLOR.toArray(),
@@ -1327,10 +1476,10 @@ function createWorkstationDecorVisual(itemId: string) {
 function createCoveredCatLitterBox() {
   const litterBox = new THREE.Group();
   litterBox.name = "covered-cat-litter-box";
-  const bodyMaterial = createIllustratedMaterial(0xf6e6c8);
-  const rimMaterial = createIllustratedMaterial(0xe6957e);
-  const interiorMaterial = createIllustratedMaterial(0x79645c);
-  const scoopMaterial = createIllustratedMaterial(0x83bfc0);
+  const bodyMaterial = createUnlitIllustratedMaterial(0xf6e6c8);
+  const rimMaterial = createUnlitIllustratedMaterial(0xe6957e);
+  const interiorMaterial = createUnlitIllustratedMaterial(0x79645c);
+  const scoopMaterial = createUnlitIllustratedMaterial(0x83bfc0);
 
   const base = new THREE.Mesh(
     new RoundedBoxGeometry(1.06, 0.32, 0.84, 4, 0.12),
@@ -1404,9 +1553,9 @@ function createCoveredCatLitterBox() {
 
 function createFallbackFoodBowl(filled: boolean) {
   const bowl = new THREE.Group();
-  const bodyMaterial = createIllustratedMaterial(0xf7ecd7);
-  const rimMaterial = createIllustratedMaterial(0xe98f78);
-  const foodMaterial = createIllustratedMaterial(0xb97942);
+  const bodyMaterial = createUnlitIllustratedMaterial(0xf7ecd7);
+  const rimMaterial = createUnlitIllustratedMaterial(0xe98f78);
+  const foodMaterial = createUnlitIllustratedMaterial(0xb97942);
   const body = new THREE.Mesh(
     new THREE.CylinderGeometry(0.42, 0.52, 0.2, 32, 1, true),
     bodyMaterial,
@@ -1559,9 +1708,12 @@ function drawMonitorScreen(
     context.fillStyle = "#fbbf24";
     context.fillRect(58, 250, 10, 20);
   }
-  context.fillStyle = "#0f766e";
+  // Keep the status footer in the same dark family as the editor surface.
+  // A saturated teal footer reads as the baked blue monitor texture leaking
+  // around the live overlay, especially on the small perspective screens.
+  context.fillStyle = "#111827";
   context.fillRect(0, canvas.height - 18, canvas.width, 18);
-  context.fillStyle = "#ccfbf1";
+  context.fillStyle = "#94a3b8";
   context.font = "600 12px ui-monospace, SFMono-Regular, Consolas, monospace";
   context.fillText("CATCODE   UTF-8   RUNNING", 14, canvas.height - 5);
   texture.needsUpdate = true;
@@ -1813,10 +1965,11 @@ function createIllustratedDesk(textures: DeskTextureSet) {
 }
 
 function createCodingStationInteractionOverlay(
+  layout: WorkstationInteractionLayout,
   keycapTopTextures: THREE.Texture[],
 ) {
   const interactionGroup = new THREE.Group();
-  interactionGroup.name = "low-monitor-workstation-interaction-overlay";
+  interactionGroup.name = `workstation-interaction-overlay-${layout.seatId}`;
 
   const monitorScreenTexture = createMonitorScreenTexture();
   drawMonitorScreen(monitorScreenTexture, false, 0);
@@ -1833,19 +1986,21 @@ function createCodingStationInteractionOverlay(
   disableOutline(monitorScreenMaterial);
   const monitorScreen = new THREE.Mesh(
     new THREE.PlaneGeometry(
-      LOW_MONITOR_SCREEN_SIZE.x,
-      LOW_MONITOR_SCREEN_SIZE.y,
+      layout.screenSize.x,
+      layout.screenSize.y,
     ),
     monitorScreenMaterial,
   );
-  monitorScreen.name = "low-monitor-workstation-live-code-screen";
-  monitorScreen.position.copy(LOW_MONITOR_SCREEN_LOCAL_POSITION);
+  monitorScreen.name = `workstation-live-code-screen-${layout.seatId}`;
+  monitorScreen.position.copy(layout.screenPosition);
+  monitorScreen.rotation.x = layout.screenRotationX;
   monitorScreen.renderOrder = 20;
   monitorScreen.visible = false;
   interactionGroup.add(monitorScreen);
 
   const keyColors = [0xf2a160, 0x9d8c9f, 0xef858a, 0xf0c175];
-  const animatedDeskKeycaps = keyColors.map((color, index) => {
+  const animatedDeskKeycaps = layout.animatedKeycaps
+    ? keyColors.map((color, index) => {
     const keycapName = `coding-desk-keycap-${index + 1}`;
     const keycapMaterial = new THREE.MeshToonMaterial({
       color,
@@ -1893,20 +2048,25 @@ function createCodingStationInteractionOverlay(
     keycapTop.visible = false;
     interactionGroup.add(keycapTop);
 
-    return [
-      { object: keycap as THREE.Object3D, restingY: keycap.position.y },
-      {
-        object: keycapTop as THREE.Object3D,
-        restingY: keycapTop.position.y,
-      },
-    ];
-  });
+        return [
+          { object: keycap as THREE.Object3D, restingY: keycap.position.y },
+          {
+            object: keycapTop as THREE.Object3D,
+            restingY: keycapTop.position.y,
+          },
+        ];
+      })
+    : [];
 
   return {
+    seatId: layout.seatId,
     interactionGroup,
     monitorScreen,
     monitorScreenTexture,
     animatedDeskKeycaps,
+    elapsed: 0,
+    blend: 0,
+    screenFrame: -1,
   };
 }
 
@@ -2662,12 +2822,69 @@ function createBeachOfficeHut(textures: BeachOfficeTextureSet) {
   return hut;
 }
 
+type MeshyPropMaterialStyle = "source" | "unlit";
+
+function isMeshyColorTextureMaterial(
+  material: THREE.Material,
+): material is
+  | THREE.MeshBasicMaterial
+  | THREE.MeshStandardMaterial
+  | THREE.MeshPhysicalMaterial
+  | THREE.MeshToonMaterial {
+  return (
+    material instanceof THREE.MeshBasicMaterial ||
+    material instanceof THREE.MeshStandardMaterial ||
+    material instanceof THREE.MeshPhysicalMaterial ||
+    material instanceof THREE.MeshToonMaterial
+  );
+}
+
+function createUnlitMeshyMaterial(
+  sourceMaterial:
+    | THREE.MeshBasicMaterial
+    | THREE.MeshStandardMaterial
+    | THREE.MeshPhysicalMaterial
+    | THREE.MeshToonMaterial,
+  tint: THREE.Color,
+  anisotropy: number,
+) {
+  const map = sourceMaterial.map ?? null;
+  const alphaMap = sourceMaterial.alphaMap ?? null;
+  if (map) {
+    map.colorSpace = THREE.SRGBColorSpace;
+    map.anisotropy = anisotropy;
+  }
+  if (alphaMap) alphaMap.anisotropy = anisotropy;
+
+  const material = new THREE.MeshBasicMaterial({
+    color: sourceMaterial.color.clone().multiply(tint),
+    map,
+    alphaMap,
+    transparent: sourceMaterial.transparent,
+    opacity: sourceMaterial.opacity,
+    alphaTest: sourceMaterial.alphaTest,
+    side: THREE.DoubleSide,
+    depthTest: sourceMaterial.depthTest,
+    depthWrite: sourceMaterial.depthWrite,
+    toneMapped: sourceMaterial.toneMapped,
+    vertexColors: sourceMaterial.vertexColors,
+  });
+  material.name = `${sourceMaterial.name || "meshy-prop"}-unlit`;
+  material.userData = {
+    ...sourceMaterial.userData,
+    renderingStyle: "illustrated-unlit",
+    sourceMaterialType: sourceMaterial.type,
+  };
+  return material;
+}
+
 function createMeshyPropTemplate(
   source: THREE.Object3D,
   tint: THREE.Color,
   anisotropy: number,
   outlineThickness = ILLUSTRATION_OUTLINE_THICKNESS,
   outlineAlpha = ILLUSTRATION_OUTLINE_ALPHA,
+  materialStyle: MeshyPropMaterialStyle = "source",
 ) {
   const template = new THREE.Group();
   const visual = source.clone(true);
@@ -2679,7 +2896,14 @@ function createMeshyPropTemplate(
       ? object.material
       : [object.material];
     const styledMaterials = materials.map((sourceMaterial) => {
-      const material = sourceMaterial.clone();
+      const material =
+        materialStyle === "unlit" &&
+        isMeshyColorTextureMaterial(sourceMaterial)
+          ? createUnlitMeshyMaterial(sourceMaterial, tint, anisotropy)
+          : sourceMaterial.clone();
+      if (materialStyle === "unlit") {
+        material.userData.renderingStyle = "illustrated-unlit";
+      }
       if (
         material instanceof THREE.MeshStandardMaterial ||
         material instanceof THREE.MeshPhysicalMaterial
@@ -2698,7 +2922,7 @@ function createMeshyPropTemplate(
         material instanceof THREE.MeshBasicMaterial ||
         material instanceof THREE.MeshToonMaterial
       ) {
-        material.color.multiply(tint);
+        if (materialStyle !== "unlit") material.color.multiply(tint);
         material.side = THREE.DoubleSide;
         if (material.map) {
           material.map.colorSpace = THREE.SRGBColorSpace;
@@ -3072,6 +3296,8 @@ export default function AgentWorld3D({
   onSeatClick,
   onRadioClick,
   onShellCollect,
+  tutorialAnchor,
+  onTutorialAnchor,
   worldShellSpawningEnabled,
   placementMode,
   interactionCatId,
@@ -3092,6 +3318,7 @@ export default function AgentWorld3D({
   onLitterBoxClick,
   onCatCareEvent,
   onKneadingCompleted,
+  onCatWheelPlay,
 }: AgentWorld3DProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const primarySeat = seats[0] ?? DEFAULT_SEAT_VIEW;
@@ -3106,6 +3333,9 @@ export default function AgentWorld3D({
   const onRadioClickRef = useRef(onRadioClick);
   const activeSeatCountRef = useRef(activeSeatCount);
   const onShellCollectRef = useRef(onShellCollect);
+  const tutorialAnchorRef = useRef(tutorialAnchor);
+  const worldReadyRef = useRef(false);
+  const onTutorialAnchorRef = useRef(onTutorialAnchor);
   const worldShellSpawningEnabledRef = useRef(worldShellSpawningEnabled);
   const placementModeRef = useRef<WorldPlacementMode>(placementMode);
   const interactionCatIdRef = useRef(interactionCatId);
@@ -3125,13 +3355,23 @@ export default function AgentWorld3D({
   const onLitterBoxClickRef = useRef(onLitterBoxClick);
   const onCatCareEventRef = useRef(onCatCareEvent);
   const onKneadingCompletedRef = useRef(onKneadingCompleted);
+  const onCatWheelPlayRef = useRef(onCatWheelPlay);
   const layoutEditorRuntimeRef = useRef<WorldLayoutEditorRuntime | null>(null);
+  const monitorCalibrationRuntimeRef =
+    useRef<MonitorScreenCalibrationRuntime | null>(null);
   const forcedWorldDayNightPhaseRef = useRef<number | null>(null);
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [failed, setFailed] = useState(false);
   const [ready, setReady] = useState(false);
   const [ambientLabel, setAmbientLabel] = useState("주변을 구경하는 중");
   const [layoutEditMode, setLayoutEditMode] = useState(false);
+  const [monitorCalibrationMode, setMonitorCalibrationMode] = useState(false);
+  const [selectedMonitorScreenSeatId, setSelectedMonitorScreenSeatId] =
+    useState<SeatId>("seat-2");
+  const [monitorScreenCalibrationMetrics, setMonitorScreenCalibrationMetrics] =
+    useState<MonitorScreenCalibrationMetrics | null>(null);
+  const [monitorCalibrationSaveRevision, setMonitorCalibrationSaveRevision] =
+    useState(0);
   const [worldTimeTestMode, setWorldTimeTestMode] =
     useState<WorldTimeTestMode>("auto");
   const layoutAdminEnabled = useSyncExternalStore(
@@ -3163,6 +3403,8 @@ export default function AgentWorld3D({
     onRadioClickRef.current = onRadioClick;
     activeSeatCountRef.current = activeSeatCount;
     onShellCollectRef.current = onShellCollect;
+    tutorialAnchorRef.current = tutorialAnchor;
+    onTutorialAnchorRef.current = onTutorialAnchor;
     worldShellSpawningEnabledRef.current = worldShellSpawningEnabled;
     placementModeRef.current = placementMode;
     interactionCatIdRef.current = interactionCatId;
@@ -3181,6 +3423,7 @@ export default function AgentWorld3D({
     onLitterBoxClickRef.current = onLitterBoxClick;
     onCatCareEventRef.current = onCatCareEvent;
     onKneadingCompletedRef.current = onKneadingCompleted;
+    onCatWheelPlayRef.current = onCatWheelPlay;
   }, [
     activeSeatCount,
     companionConnected,
@@ -3188,6 +3431,8 @@ export default function AgentWorld3D({
     onRadioClick,
     onSeatClick,
     onShellCollect,
+    tutorialAnchor,
+    onTutorialAnchor,
     worldShellSpawningEnabled,
     placementMode,
     interactionCatId,
@@ -3206,6 +3451,7 @@ export default function AgentWorld3D({
     onLitterBoxClick,
     onCatCareEvent,
     onKneadingCompleted,
+    onCatWheelPlay,
     seats,
   ]);
 
@@ -3250,6 +3496,9 @@ export default function AgentWorld3D({
     }
     const interactionDebugMode =
       diagnosticParams.get("interactionDebug") === "1";
+    let exerciseWheelSecondaryPreviewPending =
+      interactionDebugMode &&
+      diagnosticParams.get("wheelPreview") === "secondary";
     const layoutEditorAuthorized = isWorldLayoutAdminHost(
       window.location.hostname,
     );
@@ -3466,6 +3715,26 @@ export default function AgentWorld3D({
       "seat-3": SEAT_WORKING_MARKER_WORLD_POSITIONS["seat-3"].clone(),
       "seat-4": SEAT_WORKING_MARKER_WORLD_POSITIONS["seat-4"].clone(),
     };
+    const baseSeatWorkLookTargets: Record<SeatId, THREE.Vector3> = {
+      "seat-1": workstationScreenWorldPosition(
+        WORKSTATION_INTERACTION_LAYOUTS["seat-1"],
+      ),
+      "seat-2": workstationScreenWorldPosition(
+        WORKSTATION_INTERACTION_LAYOUTS["seat-2"],
+      ),
+      "seat-3": workstationScreenWorldPosition(
+        WORKSTATION_INTERACTION_LAYOUTS["seat-3"],
+      ),
+      "seat-4": workstationScreenWorldPosition(
+        WORKSTATION_INTERACTION_LAYOUTS["seat-4"],
+      ),
+    };
+    const seatWorkLookTargets: Record<SeatId, THREE.Vector3> = {
+      "seat-1": baseSeatWorkLookTargets["seat-1"].clone(),
+      "seat-2": baseSeatWorkLookTargets["seat-2"].clone(),
+      "seat-3": baseSeatWorkLookTargets["seat-3"].clone(),
+      "seat-4": baseSeatWorkLookTargets["seat-4"].clone(),
+    };
     const lowMonitorWorkingMarkerWorldPosition =
       LOW_MONITOR_WORKING_MARKER_WORLD_POSITION.clone();
     const deskKneadingExitPosition = DESK_KNEADING_EXIT_POSITION.clone();
@@ -3482,6 +3751,11 @@ export default function AgentWorld3D({
     const litterBoxApproachPosition = LITTER_BOX_APPROACH_POSITION.clone();
     const litterBoxUsePosition = LITTER_BOX_USE_POSITION.clone();
     const litterBoxWaitPosition = LITTER_BOX_WAIT_POSITION.clone();
+    const catExerciseWheelUsePosition =
+      CAT_EXERCISE_WHEEL_USE_POSITION.clone();
+    const catExerciseWheelExitPosition =
+      CAT_EXERCISE_WHEEL_EXIT_POSITION.clone();
+    let catExerciseWheelRunYaw = CAT_EXERCISE_WHEEL_ROTATION_Y + Math.PI / 2;
 
     let savedWorldLayout: WorldObjectLayout = {};
     if (layoutEditorAuthorized) {
@@ -3555,8 +3829,8 @@ export default function AgentWorld3D({
         case TENT_WORKSTATION_OBSTACLE.id:
           updateAnchoredVector(
             entry,
-            SEAT_WORLD_POSITIONS["seat-1"],
-            seatWorldPositions["seat-1"],
+            SEAT_WORLD_POSITIONS["seat-2"],
+            seatWorldPositions["seat-2"],
           );
           updateAnchoredVector(
             entry,
@@ -3570,14 +3844,19 @@ export default function AgentWorld3D({
           );
           keepAnchoredVectorOutsideObstacle(
             entry,
-            seatWorldPositions["seat-1"],
+            seatWorldPositions["seat-2"],
           );
           keepAnchoredVectorOutsideObstacle(entry, worldTargets.general);
           keepAnchoredVectorOutsideObstacle(entry, worldTargets.office);
           updateAnchoredVector(
             entry,
-            SEAT_WORKING_MARKER_WORLD_POSITIONS["seat-1"],
-            seatWorkingMarkerWorldPositions["seat-1"],
+            SEAT_WORKING_MARKER_WORLD_POSITIONS["seat-2"],
+            seatWorkingMarkerWorldPositions["seat-2"],
+          );
+          updateAnchoredVector(
+            entry,
+            baseSeatWorkLookTargets["seat-2"],
+            seatWorkLookTargets["seat-2"],
           );
           break;
         case ROUND_LAPTOP_STATION_OBSTACLE.id:
@@ -3601,6 +3880,11 @@ export default function AgentWorld3D({
             SEAT_WORKING_MARKER_WORLD_POSITIONS["seat-3"],
             seatWorkingMarkerWorldPositions["seat-3"],
           );
+          updateAnchoredVector(
+            entry,
+            baseSeatWorkLookTargets["seat-3"],
+            seatWorkLookTargets["seat-3"],
+          );
           break;
         case FOLDING_LAPTOP_STATION_OBSTACLE.id:
           updateAnchoredVector(
@@ -3623,12 +3907,17 @@ export default function AgentWorld3D({
             SEAT_WORKING_MARKER_WORLD_POSITIONS["seat-4"],
             seatWorkingMarkerWorldPositions["seat-4"],
           );
+          updateAnchoredVector(
+            entry,
+            baseSeatWorkLookTargets["seat-4"],
+            seatWorkLookTargets["seat-4"],
+          );
           break;
         case DESK_OBSTACLE.id:
           updateAnchoredVector(
             entry,
-            SEAT_WORLD_POSITIONS["seat-2"],
-            seatWorldPositions["seat-2"],
+            SEAT_WORLD_POSITIONS["seat-1"],
+            seatWorldPositions["seat-1"],
           );
           updateAnchoredVector(
             entry,
@@ -3645,8 +3934,13 @@ export default function AgentWorld3D({
             LOW_MONITOR_WORKING_MARKER_WORLD_POSITION,
             lowMonitorWorkingMarkerWorldPosition,
           );
-          seatWorkingMarkerWorldPositions["seat-2"].copy(
+          seatWorkingMarkerWorldPositions["seat-1"].copy(
             lowMonitorWorkingMarkerWorldPosition,
+          );
+          updateAnchoredVector(
+            entry,
+            baseSeatWorkLookTargets["seat-1"],
+            seatWorkLookTargets["seat-1"],
           );
           updateAnchoredVector(
             entry,
@@ -4152,18 +4446,310 @@ float shoreOverlayWaterSignal( vec3 color ) {
       texture.anisotropy = maximumAnisotropy;
       return texture;
     });
-    const {
-      interactionGroup,
-      monitorScreen,
-      monitorScreenTexture,
-      animatedDeskKeycaps,
-    } = createCodingStationInteractionOverlay(
-      deskKeycapTopTextures,
+    const workstationInteractions = new Map(
+      (Object.keys(WORKSTATION_INTERACTION_LAYOUTS) as SeatId[]).map(
+        (seatId) => [
+          seatId,
+          createCodingStationInteractionOverlay(
+            WORKSTATION_INTERACTION_LAYOUTS[seatId],
+            deskKeycapTopTextures,
+          ),
+        ],
+      ),
     );
+    let monitorCalibrationEnabled = false;
+    let selectedMonitorSeatIdInScene: SeatId = "seat-2";
+    let savedMonitorScreenLayout: WorkstationScreenLayout = {};
+
+    const defaultMonitorScreenPoseFor = (
+      seatId: SeatId,
+    ): WorkstationScreenPose => {
+      const layout = WORKSTATION_INTERACTION_LAYOUTS[seatId];
+      return {
+        x: layout.screenPosition.x,
+        y: layout.screenPosition.y,
+        z: layout.screenPosition.z,
+        width: layout.screenSize.x,
+        height: layout.screenSize.y,
+        rotationX: layout.screenRotationX,
+      };
+    };
+    const monitorScreenPoseFor = (seatId: SeatId): WorkstationScreenPose => {
+      const layout = WORKSTATION_INTERACTION_LAYOUTS[seatId];
+      const screen = workstationInteractions.get(seatId)?.monitorScreen;
+      if (!screen) return defaultMonitorScreenPoseFor(seatId);
+      return {
+        x: screen.position.x,
+        y: screen.position.y,
+        z: screen.position.z,
+        width: layout.screenSize.x * screen.scale.x,
+        height: layout.screenSize.y * screen.scale.y,
+        rotationX: screen.rotation.x,
+      };
+    };
+    const applyMonitorScreenPose = (
+      seatId: SeatId,
+      pose: WorkstationScreenPose,
+    ) => {
+      const layout = WORKSTATION_INTERACTION_LAYOUTS[seatId];
+      const screen = workstationInteractions.get(seatId)?.monitorScreen;
+      if (!screen) return;
+      screen.position.set(pose.x, pose.y, pose.z);
+      screen.scale.set(
+        pose.width / layout.screenSize.x,
+        pose.height / layout.screenSize.y,
+        1,
+      );
+      screen.rotation.x = pose.rotationX;
+    };
+    const publishSelectedMonitorMetrics = () => {
+      const pose = monitorScreenPoseFor(selectedMonitorSeatIdInScene);
+      setSelectedMonitorScreenSeatId(selectedMonitorSeatIdInScene);
+      setMonitorScreenCalibrationMetrics({
+        ...pose,
+        rotationDegrees: THREE.MathUtils.radToDeg(pose.rotationX),
+      });
+    };
+    const persistMonitorScreenLayout = () => {
+      if (!layoutEditorAuthorized) return;
+      try {
+        window.localStorage.setItem(
+          WORKSTATION_SCREEN_LAYOUT_STORAGE_KEY,
+          JSON.stringify(savedMonitorScreenLayout),
+        );
+      } catch {
+        // Privacy mode can block storage. Calibration remains available in-memory.
+      }
+    };
+    const persistSelectedMonitor = () => {
+      savedMonitorScreenLayout[selectedMonitorSeatIdInScene] =
+        monitorScreenPoseFor(selectedMonitorSeatIdInScene);
+      persistMonitorScreenLayout();
+      publishSelectedMonitorMetrics();
+    };
+    const mutateSelectedMonitor = (
+      mutate: (screen: THREE.Mesh, pose: WorkstationScreenPose) => void,
+    ) => {
+      const screen = workstationInteractions.get(
+        selectedMonitorSeatIdInScene,
+      )?.monitorScreen;
+      if (!screen) return;
+      mutate(screen, monitorScreenPoseFor(selectedMonitorSeatIdInScene));
+      persistSelectedMonitor();
+    };
+    const nudgeSelectedMonitor = (deltaX: number, deltaY: number) => {
+      mutateSelectedMonitor((screen) => {
+        screen.position.x = THREE.MathUtils.clamp(
+          screen.position.x + deltaX,
+          MONITOR_SCREEN_POSITION_LIMITS.minX,
+          MONITOR_SCREEN_POSITION_LIMITS.maxX,
+        );
+        screen.position.y = THREE.MathUtils.clamp(
+          screen.position.y + deltaY,
+          MONITOR_SCREEN_POSITION_LIMITS.minY,
+          MONITOR_SCREEN_POSITION_LIMITS.maxY,
+        );
+      });
+    };
+    const nudgeSelectedMonitorDepth = (deltaZ: number) => {
+      mutateSelectedMonitor((screen) => {
+        screen.position.z = THREE.MathUtils.clamp(
+          screen.position.z + deltaZ,
+          MONITOR_SCREEN_POSITION_LIMITS.minZ,
+          MONITOR_SCREEN_POSITION_LIMITS.maxZ,
+        );
+      });
+    };
+    const resizeSelectedMonitor = (
+      deltaWidth: number,
+      deltaHeight: number,
+    ) => {
+      mutateSelectedMonitor((_screen, pose) => {
+        applyMonitorScreenPose(selectedMonitorSeatIdInScene, {
+          ...pose,
+          width: THREE.MathUtils.clamp(
+            pose.width + deltaWidth,
+            MONITOR_SCREEN_SIZE_LIMITS.minWidth,
+            MONITOR_SCREEN_SIZE_LIMITS.maxWidth,
+          ),
+          height: THREE.MathUtils.clamp(
+            pose.height + deltaHeight,
+            MONITOR_SCREEN_SIZE_LIMITS.minHeight,
+            MONITOR_SCREEN_SIZE_LIMITS.maxHeight,
+          ),
+        });
+      });
+    };
+    const scaleSelectedMonitor = (deltaRatio: number) => {
+      mutateSelectedMonitor((_screen, pose) => {
+        const ratio = Math.max(0.1, 1 + deltaRatio);
+        applyMonitorScreenPose(selectedMonitorSeatIdInScene, {
+          ...pose,
+          width: THREE.MathUtils.clamp(
+            pose.width * ratio,
+            MONITOR_SCREEN_SIZE_LIMITS.minWidth,
+            MONITOR_SCREEN_SIZE_LIMITS.maxWidth,
+          ),
+          height: THREE.MathUtils.clamp(
+            pose.height * ratio,
+            MONITOR_SCREEN_SIZE_LIMITS.minHeight,
+            MONITOR_SCREEN_SIZE_LIMITS.maxHeight,
+          ),
+        });
+      });
+    };
+    const tiltSelectedMonitor = (radians: number) => {
+      mutateSelectedMonitor((screen) => {
+        screen.rotation.x = THREE.MathUtils.clamp(
+          screen.rotation.x + radians,
+          -Math.PI / 3,
+          Math.PI / 3,
+        );
+      });
+    };
+
+    if (layoutEditorAuthorized) {
+      try {
+        savedMonitorScreenLayout = parseWorkstationScreenLayout(
+          window.localStorage.getItem(WORKSTATION_SCREEN_LAYOUT_STORAGE_KEY),
+        );
+      } catch {
+        // Storage is optional; hard-coded values remain the fallback.
+      }
+      (Object.entries(savedMonitorScreenLayout) as Array<
+        [SeatId, WorkstationScreenPose]
+      >).forEach(([seatId, pose]) => applyMonitorScreenPose(seatId, pose));
+    }
+
+    const setMonitorCalibrationEnabled = (enabled: boolean) => {
+      if (enabled && !layoutEditorAuthorized) return;
+      monitorCalibrationEnabled = enabled;
+      setMonitorCalibrationMode(enabled);
+      if (enabled) {
+        if (layoutEditorEnabled) setLayoutEditorEnabled(false);
+        publishSelectedMonitorMetrics();
+      } else {
+        setMonitorScreenCalibrationMetrics(null);
+      }
+    };
+    const selectMonitorSeat = (seatId: SeatId) => {
+      selectedMonitorSeatIdInScene = seatId;
+      publishSelectedMonitorMetrics();
+    };
+    const resetSelectedMonitor = () => {
+      delete savedMonitorScreenLayout[selectedMonitorSeatIdInScene];
+      applyMonitorScreenPose(
+        selectedMonitorSeatIdInScene,
+        defaultMonitorScreenPoseFor(selectedMonitorSeatIdInScene),
+      );
+      persistMonitorScreenLayout();
+      publishSelectedMonitorMetrics();
+    };
+    const saveMonitorScreenLayout = () => {
+      if (!layoutEditorAuthorized) return;
+      savedMonitorScreenLayout = Object.fromEntries(
+        (Object.keys(WORKSTATION_INTERACTION_LAYOUTS) as SeatId[]).map(
+          (seatId) => [seatId, monitorScreenPoseFor(seatId)],
+        ),
+      );
+      persistMonitorScreenLayout();
+      host.dataset.savedMonitorScreenLayout = JSON.stringify(
+        savedMonitorScreenLayout,
+      );
+      setMonitorCalibrationSaveRevision((revision) => revision + 1);
+    };
+    const isMonitorCalibrationTextTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      return Boolean(
+        target.closest("input, textarea, select, a, [contenteditable='true']"),
+      );
+    };
+    const handleMonitorCalibrationKeyDown = (event: KeyboardEvent) => {
+      if (
+        !monitorCalibrationEnabled ||
+        event.ctrlKey ||
+        event.metaKey ||
+        isMonitorCalibrationTextTarget(event.target)
+      ) {
+        return;
+      }
+
+      const positionStep = event.altKey ? 0.001 : event.shiftKey ? 0.02 : 0.005;
+      const sizeStep = event.altKey ? 0.001 : event.shiftKey ? 0.02 : 0.005;
+      const scaleStep = event.altKey ? 0.002 : event.shiftKey ? 0.04 : 0.01;
+      const rotationStep = THREE.MathUtils.degToRad(
+        event.altKey ? 0.1 : event.shiftKey ? 2 : 0.5,
+      );
+      let handled = true;
+
+      switch (event.code) {
+        case "ArrowLeft":
+          nudgeSelectedMonitor(-positionStep, 0);
+          break;
+        case "ArrowRight":
+          nudgeSelectedMonitor(positionStep, 0);
+          break;
+        case "ArrowUp":
+          nudgeSelectedMonitor(0, positionStep);
+          break;
+        case "ArrowDown":
+          nudgeSelectedMonitor(0, -positionStep);
+          break;
+        case "KeyA":
+          resizeSelectedMonitor(-sizeStep, 0);
+          break;
+        case "KeyD":
+          resizeSelectedMonitor(sizeStep, 0);
+          break;
+        case "KeyS":
+          resizeSelectedMonitor(0, -sizeStep);
+          break;
+        case "KeyW":
+          resizeSelectedMonitor(0, sizeStep);
+          break;
+        case "BracketLeft":
+        case "NumpadSubtract":
+          scaleSelectedMonitor(-scaleStep);
+          break;
+        case "BracketRight":
+        case "NumpadAdd":
+          scaleSelectedMonitor(scaleStep);
+          break;
+        case "KeyQ":
+          tiltSelectedMonitor(-rotationStep);
+          break;
+        case "KeyE":
+          tiltSelectedMonitor(rotationStep);
+          break;
+        case "PageUp":
+          nudgeSelectedMonitorDepth(positionStep);
+          break;
+        case "PageDown":
+          nudgeSelectedMonitorDepth(-positionStep);
+          break;
+        default:
+          handled = false;
+      }
+
+      if (handled) event.preventDefault();
+    };
+    monitorCalibrationRuntimeRef.current = {
+      setEnabled: setMonitorCalibrationEnabled,
+      selectSeat: selectMonitorSeat,
+      nudgeSelected: nudgeSelectedMonitor,
+      nudgeDepthSelected: nudgeSelectedMonitorDepth,
+      resizeSelected: resizeSelectedMonitor,
+      scaleSelected: scaleSelectedMonitor,
+      tiltSelected: tiltSelectedMonitor,
+      resetSelected: resetSelectedMonitor,
+      saveLayout: saveMonitorScreenLayout,
+    };
     if (monitorAblationMode === "screen-mipmaps") {
-      monitorScreenTexture.generateMipmaps = true;
-      monitorScreenTexture.minFilter = THREE.LinearMipmapLinearFilter;
-      monitorScreenTexture.needsUpdate = true;
+      workstationInteractions.forEach(({ monitorScreenTexture }) => {
+        monitorScreenTexture.generateMipmaps = true;
+        monitorScreenTexture.minFilter = THREE.LinearMipmapLinearFilter;
+        monitorScreenTexture.needsUpdate = true;
+      });
     }
     const islandPropsWatercolorTexture = textureLoader.load(
       "/art/island-props-watercolor-grain-v1.png",
@@ -4560,6 +5146,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
           maximumAnisotropy,
           0.0032,
           0.78,
+          "unlit",
         );
         const nextFull = createMeshyPropTemplate(
           fullGltf.scene,
@@ -4567,6 +5154,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
           maximumAnisotropy,
           0.0032,
           0.78,
+          "unlit",
         );
         nextEmpty.name = "cat-food-bowl-empty-meshy6";
         nextFull.name = "cat-food-bowl-full-meshy6";
@@ -5042,11 +5630,14 @@ float shoreOverlayWaterSignal( vec3 color ) {
         workstation.add(decorOverlay);
         workstationDecorGroups.set(seatId, decorOverlay);
         workstationDecorSignatures.delete(seatId);
-        if (placement.id === DESK_OBSTACLE.id) {
-          workstation.add(interactionGroup);
+        const workstationInteraction = workstationInteractions.get(seatId);
+        if (workstationInteraction) {
+          workstation.add(workstationInteraction.interactionGroup);
         }
         workstation.visible =
           layoutEditorEnabled ||
+          monitorCalibrationEnabled ||
+          forceMonitorDiagnosticScreen ||
           Number(seatId.slice(-1)) <= activeSeatCountRef.current;
         workstationGroups.set(seatId, workstation);
         registerEditableWorldObject({
@@ -5093,6 +5684,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
           result.value.scene,
           new THREE.Color(0xffffff),
           maximumAnisotropy,
+          ILLUSTRATION_OUTLINE_THICKNESS,
+          ILLUSTRATION_OUTLINE_ALPHA,
+          asset.id === "cat-exercise-wheel" ? "unlit" : "source",
         );
         asset.placements.forEach((placement) => {
           const decoration = new THREE.Group();
@@ -5136,6 +5730,23 @@ float shoreOverlayWaterSignal( vec3 color ) {
                     : "해변 장식",
             object: decoration,
             obstacle: decorationObstacle,
+            onTransform:
+              placement.id === CAT_EXERCISE_WHEEL_OBSTACLE.id
+                ? (entry) => {
+                    updateAnchoredVector(
+                      entry,
+                      CAT_EXERCISE_WHEEL_USE_POSITION,
+                      catExerciseWheelUsePosition,
+                    );
+                    updateAnchoredVector(
+                      entry,
+                      CAT_EXERCISE_WHEEL_EXIT_POSITION,
+                      catExerciseWheelExitPosition,
+                    );
+                    catExerciseWheelRunYaw =
+                      entry.object.rotation.y + Math.PI / 2;
+                  }
+                : undefined,
           });
           scene.add(decoration);
         });
@@ -5184,6 +5795,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
 
     const characterRoot = new THREE.Group();
     const characterVisual = new THREE.Group();
+    characterVisual.rotation.y = DEFAULT_CHARACTER_YAW;
     characterRoot.add(characterVisual);
     // 첫 로드가 유휴 상태라면 좌석이 아니라 해변 휴게 지점에서 시작한다.
     // 실제 명령이 들어온 뒤에만 아래 작업 분기가 컴퓨터 앞으로 이동시킨다.
@@ -5298,6 +5910,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       },
     ];
     const collectibleShells = new Map<string, CollectibleShell>();
+    const tutorialAnchorWorld = new THREE.Vector3();
     let shellSpawnSequence = 0;
     let shellSpawnElapsed = 0;
     let nextShellSpawnSeconds = 3.5;
@@ -5678,6 +6291,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
     let currentAction: THREE.AnimationAction | null = null;
     let currentAnimationKey = "";
     let characterModel: THREE.Object3D | null = null;
+    const characterModelsByStyle = new Map<string, THREE.Object3D>();
     let loadedAnimationClips: THREE.AnimationClip[] = [];
     const careFacilities: Record<CatCareIntent, CareFacilityState> = {
       food: {
@@ -5758,6 +6372,10 @@ float shoreOverlayWaterSignal( vec3 color ) {
           ),
         );
     };
+    const foodBowlCenterPosition = (facilityIndex: number | null) =>
+      (
+        foodBowlInstances[facilityIndex ?? 0] ?? foodBowlInstances[0]
+      ).group.position;
     const enqueueCare = (intent: CatCareIntent, catId: string) => {
       const facility = careFacilities[intent];
       if (
@@ -5793,6 +6411,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
 
     type SecondaryAgent = {
       root: THREE.Group;
+      visual: THREE.Group;
       model: THREE.Object3D;
       shadow: THREE.Mesh;
       mixer: THREE.AnimationMixer;
@@ -5815,6 +6434,13 @@ float shoreOverlayWaterSignal( vec3 color ) {
       ambientTarget: THREE.Vector3;
       wasAutonomous: boolean;
     };
+    type CatExerciseWheelSession = {
+      catId: string;
+      seatId: SeatId;
+      secondaryKey: string | null;
+      phase: "approaching" | "running" | "exiting";
+      timer: number;
+    };
     const secondaryAgents = new Map<string, SecondaryAgent>();
     let characterYaw = DEFAULT_CHARACTER_YAW;
     let ambientPhase:
@@ -5827,13 +6453,15 @@ float shoreOverlayWaterSignal( vec3 color ) {
     let ambientPointIndex = -1;
     let kneadingElapsed = 0;
     let kneadingBlend = 0;
-    let monitorScreenFrame = -1;
     let wasKneadingLastFrame = false;
     let wasAutonomous = AUTONOMOUS_STATUSES.has(motionRef.current.status);
     let primaryCare: CatCareRuntime | null = null;
     let primaryCareCatId =
       (seatsRef.current[0] ?? DEFAULT_SEAT_VIEW).catId;
     let primaryCareRetrySeconds = 0;
+    let catExerciseWheelSession: CatExerciseWheelSession | null = null;
+    let catExerciseWheelCooldown = CAT_EXERCISE_WHEEL_FIRST_VISIT_SECONDS;
+    let catExerciseWheelCandidateCursor = 0;
     let modelProgress = 0;
     let animationsProgress = 0;
 
@@ -5853,6 +6481,48 @@ float shoreOverlayWaterSignal( vec3 color ) {
       currentAnimationKey = key;
     };
 
+    const cancelCatExerciseWheelSession = (retrySoon = false) => {
+      const cancelled = catExerciseWheelSession;
+      if (cancelled && cancelled.phase !== "approaching") {
+        if (cancelled.secondaryKey) {
+          const entry = secondaryAgents.get(cancelled.secondaryKey);
+          if (entry) {
+            entry.root.position.x = catExerciseWheelExitPosition.x;
+            entry.root.position.z = catExerciseWheelExitPosition.z;
+            entry.careWaypoints.length = 0;
+            entry.careLastTarget.copy(entry.root.position);
+            entry.ambientTarget.copy(entry.root.position);
+            entry.ambientPhase = "prewalking";
+            entry.ambientTimer = 0.65;
+          }
+        } else {
+          currentPosition.copy(catExerciseWheelExitPosition);
+          avoidanceWaypoints.length = 0;
+          lastNavigationTarget.copy(currentPosition);
+          ambientTarget.copy(currentPosition);
+          ambientPhase = "prewalking";
+          ambientTimer = 0.7;
+        }
+      }
+      catExerciseWheelSession = null;
+      catExerciseWheelCooldown = retrySoon
+        ? randomBetween(15, 25)
+        : randomBetween(
+            CAT_EXERCISE_WHEEL_REVISIT_MIN_SECONDS,
+            CAT_EXERCISE_WHEEL_REVISIT_MAX_SECONDS,
+          );
+    };
+
+    const completeCatExerciseWheelSession = () => {
+      const completed = catExerciseWheelSession;
+      if (!completed) return;
+      onCatWheelPlayRef.current?.({
+        catId: completed.catId,
+        seatId: completed.seatId,
+      });
+      cancelCatExerciseWheelSession();
+    };
+
     const removeClickable = (object: THREE.Object3D | null) => {
       if (!object) return;
       const index = clickableObjects.indexOf(object);
@@ -5863,8 +6533,14 @@ float shoreOverlayWaterSignal( vec3 color ) {
       if (!characterModel || loadedAnimationClips.length === 0) return null;
       const root = new THREE.Group();
       root.name = `secondary-agent-${seat.seatId}`;
-      const model = cloneSkeleton(characterModel);
-      root.add(model);
+      const visual = new THREE.Group();
+      visual.name = `secondary-agent-visual-${seat.seatId}`;
+      visual.rotation.y = DEFAULT_CHARACTER_YAW;
+      root.add(visual);
+      const styleModel =
+        characterModelsByStyle.get(seat.catStyle ?? catStyle) ?? characterModel;
+      const model = cloneSkeleton(styleModel);
+      visual.add(model);
       const shadow = new THREE.Mesh(
         new THREE.CircleGeometry(0.18, 32),
         blobShadowMaterial.clone(),
@@ -5886,6 +6562,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const actions = new Map<string, THREE.AnimationAction>();
       const clipEntries = [
         ["walk", "|Walk_F"],
+        ["run", "|Run_F"],
         ["idle", "|Idle_1"],
         ["sit", "|Sitting_Idle"],
         ["eat", "|EatDrink"],
@@ -5898,13 +6575,14 @@ float shoreOverlayWaterSignal( vec3 color ) {
         if (!clip) continue;
         const action = mixer.clipAction(clip);
         action.setLoop(THREE.LoopRepeat, Infinity);
-        action.timeScale = key === "walk" ? 0.62 : 0.82;
+        action.timeScale = key === "run" ? 0.92 : key === "walk" ? 0.62 : 0.82;
         actions.set(key, action);
       }
       const initial = actions.get("idle") ?? actions.values().next().value;
       initial?.play();
       const entry: SecondaryAgent = {
         root,
+        visual,
         model,
         shadow,
         mixer,
@@ -5934,6 +6612,131 @@ float shoreOverlayWaterSignal( vec3 color ) {
       scene.add(root);
       secondaryAgents.set(String(seat.seatId), entry);
       return entry;
+    };
+
+    const updateCatExerciseWheelScheduler = (
+      delta: number,
+      primaryView: SeatView,
+    ) => {
+      catExerciseWheelCooldown = Math.max(
+        0,
+        catExerciseWheelCooldown - delta,
+      );
+      const worldInteractionBusy =
+        placementModeRef.current !== null ||
+        activeSnackPhase !== "none" ||
+        laserActive ||
+        toyActive;
+
+      if (
+        !exerciseWheelOwnedRef.current ||
+        !catExerciseWheelGroup ||
+        layoutEditorEnabled
+      ) {
+        if (catExerciseWheelSession) cancelCatExerciseWheelSession(true);
+        return;
+      }
+
+      if (catExerciseWheelSession) {
+        const session = catExerciseWheelSession;
+        const participant = seatsRef.current.find(
+          (seat) => seat.catId === session.catId,
+        );
+        const secondary = session.secondaryKey
+          ? secondaryAgents.get(session.secondaryKey)
+          : null;
+        const unavailable =
+          !participant ||
+          participant.blocked ||
+          !AUTONOMOUS_STATUSES.has(participant.status) ||
+          worldInteractionBusy ||
+          (session.secondaryKey ? !secondary || Boolean(secondary.care) : Boolean(primaryCare));
+        if (unavailable) cancelCatExerciseWheelSession(true);
+        return;
+      }
+
+      if (catExerciseWheelCooldown > 0 || worldInteractionBusy || primaryCare) {
+        return;
+      }
+
+      const candidates: Array<{
+        catId: string;
+        seatId: SeatId;
+        secondaryKey: string | null;
+      }> = [];
+      if (
+        mixer &&
+        primaryView.seatId !== "queue" &&
+        !primaryView.blocked &&
+        AUTONOMOUS_STATUSES.has(primaryView.status) &&
+        !selectCatCareIntent({
+          hunger: primaryView.hunger ?? 0,
+          toilet: primaryView.toilet ?? 0,
+        })
+      ) {
+        candidates.push({
+          catId: primaryView.catId,
+          seatId: primaryView.seatId,
+          secondaryKey: null,
+        });
+      }
+      secondaryAgents.forEach((entry, key) => {
+        const seat = seatsRef.current.find(
+          (candidate) => candidate.catId === entry.catId,
+        );
+        if (
+          !seat ||
+          seat.seatId === "queue" ||
+          seat.blocked ||
+          entry.care ||
+          !AUTONOMOUS_STATUSES.has(seat.status) ||
+          selectCatCareIntent({
+            hunger: seat.hunger ?? 0,
+            toilet: seat.toilet ?? 0,
+          })
+        ) {
+          return;
+        }
+        candidates.push({
+          catId: entry.catId,
+          seatId: entry.seatId,
+          secondaryKey: key,
+        });
+      });
+      if (candidates.length === 0) {
+        catExerciseWheelCooldown = randomBetween(12, 20);
+        return;
+      }
+
+      const previewCandidate = exerciseWheelSecondaryPreviewPending
+        ? candidates.find((candidate) => candidate.secondaryKey !== null)
+        : null;
+      if (exerciseWheelSecondaryPreviewPending && !previewCandidate) {
+        catExerciseWheelCooldown = 0.5;
+        return;
+      }
+      const candidate =
+        previewCandidate ??
+        candidates[catExerciseWheelCandidateCursor % candidates.length];
+      exerciseWheelSecondaryPreviewPending = false;
+      catExerciseWheelCandidateCursor += 1;
+      catExerciseWheelSession = {
+        ...candidate,
+        phase: "approaching",
+        timer: CAT_EXERCISE_WHEEL_RUN_SECONDS,
+      };
+      if (candidate.secondaryKey) {
+        const entry = secondaryAgents.get(candidate.secondaryKey);
+        if (entry) {
+          entry.careWaypoints.length = 0;
+          entry.careLastTarget.copy(entry.root.position);
+          entry.ambientPhase = "resting";
+        }
+      } else {
+        avoidanceWaypoints.length = 0;
+        lastNavigationTarget.copy(currentPosition);
+        ambientPhase = "resting";
+      }
     };
 
     const syncSecondaryAgents = (delta: number) => {
@@ -6000,7 +6803,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
           targetYaw,
           1 - Math.exp(-delta * 7),
         );
-        entry.model.rotation.y = entry.yaw;
+        entry.visual.rotation.y = entry.yaw;
         const step = Math.min(distance, CARE_MOVE_SPEED * delta);
         entry.root.position.addScaledVector(direction.normalize(), step);
         return entry.root.position.distanceTo(target) <= CARE_ARRIVAL_DISTANCE;
@@ -6045,6 +6848,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
         if (
           isSecondaryAutonomous &&
           !entry.care &&
+          catExerciseWheelSession?.catId !== entry.catId &&
           seat.seatId !== "queue" &&
           !seat.blocked &&
           entry.careRetrySeconds <= 0
@@ -6090,6 +6894,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
               ),
           );
         }
+        if (catExerciseWheelSession?.catId === entry.catId) {
+          navigationObstacles = navigationObstacles.filter(
+            (obstacle) => obstacle.id !== CAT_EXERCISE_WHEEL_OBSTACLE.id,
+          );
+        }
 
         let careAnimation: string | null = null;
         if (entry.care) {
@@ -6122,6 +6931,19 @@ float shoreOverlayWaterSignal( vec3 color ) {
           } else if (care.phase === "using") {
             care.timer -= delta;
             careAnimation = care.intent === "food" ? "eat" : "sit";
+            if (care.intent === "food") {
+              const bowlCenter = foodBowlCenterPosition(care.facilityIndex);
+              const targetYaw = Math.atan2(
+                bowlCenter.x - entry.root.position.x,
+                bowlCenter.z - entry.root.position.z,
+              );
+              entry.yaw = lerpAngle(
+                entry.yaw,
+                targetYaw,
+                1 - Math.exp(-delta * CARE_EATING_TURN_SPEED),
+              );
+              entry.visual.rotation.y = entry.yaw;
+            }
             if (care.timer <= 0) {
               releaseCareFacility(care.intent, entry.catId);
               if (care.intent === "food") {
@@ -6212,6 +7034,14 @@ float shoreOverlayWaterSignal( vec3 color ) {
                   care.phase = "using";
                   care.insideFacility = true;
                   care.facilityIndex = claimedIndex;
+                  if (care.intent === "food") {
+                    const bowlCenter = foodBowlCenterPosition(claimedIndex);
+                    entry.yaw = Math.atan2(
+                      bowlCenter.x - entry.root.position.x,
+                      bowlCenter.z - entry.root.position.z,
+                    );
+                    entry.visual.rotation.y = entry.yaw;
+                  }
                   care.timer =
                     care.intent === "food"
                       ? FOOD_USE_SECONDS
@@ -6231,8 +7061,69 @@ float shoreOverlayWaterSignal( vec3 color ) {
         entry.model.visible = !insideLitterBox;
         entry.shadow.visible = !insideLitterBox;
         if (entry.clickProxy) entry.clickProxy.visible = !insideLitterBox;
+        let wheelAnimation: string | null = null;
+        const secondaryWheelSession =
+          catExerciseWheelSession?.catId === entry.catId
+            ? catExerciseWheelSession
+            : null;
+        if (!entry.care && secondaryWheelSession) {
+          if (secondaryWheelSession.phase === "approaching") {
+            const arrived = moveSecondaryTowards(
+              entry,
+              catExerciseWheelUsePosition,
+              navigationObstacles,
+            );
+            wheelAnimation = arrived ? "run" : "walk";
+            if (arrived) {
+              entry.root.position.x = catExerciseWheelUsePosition.x;
+              entry.root.position.z = catExerciseWheelUsePosition.z;
+              entry.careWaypoints.length = 0;
+              entry.yaw = catExerciseWheelRunYaw;
+              entry.visual.rotation.y = entry.yaw;
+              secondaryWheelSession.phase = "running";
+              secondaryWheelSession.timer = CAT_EXERCISE_WHEEL_RUN_SECONDS;
+            }
+          } else if (secondaryWheelSession.phase === "running") {
+            entry.root.position.x = catExerciseWheelUsePosition.x;
+            entry.root.position.z = catExerciseWheelUsePosition.z;
+            entry.yaw = catExerciseWheelRunYaw;
+            entry.visual.rotation.y = entry.yaw;
+            secondaryWheelSession.timer -= delta;
+            wheelAnimation = "run";
+            if (secondaryWheelSession.timer <= 0) {
+              secondaryWheelSession.phase = "exiting";
+              entry.careWaypoints.length = 0;
+              entry.careLastTarget.copy(entry.root.position);
+              wheelAnimation = "walk";
+            }
+          } else {
+            wheelAnimation = "walk";
+            const exited = moveSecondaryTowards(
+              entry,
+              catExerciseWheelExitPosition,
+              navigationObstacles,
+            );
+            if (exited) {
+              entry.careWaypoints.length = 0;
+              entry.careLastTarget.copy(entry.root.position);
+              entry.ambientPhase = "prewalking";
+              entry.ambientTimer = 0.65;
+              entry.ambientTarget.copy(entry.root.position);
+              completeCatExerciseWheelSession();
+              wheelAnimation = "idle";
+            }
+          }
+        }
+        entry.root.position.y = THREE.MathUtils.damp(
+          entry.root.position.y,
+          secondaryWheelSession?.phase === "running"
+            ? CAT_EXERCISE_WHEEL_CAT_LIFT
+            : 0,
+          10,
+          delta,
+        );
         let ambientAnimation: string | null = null;
-        if (!entry.care) {
+        if (!entry.care && !wheelAnimation) {
           if (!entry.ambientInitialized) {
             const initialTarget = isSecondaryAutonomous
               ? AMBIENT_WANDER_POINTS[
@@ -6345,8 +7236,19 @@ float shoreOverlayWaterSignal( vec3 color ) {
           }
         }
         entry.wasAutonomous = isSecondaryAutonomous;
-        entry.marker.update(seat);
-        entry.marker.updateBeacon(seat);
+        const markerSeat = secondaryWheelSession
+          ? {
+              ...seat,
+              statusLabel:
+                secondaryWheelSession.phase === "running"
+                  ? "러닝휠에서 달리는 중"
+                  : secondaryWheelSession.phase === "exiting"
+                    ? "러닝휠에서 나오는 중"
+                    : "러닝휠로 가는 중",
+            }
+          : seat;
+        entry.marker.update(markerSeat);
+        entry.marker.updateBeacon(markerSeat);
         // 책상에서 일하는 동안에는 머리 위가 아니라 모니터 위쪽에 뜬다.
         entry.marker.marker.position.lerp(
           markerAnchorFor(
@@ -6360,6 +7262,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
         );
         const nextKey =
           careAnimation ??
+          wheelAnimation ??
           ambientAnimation ??
           (seat.blocked
             ? "sit"
@@ -6367,9 +7270,22 @@ float shoreOverlayWaterSignal( vec3 color ) {
                 ? "work"
                 : "idle");
         setSecondaryAnimation(entry, nextKey);
-        if (!entry.care && ambientAnimation !== "walk") {
-          entry.model.rotation.y =
-            nextKey === "work" ? DEFAULT_CHARACTER_YAW + index * 0.2 : 0.25;
+        if (!entry.care && !wheelAnimation && ambientAnimation !== "walk") {
+          if (nextKey === "work" && seat.seatId !== "queue") {
+            const workLookTarget = seatWorkLookTargets[seat.seatId];
+            const targetYaw = Math.atan2(
+              workLookTarget.x - entry.root.position.x,
+              workLookTarget.z - entry.root.position.z,
+            );
+            entry.yaw = lerpAngle(
+              entry.yaw,
+              targetYaw,
+              1 - Math.exp(-delta * 7),
+            );
+            entry.visual.rotation.y = entry.yaw;
+          } else {
+            entry.visual.rotation.y = 0.25;
+          }
         }
         entry.mixer.update(delta);
       });
@@ -6393,95 +7309,116 @@ float shoreOverlayWaterSignal( vec3 color ) {
       updateAssetProgress();
     };
     const fbxLoader = new FBXLoader();
+    const requestedCatStyles = Array.from(
+      new Set(
+        (seats.length > 0 ? seats : [DEFAULT_SEAT_VIEW]).map(
+          (seat) => seat.catStyle ?? catStyle,
+        ),
+      ),
+    );
     Promise.all([
-      fbxLoader.loadAsync(catStyleModelUrl(catStyle), (event) =>
-        updateProgress(event, "model"),
+      Promise.all(
+        requestedCatStyles.map((styleId) =>
+          fbxLoader.loadAsync(catStyleModelUrl(styleId), (event) =>
+            updateProgress(event, "model"),
+          ),
+        ),
       ),
       fbxLoader.loadAsync(CAT_ANIMATIONS_URL, (event) =>
         updateProgress(event, "animations"),
       ),
     ])
-      .then(([model, animationSource]) => {
+      .then(([styleModels, animationSource]) => {
         if (disposed) return;
 
         loadedAnimationClips = animationSource.animations;
-        // 체형 조정은 스키닝 전 바인드 포즈를 건드리므로 애니메이션을 물리기 전에 끝낸다.
-        if (catShape) fattenCat(model, catShape);
-        model.rotation.y = characterYaw;
-        characterModel = model;
-        model.traverse((object) => {
-          if (!(object instanceof THREE.Mesh)) return;
+        styleModels.forEach((model, styleIndex) => {
+          const styleId = requestedCatStyles[styleIndex] ?? catStyle;
+          // 체형 조정은 스키닝 전 바인드 포즈를 건드리므로 애니메이션을 물리기 전에 끝낸다.
+          if (catShape) fattenCat(model, catShape);
+          model.rotation.y = 0;
+          model.traverse((object) => {
+            if (!(object instanceof THREE.Mesh)) return;
 
-          object.castShadow = false;
-          object.receiveShadow = false;
-          const materials = Array.isArray(object.material)
-            ? object.material
-            : [object.material];
-          for (const material of materials) {
-            if (material instanceof THREE.MeshStandardMaterial) {
-              material.color.set(0xffffff);
-              material.roughness = 0.95;
-              material.metalness = 0;
-              material.emissive.set(0x000000);
-              material.emissiveMap = null;
-              material.emissiveIntensity = 0;
-              if (material.map) {
-                material.map.colorSpace = THREE.SRGBColorSpace;
-                material.map.anisotropy = Math.min(
+            object.castShadow = false;
+            object.receiveShadow = false;
+            const materials = Array.isArray(object.material)
+              ? object.material
+              : [object.material];
+            for (const material of materials) {
+              if (material instanceof THREE.MeshStandardMaterial) {
+                material.color.set(0xffffff);
+                material.roughness = 0.95;
+                material.metalness = 0;
+                material.emissive.set(0x000000);
+                material.emissiveMap = null;
+                material.emissiveIntensity = 0;
+                if (material.map) {
+                  material.map.colorSpace = THREE.SRGBColorSpace;
+                  material.map.anisotropy = Math.min(
+                    4,
+                    renderer.capabilities.getMaxAnisotropy(),
+                  );
+                }
+                if (material instanceof THREE.MeshPhysicalMaterial) {
+                  material.specularIntensity = 0.12;
+                  material.specularColor.set(0xffffff);
+                  material.clearcoat = 0;
+                  material.ior = 1.3;
+                }
+              } else if (material instanceof THREE.MeshPhongMaterial) {
+                material.color.set(0xffffff);
+                material.emissive.set(0x000000);
+                material.shininess = 4;
+                material.specular.set(0x2f2926);
+                if (material.map) {
+                  material.map.colorSpace = THREE.SRGBColorSpace;
+                  material.map.anisotropy = Math.min(
+                    4,
+                    renderer.capabilities.getMaxAnisotropy(),
+                  );
+                }
+              }
+              const texturedMaterial = material as THREE.Material & {
+                map?: THREE.Texture | null;
+              };
+              if ("map" in texturedMaterial) {
+                if (!texturedMaterial.map) {
+                  texturedMaterial.map = catPaletteTexture;
+                }
+                texturedMaterial.map.colorSpace = THREE.SRGBColorSpace;
+                texturedMaterial.map.anisotropy = Math.min(
                   4,
                   renderer.capabilities.getMaxAnisotropy(),
                 );
               }
-              if (material instanceof THREE.MeshPhysicalMaterial) {
-                material.specularIntensity = 0.12;
-                material.specularColor.set(0xffffff);
-                material.clearcoat = 0;
-                material.ior = 1.3;
-              }
-            } else if (material instanceof THREE.MeshPhongMaterial) {
-              material.color.set(0xffffff);
-              material.emissive.set(0x000000);
-              material.shininess = 4;
-              material.specular.set(0x2f2926);
-              if (material.map) {
-                material.map.colorSpace = THREE.SRGBColorSpace;
-                material.map.anisotropy = Math.min(
-                  4,
-                  renderer.capabilities.getMaxAnisotropy(),
-                );
-              }
+              material.userData.outlineParameters = {
+                thickness: ILLUSTRATION_OUTLINE_THICKNESS,
+                color: ILLUSTRATION_OUTLINE_COLOR.toArray(),
+                alpha: ILLUSTRATION_OUTLINE_ALPHA,
+              };
+              material.needsUpdate = true;
             }
-            const texturedMaterial = material as THREE.Material & {
-              map?: THREE.Texture | null;
-            };
-            if ("map" in texturedMaterial) {
-              if (!texturedMaterial.map) {
-                texturedMaterial.map = catPaletteTexture;
-              }
-              texturedMaterial.map.colorSpace = THREE.SRGBColorSpace;
-              texturedMaterial.map.anisotropy = Math.min(
-                4,
-                renderer.capabilities.getMaxAnisotropy(),
-              );
-            }
-            material.userData.outlineParameters = {
-              thickness: ILLUSTRATION_OUTLINE_THICKNESS,
-              color: ILLUSTRATION_OUTLINE_COLOR.toArray(),
-              alpha: ILLUSTRATION_OUTLINE_ALPHA,
-            };
-            material.needsUpdate = true;
-          }
+          });
+
+          model.updateMatrixWorld(true);
+          const sourceBounds = new THREE.Box3().setFromObject(model);
+          const sourceSize = sourceBounds.getSize(new THREE.Vector3());
+          const scale = CHARACTER_HEIGHT / Math.max(sourceSize.y, 0.001);
+          model.scale.setScalar(scale);
+          model.updateMatrixWorld(true);
+
+          const scaledBounds = new THREE.Box3().setFromObject(model);
+          model.position.y = -scaledBounds.min.y;
+          characterModelsByStyle.set(styleId, model);
         });
 
-        model.updateMatrixWorld(true);
-        const sourceBounds = new THREE.Box3().setFromObject(model);
-        const sourceSize = sourceBounds.getSize(new THREE.Vector3());
-        const scale = CHARACTER_HEIGHT / Math.max(sourceSize.y, 0.001);
-        model.scale.setScalar(scale);
-        model.updateMatrixWorld(true);
-
-        const scaledBounds = new THREE.Box3().setFromObject(model);
-        model.position.y = -scaledBounds.min.y;
+        const primaryStyle =
+          (seatsRef.current[0] ?? DEFAULT_SEAT_VIEW).catStyle ?? catStyle;
+        const model =
+          characterModelsByStyle.get(primaryStyle) ?? styleModels[0];
+        if (!model) throw new Error("Cat style model was not found.");
+        characterModel = model;
         characterVisual.add(model);
 
         const walkClip = animationSource.animations.find((clip) =>
@@ -6553,6 +7490,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
 
         setLoadingProgress(100);
         setReady(true);
+        worldReadyRef.current = true;
       })
       .catch(() => {
         if (!disposed) setFailed(true);
@@ -6567,6 +7505,36 @@ float shoreOverlayWaterSignal( vec3 color ) {
     const frameMovementStart = new THREE.Vector3();
     const lastNavigationTarget = currentPosition.clone();
     const avoidanceWaypoints: THREE.Vector3[] = [];
+    const separationDelta = new THREE.Vector3();
+    const enforceCatSeparation = () => {
+      const positions = [
+        currentPosition,
+        ...Array.from(secondaryAgents.values(), (entry) => entry.root.position),
+      ];
+      // 두 번 완화하면 세 마리 이상이 한 지점에 모여도 한 프레임 안에 풀린다.
+      for (let pass = 0; pass < 2; pass += 1) {
+        for (let left = 0; left < positions.length; left += 1) {
+          for (let right = left + 1; right < positions.length; right += 1) {
+            const leftPosition = positions[left];
+            const rightPosition = positions[right];
+            separationDelta.subVectors(rightPosition, leftPosition);
+            separationDelta.y = 0;
+            let distance = separationDelta.length();
+            if (distance >= CAT_MIN_SEPARATION) continue;
+            if (distance < 0.0001) {
+              const angle = (left * 2.17 + right * 1.31) % (Math.PI * 2);
+              separationDelta.set(Math.cos(angle), 0, Math.sin(angle));
+              distance = 0;
+            } else {
+              separationDelta.multiplyScalar(1 / distance);
+            }
+            const correction = (CAT_MIN_SEPARATION - distance) * 0.5;
+            leftPosition.addScaledVector(separationDelta, -correction);
+            rightPosition.addScaledVector(separationDelta, correction);
+          }
+        }
+      }
+    };
     const clock = new THREE.Clock();
     let palmLeafSwayTime = 0;
     let oceanTideTime = 0;
@@ -7052,6 +8020,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
     renderer.domElement.addEventListener("wheel", handleWheel, {
       passive: false,
     });
+    window.addEventListener("keydown", handleMonitorCalibrationKeyDown);
 
     const resizeObserver = new ResizeObserver(updateSize);
     resizeObserver.observe(host);
@@ -7071,11 +8040,30 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const primaryView = seatsRef.current[0] ?? DEFAULT_SEAT_VIEW;
       const isPrimaryBlocked = primaryView.blocked;
       const isPrimaryWorking = primaryView.status === "working";
-      primaryMarker.update(primaryView);
-      primaryMarker.updateBeacon(primaryView);
+      updateCatExerciseWheelScheduler(delta, primaryView);
+      const primaryWheelSession =
+        catExerciseWheelSession?.catId === primaryView.catId &&
+        catExerciseWheelSession.secondaryKey === null
+          ? catExerciseWheelSession
+          : null;
+      const primaryMarkerView = primaryWheelSession
+        ? {
+            ...primaryView,
+            statusLabel:
+              primaryWheelSession.phase === "running"
+                ? "러닝휠에서 달리는 중"
+                : primaryWheelSession.phase === "exiting"
+                  ? "러닝휠에서 나오는 중"
+                  : "러닝휠로 가는 중",
+          }
+        : primaryView;
+      primaryMarker.update(primaryMarkerView);
+      primaryMarker.updateBeacon(primaryMarkerView);
       workstationGroups.forEach((workstation, seatId) => {
         workstation.visible =
           layoutEditorEnabled ||
+          monitorCalibrationEnabled ||
+          forceMonitorDiagnosticScreen ||
           Number(seatId.slice(-1)) <= activeSeatCountRef.current;
       });
       if (catExerciseWheelGroup) {
@@ -7322,6 +8310,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       }
       let isMoving = false;
       let isKneading = false;
+      let isUsingExerciseWheel = false;
       let movementSpeed = TASK_MOVE_SPEED;
       let movementForwardFactor = 1;
       let requestedWalkFadeSeconds: number | null = null;
@@ -7462,6 +8451,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       }
       if (
         !primaryCare &&
+        catExerciseWheelSession?.catId !== primaryView.catId &&
         activeSnackPhase === "none" &&
         !isPrimaryBlocked &&
         primaryCareRetrySeconds <= 0
@@ -7602,6 +8592,64 @@ float shoreOverlayWaterSignal( vec3 color ) {
             setAmbientLabel("간식을 먹고 골골거리는 중");
           }
         }
+      } else if (primaryWheelSession && isAutonomous) {
+        movementSpeed = CARE_MOVE_SPEED;
+        if (primaryWheelSession.phase === "approaching") {
+          desiredPosition.copy(catExerciseWheelUsePosition);
+          const distance = currentPosition.distanceTo(
+            catExerciseWheelUsePosition,
+          );
+          if (distance > CARE_ARRIVAL_DISTANCE) {
+            isMoving = true;
+            requestedWalkFadeSeconds = 0.28;
+            setAmbientLabel("러닝휠로 신나게 걸어가는 중");
+          } else {
+            currentPosition.copy(catExerciseWheelUsePosition);
+            desiredPosition.copy(currentPosition);
+            avoidanceWaypoints.length = 0;
+            primaryWheelSession.phase = "running";
+            primaryWheelSession.timer = CAT_EXERCISE_WHEEL_RUN_SECONDS;
+            isUsingExerciseWheel = true;
+            playAnimation("toy-run", 0.18);
+            setAmbientLabel("러닝휠에서 씩씩하게 달리는 중");
+          }
+        } else if (primaryWheelSession.phase === "running") {
+          currentPosition.copy(catExerciseWheelUsePosition);
+          desiredPosition.copy(currentPosition);
+          avoidanceWaypoints.length = 0;
+          isUsingExerciseWheel = true;
+          primaryWheelSession.timer -= delta;
+          playAnimation("toy-run", 0.18);
+          setAmbientLabel("러닝휠에서 씩씩하게 달리는 중");
+          if (primaryWheelSession.timer <= 0) {
+            primaryWheelSession.phase = "exiting";
+            avoidanceWaypoints.length = 0;
+            lastNavigationTarget.copy(currentPosition);
+            isUsingExerciseWheel = false;
+            setAmbientLabel("운동을 마치고 휠에서 내려오는 중");
+          }
+        } else {
+          desiredPosition.copy(catExerciseWheelExitPosition);
+          const distance = currentPosition.distanceTo(
+            catExerciseWheelExitPosition,
+          );
+          if (distance > CARE_ARRIVAL_DISTANCE) {
+            isMoving = true;
+            requestedWalkFadeSeconds = 0.28;
+            setAmbientLabel("러닝휠에서 천천히 나오는 중");
+          } else {
+            currentPosition.copy(catExerciseWheelExitPosition);
+            desiredPosition.copy(currentPosition);
+            avoidanceWaypoints.length = 0;
+            lastNavigationTarget.copy(currentPosition);
+            ambientPhase = "prewalking";
+            ambientTimer = 0.7;
+            ambientTarget.copy(currentPosition);
+            completeCatExerciseWheelSession();
+            playAnimation("idle-look", 0.24);
+            setAmbientLabel("운동을 마치고 해변에서 숨을 고르는 중");
+          }
+        }
       } else if (primaryCare) {
         movementSpeed = carePreviewMode
           ? CARE_MOVE_SPEED * 4
@@ -7643,6 +8691,17 @@ float shoreOverlayWaterSignal( vec3 color ) {
           desiredPosition.copy(currentPosition);
           care.timer -= delta;
           if (care.intent === "food") {
+            const bowlCenter = foodBowlCenterPosition(care.facilityIndex);
+            const targetYaw = Math.atan2(
+              bowlCenter.x - currentPosition.x,
+              bowlCenter.z - currentPosition.z,
+            );
+            characterYaw = lerpAngle(
+              characterYaw,
+              targetYaw,
+              1 - Math.exp(-delta * CARE_EATING_TURN_SPEED),
+            );
+            characterVisual.rotation.y = characterYaw;
             playAnimation("eat-drink", 0.24);
             setAmbientLabel("밥을 먹는 중");
           } else {
@@ -7749,9 +8808,16 @@ float shoreOverlayWaterSignal( vec3 color ) {
                 care.phase = "using";
                 care.insideFacility = true;
                 care.facilityIndex = claimedIndex;
+                if (care.intent === "food") {
+                  const bowlCenter = foodBowlCenterPosition(claimedIndex);
+                  characterYaw = Math.atan2(
+                    bowlCenter.x - currentPosition.x,
+                    bowlCenter.z - currentPosition.z,
+                  );
+                  characterVisual.rotation.y = characterYaw;
+                }
                 care.timer =
-                  care.intent === "toilet" &&
-                  carePreviewMode === "toilet" &&
+                  carePreviewMode === care.intent &&
                   interactionDebugMode
                     ? 300
                     : care.intent === "food"
@@ -7879,6 +8945,8 @@ float shoreOverlayWaterSignal( vec3 color ) {
       }
       const wantsDeskInteraction = !isAutonomous && isPrimaryWorking;
       const wantsLitterInteraction = primaryCare?.intent === "toilet";
+      const wantsExerciseWheelInteraction =
+        primaryWheelSession !== null && isAutonomous;
       const activeSceneObstacles = getRuntimeSceneObstacles(
         activeSeatCountRef.current,
       );
@@ -7888,6 +8956,11 @@ float shoreOverlayWaterSignal( vec3 color ) {
         litterBoxInstances.forEach((instance) => {
           ignoredInteractionObstacles.add(instance.obstacle);
         });
+      }
+      if (wantsExerciseWheelInteraction) {
+        ignoredInteractionObstacles.add(
+          runtimeObstacleFor(CAT_EXERCISE_WHEEL_OBSTACLE),
+        );
       }
       const navigationObstacles =
         ignoredInteractionObstacles.size > 0
@@ -7935,7 +9008,14 @@ float shoreOverlayWaterSignal( vec3 color ) {
       }
 
       movementDirection.subVectors(movementGoal, currentPosition);
-      if (isKneading && characterModel) {
+      if (isUsingExerciseWheel && characterModel) {
+        characterYaw = lerpAngle(
+          characterYaw,
+          catExerciseWheelRunYaw,
+          1 - Math.exp(-delta * 9),
+        );
+        characterVisual.rotation.y = characterYaw;
+      } else if (isKneading && characterModel) {
         movementDirection.subVectors(
           deskKneadingLookTarget,
           currentPosition,
@@ -7949,7 +9029,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
           targetYaw,
           1 - Math.exp(-delta * 7),
         );
-        characterModel.rotation.y = characterYaw;
+        characterVisual.rotation.y = characterYaw;
       } else if (
         isMoving &&
         characterModel &&
@@ -7975,7 +9055,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
           targetYaw,
           1 - Math.exp(-delta * 7),
         );
-        characterModel.rotation.y = characterYaw;
+        characterVisual.rotation.y = characterYaw;
       }
       if (walkAction && isMoving) {
         const baseTimeScale = isAutonomous ? 0.62 : 0.92;
@@ -7995,45 +9075,67 @@ float shoreOverlayWaterSignal( vec3 color ) {
       } else if (kneadingBlend < 0.001) {
         kneadingElapsed = 0;
       }
-      const showDeskInteraction =
-        !suppressMonitorInteraction &&
-        (forceMonitorDiagnosticScreen || kneadingBlend > 0.01);
-      monitorScreen.visible = showDeskInteraction;
-      animatedDeskKeycaps.forEach((parts, index) => {
-        parts.forEach(({ object }) => {
-          object.visible = showDeskInteraction;
-        });
-        const phaseOffset =
-          index < 2 ? index * 0.16 : Math.PI + (index - 2) * 0.16;
-        const pressWave = Math.max(
-          0,
-          Math.sin(
-            kneadingElapsed * Math.PI * 2 * DESK_KEYCAP_PRESS_HZ +
-              phaseOffset,
-          ),
+      workstationInteractions.forEach((interaction, seatId) => {
+        const secondaryEntry = secondaryAgents.get(seatId);
+        const workstationIsCoding =
+          !suppressMonitorInteraction &&
+          (monitorCalibrationEnabled ||
+            (seatId === "seat-1"
+            ? isKneading || forceMonitorDiagnosticScreen
+            : forceMonitorDiagnosticScreen ||
+              (secondaryEntry?.currentKey === "work" &&
+                seatsRef.current.some(
+                  (seat) =>
+                    seat.seatId === seatId && seat.status === "working",
+                ))));
+        interaction.blend = THREE.MathUtils.damp(
+          interaction.blend,
+          workstationIsCoding ? 1 : 0,
+          12,
+          delta,
         );
-        const pressDepth =
-          Math.pow(pressWave, 2.4) *
-          DESK_KEYCAP_PRESS_DEPTH *
-          kneadingBlend;
-        parts.forEach(({ object, restingY }) => {
-          object.position.y = restingY - pressDepth;
+        if (workstationIsCoding) {
+          interaction.elapsed += delta;
+        } else if (interaction.blend < 0.001) {
+          interaction.elapsed = 0;
+        }
+
+        const showWorkstationInteraction = interaction.blend > 0.01;
+        interaction.monitorScreen.visible = showWorkstationInteraction;
+        interaction.animatedDeskKeycaps.forEach((parts, index) => {
+          parts.forEach(({ object }) => {
+            object.visible = showWorkstationInteraction;
+          });
+          const phaseOffset =
+            index < 2 ? index * 0.16 : Math.PI + (index - 2) * 0.16;
+          const pressWave = Math.max(
+            0,
+            Math.sin(
+              interaction.elapsed * Math.PI * 2 * DESK_KEYCAP_PRESS_HZ +
+                phaseOffset,
+            ),
+          );
+          const pressDepth =
+            Math.pow(pressWave, 2.4) *
+            DESK_KEYCAP_PRESS_DEPTH *
+            interaction.blend;
+          parts.forEach(({ object, restingY }) => {
+            object.position.y = restingY - pressDepth;
+          });
         });
+
+        const nextMonitorScreenFrame = workstationIsCoding
+          ? Math.floor(interaction.elapsed * MONITOR_CODE_FRAME_RATE)
+          : -1;
+        if (nextMonitorScreenFrame !== interaction.screenFrame) {
+          interaction.screenFrame = nextMonitorScreenFrame;
+          drawMonitorScreen(
+            interaction.monitorScreenTexture,
+            workstationIsCoding,
+            interaction.elapsed,
+          );
+        }
       });
-      const monitorIsCoding =
-        !suppressMonitorInteraction &&
-        (isKneading || forceMonitorDiagnosticScreen);
-      const nextMonitorScreenFrame = monitorIsCoding
-        ? Math.floor(kneadingElapsed * MONITOR_CODE_FRAME_RATE)
-        : -1;
-      if (nextMonitorScreenFrame !== monitorScreenFrame) {
-        monitorScreenFrame = nextMonitorScreenFrame;
-        drawMonitorScreen(
-          monitorScreenTexture,
-          monitorIsCoding,
-          kneadingElapsed,
-        );
-      }
 
       if (isMoving) {
         const remainingDistance =
@@ -8110,8 +9212,15 @@ float shoreOverlayWaterSignal( vec3 color ) {
       blobShadow.visible = !primaryInsideLitterBox;
       primaryClickProxy.visible = !primaryInsideLitterBox;
       wasKneadingLastFrame = isKneading;
+      enforceCatSeparation();
       characterRoot.position.x = currentPosition.x;
       characterRoot.position.z = currentPosition.z;
+      characterRoot.position.y = THREE.MathUtils.damp(
+        characterRoot.position.y,
+        isUsingExerciseWheel ? CAT_EXERCISE_WHEEL_CAT_LIFT : 0,
+        10,
+        delta,
+      );
       if (carePreviewMode) {
         host.dataset.carePreviewState = JSON.stringify({
           phase: primaryCare?.phase ?? "complete",
@@ -8125,12 +9234,51 @@ float shoreOverlayWaterSignal( vec3 color ) {
       }
       if (interactionDebugMode) {
         host.dataset.interactionDebugState = JSON.stringify({
+          feedingAlignmentVersion: 2,
           snackPhase: activeSnackPhase,
           animation: currentAnimationKey,
           characterVisible: characterVisual.visible,
           careIntent: primaryCare?.intent ?? null,
           carePhase: primaryCare?.phase ?? null,
+          careTimer: Number((primaryCare?.timer ?? 0).toFixed(2)),
+          carePreviewMode,
+          interactionDebugMode,
           insideFacility: primaryCare?.insideFacility ?? false,
+          exerciseWheelOwned: exerciseWheelOwnedRef.current,
+          exerciseWheelSession: catExerciseWheelSession
+            ? {
+                catId: catExerciseWheelSession.catId,
+                seatId: catExerciseWheelSession.seatId,
+                secondary: catExerciseWheelSession.secondaryKey !== null,
+                phase: catExerciseWheelSession.phase,
+                timer: Number(catExerciseWheelSession.timer.toFixed(2)),
+              }
+            : null,
+          exerciseWheelCooldown: Number(
+            catExerciseWheelCooldown.toFixed(2),
+          ),
+          primaryPosition: {
+            x: Number(currentPosition.x.toFixed(3)),
+            y: Number(characterRoot.position.y.toFixed(3)),
+            z: Number(currentPosition.z.toFixed(3)),
+          },
+          primaryYaw: Number(characterYaw.toFixed(3)),
+          foodBowlPositions: foodBowlInstances.map((instance) => ({
+            x: Number(instance.group.position.x.toFixed(3)),
+            z: Number(instance.group.position.z.toFixed(3)),
+          })),
+          secondaryAgents: Array.from(secondaryAgents.values()).map(
+            (entry) => ({
+              catId: entry.catId,
+              seatId: entry.seatId,
+              animation: entry.currentKey,
+              ambientPhase: entry.ambientPhase,
+              yaw: Number(entry.yaw.toFixed(3)),
+              x: Number(entry.root.position.x.toFixed(3)),
+              y: Number(entry.root.position.y.toFixed(3)),
+              z: Number(entry.root.position.z.toFixed(3)),
+            }),
+          ),
         });
       }
       // 실제 키캡 애니메이션이 재생되는 동안만 이름표를 모니터 위에 고정한다.
@@ -8207,11 +9355,60 @@ float shoreOverlayWaterSignal( vec3 color ) {
       scene.background = previousBackground;
       renderer.autoClear = previousAutoClear;
       camera.layers.set(WORLD_LAYER);
+
+      // 손가락 가이드가 따라올 지점. 고양이도 조개도 계속 움직이므로 매 프레임 다시 투영한다.
+      const anchorTarget = tutorialAnchorRef.current;
+      if (anchorTarget && onTutorialAnchorRef.current && worldReadyRef.current) {
+        let anchorSource: THREE.Object3D | null = null;
+        if (anchorTarget === "shell") {
+          anchorSource = collectibleShells.values().next().value?.group ?? null;
+        } else {
+          // 1번 자리 고양이는 secondaryAgents 가 아니라 characterRoot 다.
+          // 자리가 하나뿐인 첫 방문자는 이 맵이 비어 있어서 여기가 유일한 대상이다.
+          anchorSource = characterRoot;
+          const wanted = interactionCatIdRef.current;
+          if (wanted) {
+            for (const entry of secondaryAgents.values()) {
+              if (entry.catId === wanted) {
+                anchorSource = entry.root;
+                break;
+              }
+            }
+          }
+        }
+        if (anchorSource) {
+          tutorialAnchorWorld.setFromMatrixPosition(anchorSource.matrixWorld);
+          tutorialAnchorWorld.y += anchorTarget === "shell" ? 0.34 : 0.62;
+          tutorialAnchorWorld.project(camera);
+          const x = (tutorialAnchorWorld.x + 1) / 2;
+          const y = (1 - tutorialAnchorWorld.y) / 2;
+          onTutorialAnchorRef.current({
+            target: anchorTarget,
+            x,
+            y,
+            // z>1 은 카메라 뒤. 화면 밖이면 손가락을 숨겨 엉뚱한 데를 짚지 않게 한다.
+            visible:
+              tutorialAnchorWorld.z < 1 &&
+              x > 0.02 &&
+              x < 0.98 &&
+              y > 0.02 &&
+              y < 0.98,
+          });
+        } else {
+          onTutorialAnchorRef.current({
+            target: anchorTarget,
+            x: 0.5,
+            y: 0.5,
+            visible: false,
+          });
+        }
+      }
     });
 
     return () => {
       disposed = true;
       layoutEditorRuntimeRef.current = null;
+      monitorCalibrationRuntimeRef.current = null;
       worldStage?.classList.remove("monitor-ablation-no-vignette");
       renderer.setAnimationLoop(null);
       resizeObserver.disconnect();
@@ -8229,6 +9426,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
         handlePointerUp,
       );
       renderer.domElement.removeEventListener("wheel", handleWheel);
+      window.removeEventListener("keydown", handleMonitorCalibrationKeyDown);
       mixer?.stopAllAction();
 
       scene.traverse((object) => {
@@ -8300,6 +9498,32 @@ float shoreOverlayWaterSignal( vec3 color ) {
       {layoutAdminEnabled && ready && !failed && (
         <button
           type="button"
+          className={`world-layout-edit-toggle world-monitor-calibration-toggle ${
+            monitorCalibrationMode ? "is-active" : ""
+          }`}
+          aria-pressed={monitorCalibrationMode}
+          aria-label={
+            monitorCalibrationMode
+              ? "모니터 화면 맞춤 완료"
+              : "모니터 화면 맞춤 시작"
+          }
+          onClick={() => {
+            if (layoutEditMode) {
+              layoutEditorRuntimeRef.current?.setEnabled(false);
+            }
+            monitorCalibrationRuntimeRef.current?.setEnabled(
+              !monitorCalibrationMode,
+            );
+          }}
+        >
+          <span aria-hidden="true">{monitorCalibrationMode ? "✓" : "▣"}</span>
+          {monitorCalibrationMode ? "완료" : "화면"}
+        </button>
+      )}
+
+      {layoutAdminEnabled && ready && !failed && (
+        <button
+          type="button"
           className={`world-layout-edit-toggle ${
             layoutEditMode ? "is-active" : ""
           }`}
@@ -8307,13 +9531,224 @@ float shoreOverlayWaterSignal( vec3 color ) {
           aria-label={
             layoutEditMode ? "객체 배치 편집 완료" : "객체 배치 편집 시작"
           }
-          onClick={() =>
-            layoutEditorRuntimeRef.current?.setEnabled(!layoutEditMode)
-          }
+          onClick={() => {
+            if (monitorCalibrationMode) {
+              monitorCalibrationRuntimeRef.current?.setEnabled(false);
+            }
+            layoutEditorRuntimeRef.current?.setEnabled(!layoutEditMode);
+          }}
         >
           <span aria-hidden="true">{layoutEditMode ? "✓" : "✥"}</span>
           {layoutEditMode ? "완료" : "배치"}
         </button>
+      )}
+
+      {monitorCalibrationMode && (
+        <div
+          className={`world-layout-edit-toolbar world-monitor-calibration-toolbar is-${selectedMonitorScreenSeatId}`}
+          role="group"
+          aria-label="자리별 모니터 화면 맞춤 도구"
+        >
+          <div className="world-layout-edit-selection">
+            <span>모니터 화면 맞춤</span>
+            <strong>{selectedMonitorScreenSeatId.slice(-1)}번 자리 코딩 화면</strong>
+            {monitorScreenCalibrationMetrics && (
+              <em className="world-monitor-calibration-metrics">
+                X {monitorScreenCalibrationMetrics.x.toFixed(3)} · Y{" "}
+                {monitorScreenCalibrationMetrics.y.toFixed(3)} · W{" "}
+                {monitorScreenCalibrationMetrics.width.toFixed(3)} · H{" "}
+                {monitorScreenCalibrationMetrics.height.toFixed(3)}
+              </em>
+            )}
+          </div>
+
+          <div className="world-monitor-seat-tabs" role="tablist">
+            {(["seat-1", "seat-2", "seat-3", "seat-4"] as SeatId[]).map(
+              (seatId) => (
+                <button
+                  type="button"
+                  role="tab"
+                  key={seatId}
+                  aria-selected={selectedMonitorScreenSeatId === seatId}
+                  className={
+                    selectedMonitorScreenSeatId === seatId ? "is-active" : ""
+                  }
+                  onClick={() =>
+                    monitorCalibrationRuntimeRef.current?.selectSeat(seatId)
+                  }
+                >
+                  {seatId.slice(-1)}번
+                </button>
+              ),
+            )}
+          </div>
+
+          <div className="world-monitor-calibration-controls">
+            <div className="world-monitor-nudge-controls" aria-label="화면 위치">
+              <button
+                type="button"
+                aria-label="모니터 화면 왼쪽 이동"
+                onClick={() =>
+                  monitorCalibrationRuntimeRef.current?.nudgeSelected(-0.005, 0)
+                }
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                aria-label="모니터 화면 위 이동"
+                onClick={() =>
+                  monitorCalibrationRuntimeRef.current?.nudgeSelected(0, 0.005)
+                }
+              >
+                ↑
+              </button>
+              <button
+                type="button"
+                aria-label="모니터 화면 아래 이동"
+                onClick={() =>
+                  monitorCalibrationRuntimeRef.current?.nudgeSelected(0, -0.005)
+                }
+              >
+                ↓
+              </button>
+              <button
+                type="button"
+                aria-label="모니터 화면 오른쪽 이동"
+                onClick={() =>
+                  monitorCalibrationRuntimeRef.current?.nudgeSelected(0.005, 0)
+                }
+              >
+                →
+              </button>
+            </div>
+
+            <div className="world-monitor-size-controls" aria-label="화면 크기">
+              <button
+                type="button"
+                onClick={() =>
+                  monitorCalibrationRuntimeRef.current?.resizeSelected(-0.005, 0)
+                }
+              >
+                가로−
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  monitorCalibrationRuntimeRef.current?.resizeSelected(0.005, 0)
+                }
+              >
+                가로＋
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  monitorCalibrationRuntimeRef.current?.resizeSelected(0, -0.005)
+                }
+              >
+                세로−
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  monitorCalibrationRuntimeRef.current?.resizeSelected(0, 0.005)
+                }
+              >
+                세로＋
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  monitorCalibrationRuntimeRef.current?.scaleSelected(-0.01)
+                }
+              >
+                전체−
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  monitorCalibrationRuntimeRef.current?.scaleSelected(0.01)
+                }
+              >
+                전체＋
+              </button>
+            </div>
+          </div>
+
+          <div className="world-monitor-secondary-controls">
+            <button
+              type="button"
+              onClick={() =>
+                monitorCalibrationRuntimeRef.current?.tiltSelected(
+                  THREE.MathUtils.degToRad(-0.5),
+                )
+              }
+            >
+              기울기−
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                monitorCalibrationRuntimeRef.current?.tiltSelected(
+                  THREE.MathUtils.degToRad(0.5),
+                )
+              }
+            >
+              기울기＋
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                monitorCalibrationRuntimeRef.current?.nudgeDepthSelected(-0.005)
+              }
+            >
+              화면 뒤로
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                monitorCalibrationRuntimeRef.current?.nudgeDepthSelected(0.005)
+              }
+            >
+              화면 앞으로
+            </button>
+          </div>
+
+          <div className="world-monitor-calibration-footer">
+            <button
+              type="button"
+              onClick={() =>
+                monitorCalibrationRuntimeRef.current?.resetSelected()
+              }
+            >
+              선택 초기화
+            </button>
+            <button
+              type="button"
+              className="is-save"
+              onClick={() =>
+                monitorCalibrationRuntimeRef.current?.saveLayout()
+              }
+            >
+              화면 배치 저장
+            </button>
+          </div>
+
+          <div className="world-monitor-keyboard-hint">
+            <span><kbd>← ↑ ↓ →</kbd> 위치</span>
+            <span><kbd>A / D</kbd> 가로</span>
+            <span><kbd>S / W</kbd> 세로</span>
+            <span><kbd>[ / ]</kbd> 전체 크기</span>
+            <span><kbd>Q / E</kbd> 기울기</span>
+            <span><kbd>PgUp / PgDn</kbd> 앞뒤</span>
+            <small><kbd>Shift</kbd> 크게 · <kbd>Alt</kbd> 0.001 정밀 조정</small>
+          </div>
+          <small>
+            {monitorCalibrationSaveRevision > 0
+              ? "모니터 화면 배치를 저장했습니다."
+              : "자리별 화면을 모니터 프레임 안쪽에 맞춘 뒤 저장하세요."}
+          </small>
+        </div>
       )}
 
       {layoutEditMode && (

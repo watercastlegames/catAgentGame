@@ -2,7 +2,12 @@ export const COMPANION_BACKEND_KEY = "agent-forest-companion-backend-v1";
 
 export type AppEdition = "service" | "public";
 export type CompanionBackendId =
-  "chatgpt-cli" | "claude-cli" | "puter" | "pm-worker" | "local-session";
+  | "chatgpt-cli"
+  | "claude-cli"
+  | "local-session"
+  | "local-claude"
+  | "puter"
+  | "pm-worker";
 
 export type CompanionCapabilities = {
   fileEdit: boolean;
@@ -58,9 +63,10 @@ export const COMPANION_BACKENDS: CompanionBackendDefinition[] = [
   },
   {
     id: "local-session",
-    title: "Agent Forest 메인 AI",
-    description: "내 PC의 Codex 세션과 실제 프로젝트를 안전하게 연결해요.",
-    badge: "메인 · 내 PC 연결",
+    title: "ChatGPT Codex (내 PC)",
+    description:
+      "내 PC의 Codex 세션과 실제 프로젝트를 연결해요. 질문마다 조개 5개를 사용해요.",
+    badge: "조개 5 · 내 PC 연결",
     editions: ["service", "public"],
     available: "requires-pairing",
     capabilities: {
@@ -72,10 +78,27 @@ export const COMPANION_BACKENDS: CompanionBackendDefinition[] = [
     },
   },
   {
+    id: "local-claude",
+    title: "Claude Code (내 PC)",
+    description:
+      "내 PC의 Claude Code 세션과 실제 프로젝트를 연결해요. 질문마다 조개 5개를 사용해요.",
+    badge: "조개 5 · 내 PC 연결",
+    editions: ["service", "public"],
+    available: "requires-pairing",
+    capabilities: {
+      fileEdit: true,
+      shellExec: true,
+      approvalFlow: false,
+      streaming: true,
+      multiSession: true,
+    },
+  },
+  {
     id: "puter",
     title: "무료 AI 대화",
-    description: "Puter 로그인 후 브라우저에서 답변과 아이디어를 받아요.",
-    badge: "무료 · 대화 전용",
+    description:
+      "Puter 로그인 후 답변과 아이디어를 받아요. 게임 대화마다 조개 5개를 사용해요.",
+    badge: "조개 5 · 대화 전용",
     editions: ["service", "public"],
     available: "ready",
     capabilities: {
@@ -110,10 +133,12 @@ export function visibleCompanionBackends(edition = APP_EDITION) {
   );
 }
 
+/* 처음 들어온 사람이 설치도 연결도 없이 바로 한 번 시켜볼 수 있도록
+   두 판 모두 PM Worker 로 시작한다. 내 PC 연결은 나중에 고르는 선택지로 남는다. */
 export function defaultCompanionBackend(
-  edition = APP_EDITION,
+  _edition = APP_EDITION,
 ): CompanionBackendId {
-  return edition === "service" ? "chatgpt-cli" : "local-session";
+  return "pm-worker";
 }
 
 export function parseCompanionBackend(
