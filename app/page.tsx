@@ -1004,7 +1004,9 @@ export default function Home() {
           ? `PM Worker AI 연결됨 · 대화당 조개 ${AI_CHAT_SHELL_COST}개`
           : pmWorkerConnectionState === "loading"
             ? "PM Worker AI 연결 확인 중"
-            : "PM Worker AI 연결을 확인해 주세요"
+            : pmWorkerConnectionState === "unavailable"
+              ? "이 화면은 미리보기 복사본이라 AI 연결이 없어요"
+              : "PM Worker AI 서버가 응답하지 않아요"
         : isLocalCodeBackend(companionBackend)
           ? focusedBoundSession
             ? `${focusedCatName} ↔ ${focusedBoundSession.title} · ${focusedBoundSession.projectName} · 조개 ${AI_CHAT_SHELL_COST}개`
