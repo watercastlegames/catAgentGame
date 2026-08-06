@@ -981,11 +981,16 @@ export default function Home() {
     selectedLocalProvider === "claude" ? claudeAvailable : codexAvailable;
   const selectedLocalProviderLabel =
     selectedLocalProvider === "claude" ? "Claude Code" : "Codex";
+  const pmWorkerLocalFallbackReady = Boolean(
+    companionToken && bridgeState === "connected" && claudeAvailable,
+  );
+  const pmWorkerReady =
+    pmWorkerConnectionState === "ready" || pmWorkerLocalFallbackReady;
   const selectedBackendReady =
     companionBackend === "puter"
       ? puterConnectionState === "ready"
       : companionBackend === "pm-worker"
-        ? pmWorkerConnectionState === "ready"
+        ? pmWorkerReady
         : isLocalCodeBackend(companionBackend)
           ? Boolean(
               bridgeState === "connected" &&
@@ -1002,6 +1007,8 @@ export default function Home() {
       : companionBackend === "pm-worker"
         ? pmWorkerConnectionState === "ready"
           ? `PM Worker AI 연결됨 · 대화당 조개 ${AI_CHAT_SHELL_COST}개`
+          : pmWorkerLocalFallbackReady
+            ? `PM Worker AI 자동 복구 · 내 PC Claude Code 연결됨 · 대화당 조개 ${AI_CHAT_SHELL_COST}개`
           : pmWorkerConnectionState === "loading"
             ? "PM Worker AI 연결 확인 중"
             : pmWorkerConnectionState === "unavailable"
@@ -3849,9 +3856,11 @@ export default function Home() {
     }
     if (
       companionBackend === "pm-worker" &&
-      pmWorkerConnectionState !== "ready"
+      !pmWorkerReady
     ) {
-      setToast("PM Worker AI 연결 화면에서 상태를 먼저 확인해 주세요.");
+      setToast(
+        "PM Worker AI가 멈춰 있고 내 PC Claude Code도 연결되지 않았어요.",
+      );
       return;
     }
     if (
@@ -4002,29 +4011,69 @@ export default function Home() {
         type: "agent.status",
         status: "working",
         location: "coding",
-        title: "ProjectManager 워커가 답변을 작성하고 있어요",
+        title:
+          pmWorkerConnectionState === "ready"
+            ? "ProjectManager 워커가 답변을 작성하고 있어요"
+            : "내 PC Claude Code가 PM Worker를 대신해 답변하고 있어요",
         detail: "선택한 고양이가 답변을 기다리고 있어요.",
       });
       setPrompt("");
       setRadioOpen(false);
-      try {
-        const result = await submitPmWorkerTask(
-          personaPrompt,
-          focusedCatId,
-          message,
-        );
-        const firstQuestionBonus = claimDailyQuestionBonus();
-        emitPmWorkerEvent({
-          type: "pm-chat.completed",
-          status: "completed",
-          location: "queue",
-          title: "PM Worker AI 답변이 도착했어요",
-          detail: "고양이 대화창에서 이어서 질문할 수 있어요.",
-          result: result.reply,
+      let delegatedToLocalFallback = false;
+      const delegateToLocalClaude = async () => {
+        const response = await apiFetch("/v2/pm-worker/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: personaPrompt,
+            displayPrompt: message,
+            conversationThreadId: focusedCatId,
+            catId: focusedCatId,
+            department,
+            seatId: taskSeatId,
+            agentName: catName,
+          }),
         });
+        const body = (await response.json()) as { error?: string };
+        if (!response.ok) {
+          throw new Error(
+            body.error ?? "내 PC Claude Code 자동 복구에 실패했어요.",
+          );
+        }
+        delegatedToLocalFallback = true;
+        const firstQuestionBonus = claimDailyQuestionBonus();
         setToast(
-          `답변이 도착했어요 · 조개 ${AI_CHAT_SHELL_COST}개 사용${firstQuestionBonus ? ` · 오늘 첫 질문 보상 +${firstQuestionBonus}` : ""}`,
+          `PM Worker를 내 PC Claude Code로 자동 복구했어요 · 조개 ${AI_CHAT_SHELL_COST}개 사용${firstQuestionBonus ? ` · 오늘 첫 질문 보상 +${firstQuestionBonus}` : ""}`,
         );
+      };
+      try {
+        if (pmWorkerConnectionState !== "ready") {
+          await delegateToLocalClaude();
+        } else {
+          try {
+            const result = await submitPmWorkerTask(
+              personaPrompt,
+              focusedCatId,
+              message,
+            );
+            const firstQuestionBonus = claimDailyQuestionBonus();
+            emitPmWorkerEvent({
+              type: "pm-chat.completed",
+              status: "completed",
+              location: "queue",
+              title: "PM Worker AI 답변이 도착했어요",
+              detail: "고양이 대화창에서 이어서 질문할 수 있어요.",
+              result: result.reply,
+            });
+            setToast(
+              `답변이 도착했어요 · 조개 ${AI_CHAT_SHELL_COST}개 사용${firstQuestionBonus ? ` · 오늘 첫 질문 보상 +${firstQuestionBonus}` : ""}`,
+            );
+          } catch (serverError) {
+            if (!pmWorkerLocalFallbackReady) throw serverError;
+            setPmWorkerConnectionState("unavailable");
+            await delegateToLocalClaude();
+          }
+        }
       } catch (error) {
         refundChatShells("pm-worker-chat-refund");
         emitPmWorkerEvent({
@@ -4043,7 +4092,9 @@ export default function Home() {
             : "PM Worker AI 연결에 실패해 조개를 돌려드렸어요.",
         );
       } finally {
-        setThreadSubmitting(threadId, false);
+        // 로컬 Claude로 넘긴 작업은 브리지의 task.completed/task.failed가
+        // 도착할 때까지 고양이의 작업 애니메이션과 전송 잠금을 유지한다.
+        if (!delegatedToLocalFallback) setThreadSubmitting(threadId, false);
       }
       return;
     }
@@ -5911,7 +5962,7 @@ export default function Home() {
                       (companionBackend === "puter" &&
                         puterConnectionState !== "ready") ||
                       (companionBackend === "pm-worker" &&
-                        pmWorkerConnectionState !== "ready") ||
+                        !pmWorkerReady) ||
                       (isLocalCodeBackend(companionBackend) &&
                         (bridgeState !== "connected" ||
                           !selectedLocalProviderAvailable ||
@@ -5971,7 +6022,7 @@ export default function Home() {
                               ? "connecting"
                               : "disconnected"
                           : backend.id === "pm-worker"
-                            ? pmWorkerConnectionState === "ready"
+                            ? pmWorkerReady
                               ? "connected"
                               : pmWorkerConnectionState === "loading"
                                 ? "connecting"
@@ -6040,7 +6091,7 @@ export default function Home() {
                             ? "connecting"
                             : "disconnected"
                         : companionBackend === "pm-worker"
-                          ? pmWorkerConnectionState === "ready"
+                          ? pmWorkerReady
                             ? "connected"
                             : pmWorkerConnectionState === "loading"
                               ? "connecting"
@@ -6108,6 +6159,8 @@ export default function Home() {
                     <strong>
                       {pmWorkerConnectionState === "ready"
                         ? "PM Worker AI가 연결됐어요"
+                        : pmWorkerLocalFallbackReady
+                          ? "PM Worker AI를 내 PC Claude Code로 자동 복구했어요"
                         : pmWorkerConnectionState === "loading"
                           ? "PM Worker AI를 확인하고 있어요"
                           : pmWorkerConnectionState === "unavailable"
@@ -6115,11 +6168,15 @@ export default function Home() {
                             : "PM Worker AI 서버가 응답하지 않아요"}
                     </strong>
                     <p>
-                      {pmWorkerConnectionState === "unavailable"
+                      {pmWorkerLocalFallbackReady &&
+                      pmWorkerConnectionState !== "ready"
+                        ? `공용 워커 인증이 끊겨도 질문을 멈추지 않고, 연결된 내 PC Claude Code가 같은 고양이 대화창으로 답변합니다. 질문마다 조개 ${AI_CHAT_SHELL_COST}개를 사용해요.`
+                        : pmWorkerConnectionState === "unavailable"
                         ? "같은 오류 답변을 반복하지 않도록 질문 전송을 멈췄어요. 지금 바로 사용할 수 있는 내 PC Claude Code 또는 Codex로 전환해 주세요."
                         : `ProjectManager 서버의 대화형 AI 워커를 사용합니다. 질문할 때마다 조개 ${AI_CHAT_SHELL_COST}개가 차감되며, 연결 실패 시에는 자동으로 돌려드려요.`}
                     </p>
-                    {pmWorkerConnectionState === "unavailable" && (
+                    {pmWorkerConnectionState === "unavailable" &&
+                      !pmWorkerLocalFallbackReady && (
                       <div className="backend-fallback-actions">
                         {claudeAvailable && (
                           <button
@@ -6145,6 +6202,7 @@ export default function Home() {
                     )}
                     {/* AI 엔드포인트가 아예 없는 판에서는 다시 확인해 봐야 결과가 같다. */}
                     {pmWorkerConnectionState !== "ready" &&
+                      !pmWorkerLocalFallbackReady &&
                       pmWorkerConnectionState !== "unavailable" && (
                       <button
                         type="button"

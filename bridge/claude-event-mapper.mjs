@@ -11,7 +11,9 @@ function baseEvent(context, overrides) {
     source: "claude",
     mode: "claude",
     taskId: context.taskId,
-    threadId: context.threadId,
+    // PM Worker의 공용 서버가 멈춘 동안 Claude Code가 대신 답할 때는
+    // 실제 Claude 세션 ID 대신 원래 고양이 대화 ID로 이벤트를 돌려보낸다.
+    threadId: context.conversationThreadId ?? context.threadId,
     turnId: context.turnId,
     agentId: context.agentId,
     agentName: context.agentName ?? null,

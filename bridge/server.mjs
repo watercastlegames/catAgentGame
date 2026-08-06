@@ -408,6 +408,8 @@ function createContext(body, mode, threadId = null) {
     department,
     departmentLabel: departmentLabels[department],
     prompt: safeText(body.prompt, 4_000),
+    conversationThreadId:
+      safeText(body.conversationThreadId, 120) || null,
     mode,
     lastMessage: "",
   };
@@ -567,7 +569,7 @@ function emitClaudeFailure(threadId, runId, detail) {
   broadcast({
     type: "task.failed",
     taskId: runId,
-    threadId,
+    threadId: context.conversationThreadId ?? threadId,
     turnId: runId,
     seatId: context.seatId ?? null,
     agentName: context.agentName ?? null,
@@ -992,10 +994,11 @@ async function startClaudeTurn(threadId, body) {
     seatId: safeText(body.seatId, 40) || null,
     agentName: safeText(body.agentName, 80) || null,
   });
+  const eventThreadId = context.conversationThreadId ?? threadId;
   broadcast({
     type: "task.queued",
     taskId: context.taskId,
-    threadId,
+    threadId: eventThreadId,
     seatId: context.seatId,
     agentName: context.agentName,
     agentId: context.agentId,
@@ -1014,6 +1017,38 @@ async function startClaudeTurn(threadId, body) {
   });
   context.turnId = result.turnId;
   return result;
+}
+
+const pmWorkerFallbackSessions = new Map();
+
+async function startPmWorkerFallback(body) {
+  if (!claudeAdapter || !claudeAuth.loggedIn) {
+    throw new Error(
+      claudeAuth.detail ||
+        "PM Worker와 내 PC Claude Code가 모두 연결되어 있지 않습니다.",
+    );
+  }
+  const conversationThreadId = safeText(
+    body.conversationThreadId ?? body.catId,
+    120,
+  );
+  if (!conversationThreadId) {
+    throw new Error("PM Worker 대화를 이어갈 고양이 정보가 없습니다.");
+  }
+  let threadId = pmWorkerFallbackSessions.get(conversationThreadId);
+  if (!threadId) {
+    const session = claudeAdapter.createSession();
+    threadId = session.id;
+    pmWorkerFallbackSessions.set(conversationThreadId, threadId);
+    sessionListCache.clear();
+  }
+  return {
+    fallbackProvider: "local-claude",
+    ...(await startClaudeTurn(threadId, {
+      ...body,
+      conversationThreadId,
+    })),
+  };
 }
 
 async function startTurn(threadId, body) {
@@ -1125,6 +1160,10 @@ async function executeRelayCommand(command) {
 
   if (commandUrl.pathname === "/v2/sessions") {
     return { session: await createSession(commandUrl) };
+  }
+
+  if (commandUrl.pathname === "/v2/pm-worker/chat") {
+    return { accepted: true, ...(await startPmWorkerFallback(body)) };
   }
 
   const sessionMatch = commandUrl.pathname.match(
@@ -1281,7 +1320,12 @@ const server = createServer(async (request, response) => {
       })}\n\n`,
     );
     clients.add(response);
-    request.on("close", () => clients.delete(response));
+    // IncomingMessage `close` fires as soon as the request side has been
+    // consumed, even though the SSE response must remain open. Removing the
+    // client there drops delayed Claude/Codex completion events. Track the
+    // response lifecycle instead so the client stays subscribed until the
+    // browser actually closes the stream.
+    response.on("close", () => clients.delete(response));
     return;
   }
 
@@ -1296,6 +1340,17 @@ const server = createServer(async (request, response) => {
     if (request.method === "POST" && requestUrl.pathname === "/v2/sessions") {
       sendJson(response, request, 201, {
         session: await createSession(requestUrl),
+      });
+      return;
+    }
+
+    if (
+      request.method === "POST" &&
+      requestUrl.pathname === "/v2/pm-worker/chat"
+    ) {
+      sendJson(response, request, 202, {
+        accepted: true,
+        ...(await startPmWorkerFallback(await readJson(request))),
       });
       return;
     }

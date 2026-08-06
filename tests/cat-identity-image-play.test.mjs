@@ -9,8 +9,8 @@ const imagePlayPath = new URL("../app/image-play.ts", import.meta.url);
 test("선택한 고양이의 자리와 이름을 모든 작업 이벤트에 고정한다", async () => {
   const source = await readFile(pagePath, "utf8");
   assert.match(source, /const taskSeatId = focusedSeatId/);
-  assert.equal((source.match(/seatId: taskSeatId/g) ?? []).length, 4);
-  assert.equal((source.match(/agentName: catName/g) ?? []).length, 4);
+  assert.equal((source.match(/seatId: taskSeatId/g) ?? []).length, 5);
+  assert.equal((source.match(/agentName: catName/g) ?? []).length, 5);
   assert.match(source, /requestedSeatId \?\?\s*existing\?\.seatId/);
   assert.match(source, /event\.agentName \?\?\s*existing\?\.agentName/);
   assert.match(source, /buildCatPersonaPrompt\(\{\s*catName,/);

@@ -14,6 +14,14 @@ const page = await readFile(
   new URL("../app/page.tsx", import.meta.url),
   "utf8",
 );
+const bridge = await readFile(
+  new URL("../bridge/server.mjs", import.meta.url),
+  "utf8",
+);
+const cloudRelay = await readFile(
+  new URL("../worker/relay.ts", import.meta.url),
+  "utf8",
+);
 
 test("PM Worker chat charges exactly five shells per submitted conversation", () => {
   assert.match(client, /PM_WORKER_CHAT_SHELL_COST\s*=\s*AI_CHAT_SHELL_COST/);
@@ -43,6 +51,16 @@ test("PM Worker health verifies a real chat instead of a history-only false posi
   assert.match(client, /body\?\.code === "worker_down"/);
   assert.match(page, /Claude Code \(내 PC\)로 전환/);
   assert.match(page, /ChatGPT Codex \(내 PC\)로 전환/);
+});
+
+test("PM Worker automatically falls back to the paired local Claude Code", () => {
+  assert.match(page, /pmWorkerLocalFallbackReady/);
+  assert.match(page, /apiFetch\("\/v2\/pm-worker\/chat"/);
+  assert.match(page, /PM Worker를 내 PC Claude Code로 자동 복구했어요/);
+  assert.match(bridge, /async function startPmWorkerFallback/);
+  assert.match(bridge, /pmWorkerFallbackSessions/);
+  assert.match(bridge, /conversationThreadId/);
+  assert.match(cloudRelay, /relayPath === "\/v2\/pm-worker\/chat"/);
 });
 
 test("PM Worker relay explicitly requests web search for current-information prompts", () => {

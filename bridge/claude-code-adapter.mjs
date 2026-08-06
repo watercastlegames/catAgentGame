@@ -346,14 +346,19 @@ export class ClaudeCodeAdapter extends EventEmitter {
     } else {
       args.push("--resume", sessionId);
     }
-    args.push("--", prompt);
-
     const child = this.spawnProcess(this.claudeEntry, args, {
       cwd: session.cwd || this.cwd,
       env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
+    // Windows에서 한글 프롬프트를 명령행 인수로 넘기면 .cmd 경계를 지나며
+    // 물음표로 손실될 수 있다. Claude Code의 print 모드는 stdin 입력을
+    // 지원하므로 UTF-8 바이트 스트림으로 전달해 원문을 보존한다.
+    child.stdin.on("error", () => {
+      // 조기 종료된 프로세스의 EPIPE가 브리지 전체를 종료시키면 안 된다.
+    });
+    child.stdin.end(Buffer.from(prompt, "utf8"));
     const run = {
       child,
       runId,

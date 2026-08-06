@@ -643,6 +643,7 @@ export async function handleRelayRequest(
     const isAllowedCommand =
       request.method === "POST" &&
       (relayPath === "/v2/sessions" ||
+        relayPath === "/v2/pm-worker/chat" ||
         relayPath === "/simulate" ||
         /^\/v2\/sessions\/[^/]+\/(resume|turns|steer|interrupt)$/.test(
           relayPath,
