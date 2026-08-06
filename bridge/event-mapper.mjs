@@ -64,6 +64,8 @@ function baseEvent(context, overrides) {
     threadId: context.threadId ?? null,
     turnId: context.turnId ?? null,
     agentId: context.agentId,
+    agentName: context.agentName ?? null,
+    seatId: context.seatId ?? null,
     department: context.department,
     occurredAt: new Date().toISOString(),
     ...overrides,

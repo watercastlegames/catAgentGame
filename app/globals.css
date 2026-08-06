@@ -7360,6 +7360,18 @@ button {
   margin-bottom: 0;
 }
 
+.backend-fallback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.backend-fallback-actions button {
+  min-height: 44px;
+  flex: 1 1 210px;
+}
+
 .connection-guide-banner {
   display: grid;
   grid-template-columns: 46px minmax(0, 1fr) auto;

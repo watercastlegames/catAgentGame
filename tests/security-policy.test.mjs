@@ -27,3 +27,26 @@ test("auto-approves only exact read-only command approvals", () => {
     false,
   );
 });
+
+test("auto-approves only the known Codex usage footer script", () => {
+  const usageCommand =
+    '"C:\\\\Windows\\\\System32\\\\WindowsPowerShell\\\\v1.0\\\\powershell.exe" -Command "bun C:\\\\Users\\\\smini\\\\.codex\\\\scripts\\\\cx-usage-footer.ts --cwd \\"C:\\\\Users\\\\smini\\\\AgentForestWorkspace\\" --thread-id \\"$env:CODEX_THREAD_ID\\""';
+  assert.equal(
+    isSafeReadOnlyCommand("command_execution", usageCommand),
+    true,
+  );
+  assert.equal(
+    isSafeReadOnlyCommand(
+      "command_execution",
+      `${usageCommand}; Remove-Item important.txt`,
+    ),
+    false,
+  );
+  assert.equal(
+    isSafeReadOnlyCommand(
+      "command_execution",
+      'powershell.exe -Command "bun C:\\\\Users\\\\smini\\\\other-script.ts --cwd C:\\\\temp --thread-id 1"',
+    ),
+    false,
+  );
+});

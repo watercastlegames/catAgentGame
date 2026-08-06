@@ -14,6 +14,11 @@ type PuterAuth = {
   signIn: () => Promise<unknown>;
 };
 
+type PuterImageResponse =
+  | HTMLImageElement
+  | string
+  | { src?: string; url?: string };
+
 declare global {
   interface Window {
     puter?: {
@@ -23,6 +28,10 @@ declare global {
           prompt: string,
           options?: Record<string, unknown>,
         ) => Promise<PuterChatResponse>;
+        txt2img?: (
+          prompt: string,
+          options?: Record<string, unknown>,
+        ) => Promise<PuterImageResponse>;
       };
     };
   }
@@ -112,4 +121,27 @@ export async function submitPuterTask(prompt: string) {
   const result = readPuterText(response);
   if (!result) throw new Error("무료 AI가 빈 답변을 반환했어요.");
   return result;
+}
+
+export async function generatePuterImage(
+  prompt: string,
+  inputImage?: string,
+) {
+  await loadPuterCompanion();
+  if (!window.puter?.auth?.isSignedIn()) {
+    throw new Error("이미지 놀이를 시작하려면 무료 AI에 로그인해 주세요.");
+  }
+  const txt2img = window.puter?.ai?.txt2img;
+  if (!txt2img) throw new Error("이미지 생성 기능을 불러오지 못했어요.");
+  const response = await txt2img(prompt, {
+    provider: "openai-image-generation",
+    model: "gpt-image-1-mini",
+    quality: "low",
+    ratio: { w: 1, h: 1 },
+    ...(inputImage ? { input_image: inputImage } : {}),
+  });
+  if (typeof response === "string" && response.trim()) return response;
+  const source = response?.src || response?.url;
+  if (!source) throw new Error("완성된 이미지를 받지 못했어요.");
+  return source;
 }

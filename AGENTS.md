@@ -1,3 +1,5 @@
+@docs/asset-replacement-rendering-standard.md
+
 # Project communication preferences
 
 ## 최종 응답에는 중요한 결과만 표시

@@ -6,6 +6,7 @@ import {
 } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { handleCompanyCliRequest } from "./company-relay";
+import { handleAifImageRequest } from "./aif-image-relay";
 import { handlePmWorkerRequest } from "./pm-worker-relay";
 import { handleRelayRequest } from "./relay";
 import { handlePlayerSyncRequest } from "./player-sync";
@@ -18,6 +19,9 @@ interface Env {
   COMPANY_CLI_API_TOKEN?: string;
   PM_WORKER_CHAT_ENDPOINT?: string;
   PM_WORKER_CHAT_API_KEY?: string;
+  AIF_IMAGE_ENDPOINT?: string;
+  AIF_IMAGE_API_KEY?: string;
+  AIF_IMAGE_PROJECT_ID?: string;
   IMAGES: {
     input(stream: ReadableStream): {
       transform(options: Record<string, unknown>): {
@@ -51,6 +55,9 @@ const worker = {
 
     const playerSyncResponse = await handlePlayerSyncRequest(request, env);
     if (playerSyncResponse) return playerSyncResponse;
+
+    const aifImageResponse = await handleAifImageRequest(request, env);
+    if (aifImageResponse) return aifImageResponse;
 
     const companyCliResponse = await handleCompanyCliRequest(request, env);
     if (companyCliResponse) return companyCliResponse;

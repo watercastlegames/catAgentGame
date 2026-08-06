@@ -19,6 +19,12 @@ type PmWorkerChatResponse = {
   error?: string;
 };
 
+type PmWorkerHealthResponse = {
+  ready?: boolean;
+  error?: string;
+  code?: string;
+};
+
 function readSessionMap() {
   if (typeof window === "undefined") return {} as Record<string, string>;
   try {
@@ -63,11 +69,16 @@ export async function inspectPmWorkerConnection(): Promise<PmWorkerConnectionSta
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
-    if (response.ok) return "ready";
+    const body = (await response.json().catch(() => null)) as
+      | PmWorkerHealthResponse
+      | null;
+    if (response.ok && body?.ready === true) return "ready";
     /* 404 는 "서버가 잠깐 이상함"이 아니라 "이 판에는 AI 가 아예 없음"이다.
        정적 미리보기 복사본이 그렇다 — 둘을 같은 문구로 묶으면
        고칠 수 없는 것을 계속 다시 시도하게 된다. */
-    return response.status === 404 ? "unavailable" : "error";
+    return response.status === 404 || body?.code === "worker_down"
+      ? "unavailable"
+      : "error";
   } catch {
     return "error";
   }

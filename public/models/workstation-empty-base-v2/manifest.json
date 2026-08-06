@@ -1,0 +1,31 @@
+{
+  "version": 2,
+  "purpose": "Workstation bases generated without baked purchasable decor.",
+  "defaultDecor": [],
+  "rendering": {
+    "material": "runtime-unlit",
+    "outlineColor": "#735B4F",
+    "outlineThickness": 0.0038,
+    "outlineAlpha": 0.72
+  },
+  "models": [
+    {
+      "seatId": "seat-1",
+      "kind": "monitor",
+      "file": "low-monitor-no-decor-meshy6-web-v1.glb",
+      "bakedDecor": []
+    },
+    {
+      "seatId": "seat-3",
+      "kind": "round-laptop",
+      "file": "round-laptop-no-decor-meshy6-web-v1.glb",
+      "bakedDecor": []
+    },
+    {
+      "seatId": "seat-4",
+      "kind": "folding-laptop",
+      "file": "folding-laptop-no-decor-meshy6-web-v1.glb",
+      "bakedDecor": []
+    }
+  ]
+}

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { createServer } from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -10,11 +11,22 @@ import {
 } from "./cloud-relay.mjs";
 import { CodexAppServerClient } from "./codex-app-server-client.mjs";
 import {
+  ClaudeCodeAdapter,
+  isClaudeThreadId,
+} from "./claude-code-adapter.mjs";
+import { mapClaudeMessage } from "./claude-event-mapper.mjs";
+import {
   createSimulationEvents,
   mapCodexEvent,
 } from "./event-mapper.mjs";
 import { PairingAttemptLimiter, PairingStore } from "./pairing-store.mjs";
 import { isSafeReadOnlyCommand } from "./security-policy.mjs";
+import { SessionListCache } from "./session-list-cache.mjs";
+import {
+  buildRolloverPrompt,
+  inspectThreadRollout,
+  readRecentConversation,
+} from "./session-rollover.mjs";
 import {
   presentThread,
   presentThreadPage,
@@ -66,6 +78,12 @@ const threadContexts = new Map();
 const activeTurns = new Map();
 const pendingApprovals = new Map();
 const itemCache = new Map();
+const loadedThreadIds = new Set();
+const threadMetadataCache = new Map();
+const sessionListCache = new SessionListCache();
+const THREAD_RESUME_TIMEOUT_MS = 60_000;
+const codexSessionsRoot = path.join(os.homedir(), ".codex", "sessions");
+const finishedClaudeRuns = new Set();
 let sequence = 0;
 let appServerClient = null;
 let appServerPromise = null;
@@ -100,6 +118,59 @@ const codexVersion = codexEntry
       encoding: "utf8",
       windowsHide: true,
     }).stdout.trim()
+  : null;
+
+function resolveClaudeEntry() {
+  const candidates = [
+    process.env.CLAUDE_CODE_ENTRY,
+    process.platform === "win32" && process.env.APPDATA
+      ? path.join(
+          process.env.APPDATA,
+          "npm",
+          "node_modules",
+          "@anthropic-ai",
+          "claude-code",
+          "bin",
+          "claude.exe",
+        )
+      : null,
+    process.platform !== "win32" ? "claude" : null,
+  ].filter(Boolean);
+  return (
+    candidates.find((candidate) => candidate === "claude" || existsSync(candidate)) ??
+    null
+  );
+}
+
+function inspectClaudeAuth(entry) {
+  if (!entry) return { loggedIn: false, detail: "Claude Code CLI를 찾지 못했습니다." };
+  try {
+    const result = spawnSync(entry, ["auth", "status"], {
+      encoding: "utf8",
+      timeout: 12_000,
+      windowsHide: true,
+    });
+    const parsed = JSON.parse(result.stdout || "{}");
+    return {
+      loggedIn: result.status === 0 && parsed.loggedIn === true,
+      detail: parsed.loggedIn === true ? null : "Claude Code 로그인이 필요합니다.",
+    };
+  } catch (error) {
+    return { loggedIn: false, detail: safeText(error?.message, 220) };
+  }
+}
+
+const claudeEntry = resolveClaudeEntry();
+const claudeVersion = claudeEntry
+  ? spawnSync(claudeEntry, ["--version"], {
+      encoding: "utf8",
+      timeout: 12_000,
+      windowsHide: true,
+    }).stdout.trim()
+  : null;
+const claudeAuth = inspectClaudeAuth(claudeEntry);
+const claudeAdapter = claudeEntry
+  ? new ClaudeCodeAdapter({ claudeEntry, cwd: workspace })
   : null;
 
 function isAllowedOrigin(origin) {
@@ -180,14 +251,28 @@ function requireAuthorization(request, response, requestUrl) {
 }
 
 function publicState({ paired = false } = {}) {
+  const claudeAvailable = Boolean(claudeAdapter && claudeAuth.loggedIn);
   return {
     connected: true,
-    provider: "codex-app-server",
+    provider: "codex-app-server+claude-code",
     available: Boolean(codexEntry),
     version: codexVersion,
+    claudeAvailable,
+    claudeVersion,
+    claudeAuthDetail: claudeAuth.detail,
+    providers: {
+      codex: {
+        available: Boolean(codexEntry),
+        version: codexVersion,
+      },
+      claude: {
+        available: claudeAvailable,
+        version: claudeVersion,
+      },
+    },
     appServerConnected: Boolean(appServerClient?.ready),
-    running: activeTurns.size > 0,
-    activeSessionCount: activeTurns.size,
+    running: activeTurns.size + (claudeAdapter?.activeCount ?? 0) > 0,
+    activeSessionCount: activeTurns.size + (claudeAdapter?.activeCount ?? 0),
     pendingApprovalCount: pendingApprovals.size,
     lastRunOk,
     paired,
@@ -373,6 +458,8 @@ function approvalItem(params) {
 function handleNotification({ method, params }) {
   const threadId = params.threadId ?? params.thread?.id ?? null;
   if (method === "thread/started" && params.thread) {
+    if (params.thread.id) loadedThreadIds.add(params.thread.id);
+    sessionListCache.clear();
     broadcast({
       type: "session.updated",
       session: presentThread(params.thread),
@@ -383,6 +470,7 @@ function handleNotification({ method, params }) {
   }
 
   if (method === "thread/status/changed" && params.thread) {
+    sessionListCache.clear();
     broadcast({
       type: "session.updated",
       session: presentThread(params.thread),
@@ -461,6 +549,71 @@ function handleNotification({ method, params }) {
   if (method === "turn/completed") {
     broadcast({ type: "bridge.status", ...publicState(), source: "bridge" });
   }
+}
+
+function rememberFinishedClaudeRun(runId) {
+  finishedClaudeRuns.add(runId);
+  const timer = setTimeout(() => finishedClaudeRuns.delete(runId), 60_000);
+  timer.unref?.();
+}
+
+function emitClaudeFailure(threadId, runId, detail) {
+  if (finishedClaudeRuns.has(runId)) return;
+  rememberFinishedClaudeRun(runId);
+  const context = contextFor(threadId);
+  context.turnId = runId;
+  context.taskId = runId;
+  lastRunOk = false;
+  broadcast({
+    type: "task.failed",
+    taskId: runId,
+    threadId,
+    turnId: runId,
+    seatId: context.seatId ?? null,
+    agentName: context.agentName ?? null,
+    agentId: context.agentId,
+    department: context.department,
+    status: "failed",
+    location: context.department,
+    title: "Claude Code 작업이 중단됐어요",
+    detail: safeText(detail, 400) || "Claude Code 실행이 완료되지 않았어요.",
+    mode: "claude",
+    source: "claude",
+  });
+  sessionListCache.clear();
+  broadcast({ type: "bridge.status", ...publicState(), source: "bridge" });
+}
+
+if (claudeAdapter) {
+  claudeAdapter.on("message", ({ threadId, runId, message }) => {
+    const context = contextFor(threadId);
+    context.threadId = threadId;
+    context.turnId = runId;
+    context.taskId = runId;
+    for (const event of mapClaudeMessage(message, context)) broadcast(event);
+    if (message?.type === "result") {
+      rememberFinishedClaudeRun(runId);
+      lastRunOk = !message.is_error && message.subtype === "success";
+      sessionListCache.clear();
+      broadcast({ type: "bridge.status", ...publicState(), source: "bridge" });
+    }
+  });
+  claudeAdapter.on("processError", ({ threadId, runId, error }) => {
+    emitClaudeFailure(threadId, runId, error?.message);
+  });
+  claudeAdapter.on(
+    "close",
+    ({ threadId, runId, code, signal, stderr, hadResult, interrupted }) => {
+      if (hadResult || finishedClaudeRuns.has(runId)) return;
+      emitClaudeFailure(
+        threadId,
+        runId,
+        interrupted
+          ? "사용자가 Claude Code 작업을 중단했어요."
+          : stderr || `Claude Code가 종료되었습니다. (${signal || code || "unknown"})`,
+      );
+    },
+  );
 }
 
 function approvalCopy(method, params) {
@@ -603,7 +756,9 @@ async function ensureAppServer() {
       appServerPromise = null;
       appServerClient = null;
       activeTurns.clear();
+      loadedThreadIds.clear();
       pendingApprovals.clear();
+      sessionListCache.clear();
       broadcast({
         type: "bridge.status",
         ...publicState(),
@@ -650,78 +805,233 @@ function scheduleAppServerRestart() {
 }
 
 async function listSessions(requestUrl) {
-  const client = await ensureAppServer();
   const requestedLimit = Number(requestUrl.searchParams.get("limit") ?? 20);
   const limit = Math.max(1, Math.min(50, requestedLimit || 20));
   const cursor = requestUrl.searchParams.get("cursor");
-  const result = await client.request(
-    "thread/list",
-    {
-      limit,
-      cursor: cursor || null,
-      archived: false,
-      sortKey: "recency_at",
-      sortDirection: "desc",
-      useStateDbOnly: true,
-    },
-    45_000,
-  );
-  return presentThreadPage(result);
+  const provider =
+    requestUrl.searchParams.get("provider") === "claude" ? "claude" : "codex";
+  const cacheKey = `${provider}:${limit}:${cursor || "first"}`;
+  return sessionListCache.get(cacheKey, async () => {
+    if (provider === "claude") {
+      if (!claudeAdapter || !claudeAuth.loggedIn) {
+        throw new Error(
+          claudeAuth.detail || "Claude Code CLI가 연결되어 있지 않습니다.",
+        );
+      }
+      return claudeAdapter.listSessions({ limit, cursor });
+    }
+    const client = await ensureAppServer();
+    const result = await client.request(
+      "thread/list",
+      {
+        limit,
+        cursor: cursor || null,
+        archived: false,
+        sortKey: "recency_at",
+        sortDirection: "desc",
+        useStateDbOnly: true,
+      },
+      45_000,
+    );
+    for (const thread of result.data ?? []) {
+      if (thread?.id) threadMetadataCache.set(thread.id, thread);
+    }
+    return presentThreadPage(result);
+  });
 }
 
-async function createSession() {
+async function createSession(requestUrl = new URL("http://bridge/v2/sessions")) {
+  if (requestUrl.searchParams.get("provider") === "claude") {
+    if (!claudeAdapter || !claudeAuth.loggedIn) {
+      throw new Error(
+        claudeAuth.detail || "Claude Code CLI가 연결되어 있지 않습니다.",
+      );
+    }
+    const session = claudeAdapter.createSession();
+    sessionListCache.clear();
+    return session;
+  }
   const client = await ensureAppServer();
   const result = await client.request("thread/start", {
     cwd: workspace,
     ephemeral: false,
     experimentalRawEvents: false,
   });
+  sessionListCache.clear();
+  if (result.thread?.id) loadedThreadIds.add(result.thread.id);
   return presentThread(result.thread);
 }
 
 async function resumeSession(threadId) {
+  if (isClaudeThreadId(threadId)) {
+    if (!claudeAdapter || !claudeAuth.loggedIn) {
+      throw new Error(
+        claudeAuth.detail || "Claude Code CLI가 연결되어 있지 않습니다.",
+      );
+    }
+    return claudeAdapter.resumeSession(threadId);
+  }
   const client = await ensureAppServer();
   const result = await client.request(
     "thread/resume",
     { threadId },
-    45_000,
+    THREAD_RESUME_TIMEOUT_MS,
   );
+  loadedThreadIds.add(threadId);
   return presentThread(result.thread);
 }
 
-async function startTurn(threadId, body) {
+async function ensureThreadLoaded(client, threadId) {
+  if (loadedThreadIds.has(threadId)) return;
+  await client.request(
+    "thread/resume",
+    { threadId },
+    THREAD_RESUME_TIMEOUT_MS,
+  );
+  loadedThreadIds.add(threadId);
+}
+
+async function prepareTurnThread(client, threadId, prompt) {
+  const rollout = await inspectThreadRollout(codexSessionsRoot, threadId);
+  if (!rollout?.oversized) {
+    await ensureThreadLoaded(client, threadId);
+    return { threadId, prompt, rolledOver: false };
+  }
+
+  const metadata = threadMetadataCache.get(threadId) ?? {};
+  const recentMessages = await readRecentConversation(rollout.filePath);
+  const started = await client.request("thread/start", {
+    cwd:
+      typeof metadata.cwd === "string" && metadata.cwd
+        ? metadata.cwd
+        : workspace,
+    ephemeral: false,
+    experimentalRawEvents: false,
+  });
+  const replacementThreadId = started.thread?.id;
+  if (!replacementThreadId) {
+    throw new Error("대형 Codex 세션을 승계할 새 세션을 만들지 못했습니다.");
+  }
+  loadedThreadIds.add(replacementThreadId);
+  threadMetadataCache.set(replacementThreadId, started.thread);
+  sessionListCache.clear();
+  return {
+    threadId: replacementThreadId,
+    prompt: buildRolloverPrompt({
+      originalTitle: metadata.name || metadata.preview,
+      recentMessages,
+      prompt,
+    }),
+    rolledOver: true,
+    replacedThreadId: threadId,
+    originalSize: rollout.size,
+  };
+}
+
+async function startCodexTurn(threadId, body) {
   const prompt = safeText(body.prompt, 4_000);
   const displayPrompt = safeText(body.displayPrompt, 2_000) || prompt;
   if (!prompt) throw new Error("작업 내용을 입력해 주세요.");
   const client = await ensureAppServer();
-  await client.request("thread/resume", { threadId }, 45_000);
+  const prepared = await prepareTurnThread(client, threadId, prompt);
+  const activeThreadId = prepared.threadId;
   const context = contextFor(
-    threadId,
-    createContext(body, "codex", threadId),
+    activeThreadId,
+    {
+      ...createContext(body, "codex", activeThreadId),
+      seatId: safeText(body.seatId, 40) || null,
+      agentName: safeText(body.agentName, 80) || null,
+    },
   );
   broadcast({
     type: "task.queued",
     taskId: context.taskId,
-    threadId,
+    threadId: activeThreadId,
+    seatId: context.seatId,
+    agentName: context.agentName,
     agentId: context.agentId,
     department: context.department,
     status: "queued",
     location: "general",
-    title: "선택한 Codex 세션에 작업을 전달했어요",
+    title: prepared.rolledOver
+      ? "큰 Codex 세션을 가볍게 승계해 작업을 시작했어요"
+      : "선택한 Codex 세션에 작업을 전달했어요",
     detail: displayPrompt.slice(0, 220),
     prompt: displayPrompt,
     mode: "codex",
     source: "bridge",
   });
   const result = await client.request("turn/start", {
-    threadId,
-    input: [{ type: "text", text: prompt }],
+    threadId: activeThreadId,
+    input: [{ type: "text", text: prepared.prompt }],
   });
   const turnId = result.turn?.id ?? null;
   context.turnId = turnId;
   context.taskId = turnId ?? context.taskId;
-  if (turnId) activeTurns.set(threadId, turnId);
-  return { threadId, turnId, taskId: context.taskId };
+  if (turnId) activeTurns.set(activeThreadId, turnId);
+  return {
+    threadId: activeThreadId,
+    turnId,
+    taskId: context.taskId,
+    rolledOver: prepared.rolledOver,
+    replacedThreadId: prepared.replacedThreadId ?? null,
+  };
+}
+
+async function startClaudeTurn(threadId, body) {
+  if (!claudeAdapter || !claudeAuth.loggedIn) {
+    throw new Error(
+      claudeAuth.detail || "Claude Code CLI가 연결되어 있지 않습니다.",
+    );
+  }
+  const prompt = safeText(body.prompt, 4_000);
+  const displayPrompt = safeText(body.displayPrompt, 2_000) || prompt;
+  if (!prompt) throw new Error("작업 내용을 입력해 주세요.");
+  const context = contextFor(threadId, {
+    ...createContext(body, "claude", threadId),
+    seatId: safeText(body.seatId, 40) || null,
+    agentName: safeText(body.agentName, 80) || null,
+  });
+  broadcast({
+    type: "task.queued",
+    taskId: context.taskId,
+    threadId,
+    seatId: context.seatId,
+    agentName: context.agentName,
+    agentId: context.agentId,
+    department: context.department,
+    status: "queued",
+    location: "general",
+    title: "Claude Code 작업을 접수했어요",
+    detail: displayPrompt.slice(0, 220),
+    prompt: displayPrompt,
+    mode: "claude",
+    source: "claude",
+  });
+  const result = await claudeAdapter.startTurn(threadId, prompt, {
+    agentName: context.agentName,
+    runId: context.taskId,
+  });
+  context.turnId = result.turnId;
+  return result;
+}
+
+async function startTurn(threadId, body) {
+  return isClaudeThreadId(threadId)
+    ? startClaudeTurn(threadId, body)
+    : startCodexTurn(threadId, body);
+}
+
+async function interruptTurn(threadId) {
+  if (isClaudeThreadId(threadId)) {
+    if (!claudeAdapter) throw new Error("Claude Code CLI를 찾지 못했습니다.");
+    return claudeAdapter.interrupt(threadId);
+  }
+  const turnId = activeTurns.get(threadId);
+  if (!turnId) throw new Error("중단할 활성 작업을 찾지 못했습니다.");
+  const client = await ensureAppServer();
+  await client.request("turn/interrupt", { threadId, turnId });
+  return { interrupted: true, turnId };
 }
 
 async function respondApproval(requestId, decision) {
@@ -780,10 +1090,22 @@ function runSimulation(context) {
 async function relaySnapshot() {
   let sessions = [];
   try {
-    const page = await listSessions(new URL("http://relay/v2/sessions?limit=30"));
-    sessions = page.data ?? [];
+    const codexPage = await listSessions(
+      new URL("http://relay/v2/sessions?limit=30&provider=codex"),
+    );
+    sessions.push(...(codexPage.data ?? []));
   } catch {
     // Health still reaches the browser while Codex is starting or reconnecting.
+  }
+  if (claudeAdapter && claudeAuth.loggedIn) {
+    try {
+      const claudePage = await listSessions(
+        new URL("http://relay/v2/sessions?limit=30&provider=claude"),
+      );
+      sessions.push(...(claudePage.data ?? []));
+    } catch {
+      // A Claude listing failure must not hide healthy Codex sessions.
+    }
   }
   return {
     ...publicState({ paired: false }),
@@ -802,7 +1124,7 @@ async function executeRelayCommand(command) {
   const body = command.body && typeof command.body === "object" ? command.body : {};
 
   if (commandUrl.pathname === "/v2/sessions") {
-    return { session: await createSession() };
+    return { session: await createSession(commandUrl) };
   }
 
   const sessionMatch = commandUrl.pathname.match(
@@ -818,6 +1140,11 @@ async function executeRelayCommand(command) {
       return { accepted: true, ...(await startTurn(threadId, body)) };
     }
     if (action === "steer") {
+      if (isClaudeThreadId(threadId)) {
+        throw new Error(
+          "Claude Code 작업 중 추가 지시는 다음 대화에서 보내 주세요.",
+        );
+      }
       const turnId = activeTurns.get(threadId);
       const prompt = safeText(body.prompt, 2_000);
       if (!turnId || !prompt) {
@@ -832,11 +1159,7 @@ async function executeRelayCommand(command) {
       return { accepted: true, turnId: result.turnId ?? turnId };
     }
     if (action === "interrupt") {
-      const turnId = activeTurns.get(threadId);
-      if (!turnId) throw new Error("중단할 활성 작업을 찾지 못했습니다.");
-      const client = await ensureAppServer();
-      await client.request("turn/interrupt", { threadId, turnId });
-      return { interrupted: true, turnId };
+      return interruptTurn(threadId);
     }
   }
 
@@ -971,7 +1294,9 @@ const server = createServer(async (request, response) => {
     }
 
     if (request.method === "POST" && requestUrl.pathname === "/v2/sessions") {
-      sendJson(response, request, 201, { session: await createSession() });
+      sendJson(response, request, 201, {
+        session: await createSession(requestUrl),
+      });
       return;
     }
 
@@ -982,6 +1307,12 @@ const server = createServer(async (request, response) => {
       const threadId = decodeURIComponent(sessionMatch[1]);
       const action = sessionMatch[2] ?? "read";
       if (request.method === "GET" && action === "read") {
+        if (isClaudeThreadId(threadId)) {
+          sendJson(response, request, 200, {
+            session: await resumeSession(threadId),
+          });
+          return;
+        }
         const client = await ensureAppServer();
         const result = await client.request("thread/read", {
           threadId,
@@ -1007,6 +1338,11 @@ const server = createServer(async (request, response) => {
         return;
       }
       if (request.method === "POST" && action === "steer") {
+        if (isClaudeThreadId(threadId)) {
+          throw new Error(
+            "Claude Code 작업 중 추가 지시는 다음 대화에서 보내 주세요.",
+          );
+        }
         const body = await readJson(request);
         const turnId = activeTurns.get(threadId);
         const prompt = safeText(body.prompt, 2_000);
@@ -1026,11 +1362,7 @@ const server = createServer(async (request, response) => {
         return;
       }
       if (request.method === "POST" && action === "interrupt") {
-        const turnId = activeTurns.get(threadId);
-        if (!turnId) throw new Error("중단할 활성 작업을 찾지 못했습니다.");
-        const client = await ensureAppServer();
-        await client.request("turn/interrupt", { threadId, turnId });
-        sendJson(response, request, 202, { interrupted: true, turnId });
+        sendJson(response, request, 202, await interruptTurn(threadId));
         return;
       }
     }
@@ -1052,7 +1384,14 @@ const server = createServer(async (request, response) => {
     if (request.method === "POST" && requestUrl.pathname === "/run") {
       const body = await readJson(request);
       let threadId = safeText(body.threadId, 160);
-      if (!threadId) threadId = (await createSession()).id;
+      if (!threadId) {
+        const provider = body.provider === "claude" ? "claude" : "codex";
+        threadId = (
+          await createSession(
+            new URL(`http://bridge/v2/sessions?provider=${provider}`),
+          )
+        ).id;
+      }
       sendJson(response, request, 202, {
         accepted: true,
         ...(await startTurn(threadId, body)),
@@ -1116,6 +1455,11 @@ server.listen(port, host, () => {
   console.log(
     `[agent-companion] http://${host}:${port} · ${codexVersion || "Codex unavailable"}`,
   );
+  console.log(
+    `[agent-companion] Claude Code · ${
+      claudeAuth.loggedIn ? claudeVersion || "connected" : claudeAuth.detail
+    }`,
+  );
   console.log(`[agent-companion] 연결 코드: ${pairingCode}`);
   if (relayEnabled) {
     const identity = loadOrCreateRelayIdentity(
@@ -1142,6 +1486,7 @@ server.listen(port, host, () => {
 async function shutdown() {
   shuttingDown = true;
   if (appServerRestartTimer) clearTimeout(appServerRestartTimer);
+  claudeAdapter?.shutdown();
   await cloudRelay?.stop();
   await appServerClient?.stop();
   server.close(() => process.exit(0));

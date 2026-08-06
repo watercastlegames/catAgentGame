@@ -351,7 +351,7 @@ const WORLD_TARGETS: Record<AgentWorldLocation, THREE.Vector3> = {
   coding: CODING_DESK_TARGET,
   design: new THREE.Vector3(-2.2, 0, 0.78),
   // 4번 자리(접이식 노트북)와 같은 자리다 — SEAT_WORLD_POSITIONS["seat-4"] 와 함께 옮긴다.
-  music: new THREE.Vector3(1.76, 0, 1.02),
+  music: new THREE.Vector3(2.18, 0, 0.84),
   queue: new THREE.Vector3(-0.25, 0, 2.45),
   office: new THREE.Vector3(-2.05, 0, -2.48),
 };
@@ -467,13 +467,11 @@ const SEAT_WORLD_POSITIONS: Record<SeatId, THREE.Vector3> = {
   "seat-1": new THREE.Vector3(2.12, 0, 4.12),
   "seat-2": new THREE.Vector3(-2.05, 0, -2.48),
   "seat-3": new THREE.Vector3(-2.2, 0, 0.78),
-  /* 접이식 노트북은 화면이 모델 중심에서 가로로 크게 빠져 있다(local x -0.447).
-     책상 중심(x 2.18)에 세웠더니 고양이만 화면 옆으로 0.39 비켜서서,
-     이름표는 노트북 위에 뜨는데 정작 몸은 옆에 선 모양이 됐다.
-     다른 자리의 어긋남은 0.01~0.12 다 — 화면의 가로 위치에 맞춘다.
-     앞뒤 거리도 책상 중심에서 1.36 이라 혼자 멀찍이 떨어져 보였다.
-     2·3번이 1.17~1.20 이므로 1.20 에 맞춘다. */
-  "seat-4": new THREE.Vector3(1.76, 0, 1.02),
+  /* 다른 자리는 모두 책상과 x 가 같다 — 고양이는 책상 정면에 선다.
+     화면이 모델 중심에서 빠져 있다고 고양이까지 옆으로 옮겼더니
+     책상에서 떨어져 딴 데 서 있는 꼴이 됐다. x 는 책상에 맞추고,
+     앞뒤 거리만 2·3번과 같은 1.20 으로 둔다. */
+  "seat-4": new THREE.Vector3(2.18, 0, 0.84),
 };
 
 // 이름표와 차단 비콘은 씬의 어떤 오브젝트·외곽선보다 위에 그린다.
@@ -3407,17 +3405,69 @@ export default function AgentWorld3D({
   >(null);
 
   useEffect(() => {
-    const currentPrimary = seats[0] ?? DEFAULT_SEAT_VIEW;
+    const requestedWorkPreview = new URLSearchParams(
+      window.location.search,
+    ).get("workPreview");
+    const localWorkPreviewEnabled =
+      ["localhost", "127.0.0.1", "::1", "[::1]"].includes(
+        window.location.hostname,
+      ) && requestedWorkPreview === "seat-4";
+    const previewStyle = seats[0]?.catStyle;
+    const runtimeSeats = localWorkPreviewEnabled
+      ? ([
+          {
+            ...DEFAULT_SEAT_VIEW,
+            seatId: "seat-1",
+            catId: "work-preview-seat-1",
+            agentName: "자리 1",
+            location: "coding",
+            status: "idle",
+            statusLabel: "쉬는 중",
+            catStyle: previewStyle,
+          },
+          {
+            ...DEFAULT_SEAT_VIEW,
+            seatId: "seat-2",
+            catId: "work-preview-seat-2",
+            agentName: "자리 2",
+            location: "general",
+            status: "idle",
+            statusLabel: "쉬는 중",
+            catStyle: previewStyle,
+          },
+          {
+            ...DEFAULT_SEAT_VIEW,
+            seatId: "seat-3",
+            catId: "work-preview-seat-3",
+            agentName: "자리 3",
+            location: "design",
+            status: "idle",
+            statusLabel: "쉬는 중",
+            catStyle: previewStyle,
+          },
+          {
+            ...DEFAULT_SEAT_VIEW,
+            seatId: "seat-4",
+            catId: "work-preview-seat-4",
+            agentName: "자리 4",
+            location: "music",
+            status: "working",
+            statusLabel: "작업 중",
+            catStyle: previewStyle,
+          },
+        ] satisfies SeatView[])
+      : seats;
+    const currentPrimary = runtimeSeats[0] ?? DEFAULT_SEAT_VIEW;
     motionRef.current = {
       location: currentPrimary.location,
       status: currentPrimary.status,
     };
-    seatsRef.current = seats;
+    seatsRef.current = runtimeSeats;
     connectionRef.current = companionConnected;
     completionSignalRef.current = completionSignal;
     onSeatClickRef.current = onSeatClick;
     onRadioClickRef.current = onRadioClick;
-    activeSeatCountRef.current = activeSeatCount;
+    activeSeatCountRef.current = localWorkPreviewEnabled ? 4 : activeSeatCount;
     onShellCollectRef.current = onShellCollect;
     tutorialAnchorRef.current = tutorialAnchor;
     onTutorialAnchorRef.current = onTutorialAnchor;
@@ -3914,11 +3964,9 @@ export default function AgentWorld3D({
             WORLD_TARGETS.music,
             worldTargets.music,
           );
-          keepAnchoredVectorOutsideObstacle(
-            entry,
-            seatWorldPositions["seat-4"],
-          );
-          keepAnchoredVectorOutsideObstacle(entry, worldTargets.music);
+          /* 자리 4의 작업 앵커는 접이식 노트북 바로 앞의 의도된 접촉점이다.
+             작업 중에는 아래 이동 로직이 자기 책상 obstacle 을 이미 제외하므로,
+             여기서 다시 바깥으로 밀면 고양이만 책상에서 멀어지게 된다. */
           updateAnchoredVector(
             entry,
             SEAT_WORKING_MARKER_WORLD_POSITIONS["seat-4"],

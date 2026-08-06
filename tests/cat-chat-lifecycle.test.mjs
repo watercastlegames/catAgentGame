@@ -30,13 +30,33 @@ test("sending closes the panel and keeps the cat working at its desk", () => {
 test("finished replies light an exclamation beacon until the cat is opened", () => {
   assert.match(page, /setUnreadReplyCatIds/);
   assert.match(page, /next\.add\(event\.threadId as string\)/);
-  assert.match(page, /next\.delete\(runtime\.threadId\)/);
+  assert.match(
+    page,
+    /const catId = residentCatIdForSeat\(seatId\)/,
+  );
+  assert.match(
+    page,
+    /const boundThreadId = catSessionBindings\[seatId\] \?\? runtime\?\.threadId \?\? null/,
+  );
+  assert.match(page, /next\.delete\(catId\)/);
+  assert.match(page, /if \(boundThreadId\) next\.delete\(boundThreadId\)/);
   assert.match(page, /if \(targetCat\?\.hasUnreadReply\)/);
   assert.match(
     world,
     /beacon\.visible = seat\.blocked \|\| Boolean\(seat\.hasUnreadReply\)/,
   );
   assert.match(world, /reply-ready-exclamation-v1\.png/);
+});
+
+test("each Codex session is explicitly routed to exactly one resident cat", () => {
+  assert.match(page, /CAT_SESSION_BINDINGS_STORAGE_KEY/);
+  assert.match(page, /bindSessionToCat\(current, seatId, threadId\)/);
+  assert.match(page, /seatForSession\(catSessionBindingsRef\.current, event\.threadId\)/);
+  assert.match(page, /!event\.threadId \|\| Boolean\(boundSeatId \|\| event\.seatId\)/);
+  assert.match(page, /event\.type === "task\.completed" && routesToCat/);
+  assert.match(page, /routesToCat && !\["bridge\.status"\]\.includes\(event\.type\)/);
+  assert.match(page, /const threadId = focusedBoundThreadId as string/);
+  assert.match(page, /submittingThreadIds\.has\(focusedConversationThreadId\)/);
 });
 
 test("a delivered reply releases the cat to autonomous movement immediately", () => {

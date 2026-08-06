@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>인수인계 — 4번 자리 근무 위치 · PM Worker 대화 (2026-08-06)</title>
+<style>
+:root{color-scheme:light}
+body{margin:0;background:#f5f2ea;color:#39312a;
+ font:15px/1.75 Pretendard,"Apple SD Gothic Neo",system-ui,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:34px 20px 80px}
+h1{font-size:25px;margin:0 0 6px;letter-spacing:-.02em}
+.sub{color:#8b7c69;margin:0 0 26px;font-size:14px}
+h2{font-size:19px;margin:40px 0 12px;padding-top:18px;border-top:2px solid #e3dac7}
+h3{font-size:15.5px;margin:22px 0 8px;color:#5b4b39}
+p{margin:0 0 12px}
+.box{background:#fff;border:1px solid #e6ddca;border-radius:14px;padding:16px 19px;margin:14px 0}
+.stop{border-left:5px solid #d9534f}
+.go{border-left:5px solid #4f9d69}
+.note{border-left:5px solid #e0a33e}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:14px}
+th,td{border:1px solid #e6ddca;padding:8px 10px;text-align:left;vertical-align:top}
+th{background:#f0eade;font-weight:700}
+code{background:#efe9dc;padding:1px 5px;border-radius:5px;font-size:13px;
+ font-family:ui-monospace,Consolas,monospace}
+pre{background:#2f2a24;color:#e9e1d3;padding:12px 14px;border-radius:10px;
+ overflow-x:auto;font-size:12.5px;line-height:1.55;font-family:ui-monospace,Consolas,monospace}
+pre code{background:none;padding:0;color:inherit}
+ul,ol{margin:0 0 12px;padding-left:22px}
+li{margin:5px 0}
+.tag{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700}
+.t-open{background:#f7dedd;color:#8d3a37}
+.t-done{background:#dcefe2;color:#2f6b45}
+.t-hold{background:#fbf0d8;color:#8a6417}
+.path{font-size:13px;color:#6b5b48;word-break:break-all}
+</style></head><body><div class="wrap">
+
+<h1>인수인계 — 4번 자리 근무 위치 · PM Worker 대화</h1>
+<p class="sub">작성 2026-08-06 · 대상 <code>catAgentGame</code> · 미해결 2건을 다음 담당자에게 넘김</p>
+
+<div class="box stop">
+<b>넘기는 이유</b> — 두 문제 모두 원인 후보까지는 좁혔으나 <b>확정 검증을 못 했다</b>.
+공통 병목은 하나다: <b>확인 환경에서 고양이를 “근무 중”으로 만들 수 없었다.</b>
+업무를 시작하려면 AI 백엔드가 필요한데, 지금 접속 가능한 모든 경로가 막혀 있다.
+</div>
+
+<h2>미해결 ① 4번 자리 고양이가 책상에 안 앉는다 <span class="tag t-open">미해결</span></h2>
+
+<h3>증상</h3>
+<p>4번 자리 고양이에게 일을 맡기면 책상(접이식 노트북)에 앉지 않고 <b>멀찍이 떨어진 곳에 앉아 있다</b>.</p>
+
+<h3>확인된 동작 원리 (여기까지는 확실함)</h3>
+<p>고양이는 <b>대기 중일 때 섬을 배회</b>하고, <b>근무 중일 때만 제 책상으로 간다</b>. 판정은 상태값이다.</p>
+<pre><code>// app/agent-world-3d.tsx
+const AUTONOMOUS_STATUSES = new Set(["idle", "completed", "failed"]);  // 이 상태 = 배회
+
+const isSecondaryAutonomous = seat.seatId !== "queue" &amp;&amp; !seat.blocked
+  &amp;&amp; AUTONOMOUS_STATUSES.has(seat.status);
+
+if (!isSecondaryAutonomous) {                            // 즉 status === "working"
+  const homeTarget = seatWorldPositions[seat.seatId];    // ← 근무 시 걸어가는 좌표
+  const arrivedHome = moveSecondaryTowards(entry, homeTarget, navigationObstacles);
+  ambientAnimation = arrivedHome
+    ? (seat.status === "working" ? "work" : "idle")
+    : "walk";
+}</code></pre>
+<ul>
+<li>2·3·4번 자리(보조 고양이)는 <code>seatWorldPositions[seatId]</code> 로 간다.</li>
+<li>1번 자리(주 고양이, <code>characterRoot</code>)만 별도로 <code>codingDeskTarget</code> 을 쓴다.</li>
+<li>“앉는 의자”라는 별도 앵커는 <b>없다</b>. 좌표에 도착한 뒤 <code>work</code> 애니메이션
+(<code>|Caress_sitting</code>)을 재생하는 구조다. 즉 <b>좌표가 곧 앉는 자리</b>다.</li>
+</ul>
+
+<h3>손댄 이력 — 세 번 바꿨고 모두 미검증</h3>
+<table>
+<tr><th>시점</th><th>좌표</th><th>근거</th><th>결과</th></tr>
+<tr><td>원본</td><td><code>(2.18, 0, 1.18)</code></td><td>—</td><td>“멀다” 지적</td></tr>
+<tr><td>1차</td><td><code>(1.79, 0, 1.18)</code></td><td>화면(모니터 판)이 모델 중심에서 x −0.447 빠져 있어 거기 맞춤</td><td>더 멀어 보임</td></tr>
+<tr><td>2차</td><td><code>(1.76, 0, 1.02)</code></td><td>보정값 반영 + 앞뒤 거리를 2·3번(1.17~1.20)에 맞춤</td><td>여전히 떨어짐</td></tr>
+<tr><td>3차(현재)</td><td><code>(2.18, 0, 1.02)</code></td><td>다른 자리는 <b>전부 책상과 x 가 동일</b>하다는 규칙 발견 → x 복귀</td><td><b>미검증</b></td></tr>
+</table>
+<div class="box note">
+<b>중요</b> — 1·2차 변경은 “화면 중심에 맞춘다”는 잘못된 전제였다.
+다른 자리를 보면 <b>고양이 x = 책상 x</b> 가 일관된 규칙이다. 3차에서 그 규칙으로 되돌렸다.
+</div>
+<table>
+<tr><th>자리</th><th>책상 x</th><th>고양이 x</th><th>앞뒤 거리(z)</th></tr>
+<tr><td>1번 낮은 모니터</td><td>2.12</td><td>2.12</td><td>0.70</td></tr>
+<tr><td>2번 텐트</td><td>−2.05</td><td>−2.05</td><td>1.17</td></tr>
+<tr><td>3번 원형 노트북</td><td>−2.20</td><td>−2.20</td><td>1.20</td></tr>
+<tr><td>4번 접이식 (현재)</td><td>2.18</td><td>2.18</td><td>1.02</td></tr>
+</table>
+
+<h3>바꿔야 하는 곳 — 두 군데가 쌍이다</h3>
+<pre><code>app/agent-world-3d.tsx
+  SEAT_WORLD_POSITIONS["seat-4"]   // 자리별 근무 좌표
+  WORLD_TARGETS.music              // 같은 지점을 location 이름으로 한 번 더 씀</code></pre>
+<p>한쪽만 고치면 어긋난다. 과거에 실제로 그 실수를 했다.</p>
+
+<h3>다음 담당자가 할 일</h3>
+<ol>
+<li>고양이를 <b>실제로 근무 상태로 만든다</b>(아래 ②가 풀려야 가능).
+대기 중 스크린샷으로는 판단 불가 — 배회가 정상 동작이라 “떨어져 있다”가 당연하게 보인다.</li>
+<li>근무 중 화면에서 4번 고양이와 접이식 노트북의 간격을 본다.</li>
+<li>여전히 멀면 <code>z</code> 를 <code>1.02 → 0.85</code> 근처로 줄여 본다.
+책상 모델의 다리·상판 깊이가 다른 자리와 달라 같은 거리라도 더 멀어 보일 수 있다.</li>
+<li>고칠 때 <b>두 상수를 함께</b> 바꾼다.</li>
+</ol>
+
+<h2>미해결 ② 대화가 항상 같은 멘트만 즉시 나온다 <span class="tag t-open">미해결</span></h2>
+
+<h3>증상</h3>
+<p>무엇을 물어도 <b>즉시</b> 같은 문장이 돌아온다.</p>
+
+<h3>지금 나오는 문장의 정체</h3>
+<div class="box">
+“대화 AI가 아직 연결되지 않았어요. 서버의 대화 워커가 꺼져 있어요.”
+</div>
+<p>이건 <b>내가 넣은 오류 문구</b>다. AI 응답이 아니라 <b>“백엔드가 없다”는 통보</b>이고,
+외부 호출 없이 바로 반환되므로 즉시 뜬다. 조개는 환불된다.</p>
+<p>그 이전에는 더 나빴다 — 대화 워커가 죽자 중계가 <b>웹검색 워커로 우회</b>해서,
+게임이 함께 보내는 성격 문장(<code>[Agent Forest cat persona] You are …</code>)이 그대로 검색어가 되어
+<b>“agent 뜻” 사전 결과</b>가 매번 돌아왔다. 그 우회는 제거했다.</p>
+
+<h3>AI 후보 전수 조사 결과 (모두 실측)</h3>
+<table>
+<tr><th>경로</th><th>상태</th><th>막힌 이유</th></tr>
+<tr><td>서버 대화 워커 5201 (Anthropic)</td><td><span class="tag t-open">불가</span></td>
+<td>워커·네트워크 정상(<code>api.anthropic.com</code> → 401). <b>키가 폐기됨</b>.
+<code>restart_hikami.asp</code> 에 박힌 키도 무효</td></tr>
+<tr><td>서버 웹검색 워커 5202</td><td><span class="tag t-hold">부적합</span></td>
+<td>동작하지만 <b>검색 도구</b>다. 대화 대체 불가(엉뚱한 답의 원인이었음)</td></tr>
+<tr><td>서버 Claude CLI 5101</td><td><span class="tag t-open">불가</span></td>
+<td>큐·폴링은 정상. 그러나 서버에 <b><code>node</code>·<code>claude</code> 미설치</b>
+(SYSTEM 계정 PATH 에 Python 뿐)</td></tr>
+<tr><td>OpenAI</td><td><span class="tag t-open">불가</span></td>
+<td><code>api.openai.com</code> 타임아웃(방화벽)</td></tr>
+<tr><td>무료 AI (Puter)</td><td><span class="tag t-hold">보류</span></td>
+<td>스크립트는 로드되나 <b>로그인 창에서 정지</b>. 무인 동작 불가</td></tr>
+<tr><td><b>내 PC Claude Code (브리지)</b></td><td><span class="tag t-done">작동</span></td>
+<td>실제 응답 수신 확인(Claude Code 2.1.223). <b>단 http 출처에서만</b> — 아래 참조</td></tr>
+</table>
+
+<h3>결정적 제약 — sidak.kr 미러로는 구조적으로 불가능</h3>
+<pre><code>https://sidak.kr 페이지에서
+  fetch("http://127.0.0.1:4317/health")
+  → TypeError: Failed to fetch      (브라우저 혼합 콘텐츠 차단)</code></pre>
+<ul>
+<li>브리지에 CORS·<code>Access-Control-Allow-Private-Network: true</code> 를 다 열어놔도
+그 <b>이전 단계</b>인 브라우저 차단에 걸린다.</li>
+<li>같은 게임을 <b>http 주소</b>(예: 로컬 미러 서버)로 열면 브리지가 즉시 잡힌다 — 확인함.</li>
+<li>미러는 정적 파일뿐이라 <code>/api/relay</code>(클라우드 중계)가 없다.</li>
+</ul>
+<div class="box stop">
+<b>정리</b> — <code>sidak.kr</code> 은 화면 확인·영상 촬영용이다. <b>여기서 AI 대화는 못 만든다.</b>
+</div>
+
+<h3>다음 담당자가 할 일 — 둘 중 하나</h3>
+<div class="box go">
+<b>A. 실제 앱(chatgpt.site)에 재배포</b> — 권장.<br>
+그 판에는 <code>/api/relay</code> 가 있어 브리지가 https 에서도 연결된다.
+코드는 <code>main</code> 최신에 모두 반영돼 있고, 남은 건 Sites 재배포뿐이다.
+재배포 후 “Claude Code (내 PC)” 선택 → 6자리 코드 입력 → 대화 확인.
+</div>
+<div class="box">
+<b>B. 서버 워커에 유효한 Anthropic 키</b> — 원래 방식 복구.<br>
+기동·재시작 장치는 서버에 올려 뒀다.
+<pre><code>/ProjectManager/worker/start_hikami_worker.cmd   ← set "ANTHROPIC_API_KEY=sk-ant-…" 추가
+/ProjectManager/worker-restart.asp               ← POST (X-HiKami-Key 헤더) 로 강제 재시작
+/ProjectManager/worker-bootstrap.asp             ← 꺼져 있을 때만 기동</code></pre>
+<b>주의</b> — 워커를 죽이면 <b>다른 무언가(작업 스케줄러 추정)가 즉시 되살리는데
+환경변수를 물려주지 않는다</b>. 그래서 키를 넣어도 그 프로세스가 이기면 무효다.
+확인 방법: <code>worker/hikami_worker.log</code> 끝에 <code>[start]</code> 표시가 있는지 본다
+(없으면 내 스크립트가 아닌 다른 것이 띄운 것).
+</div>
+
+<h2>내가 이번에 바꾼 것 (되돌릴 때 참고)</h2>
+<table>
+<tr><th>파일</th><th>내용</th></tr>
+<tr><td class="path">app/agent-world-3d.tsx</td>
+<td>4번 자리 좌표(2곳), 모니터 화면 보정값 하드코딩, 외곽선 오프셋을 뷰 공간으로 변경,
+고양이 재질 unlit 전환, 개발자 도구 게이트를 스토어 기반으로</td></tr>
+<tr><td class="path">app/page.tsx</td>
+<td>튜토리얼(발바닥 가이드), 개발자 도구 7키 토글, 개발자 정보 메뉴 이동,
+PM Worker 상태 문구 분리, 관리자 조개 500</td></tr>
+<tr><td class="path">app/companion-backends.ts</td>
+<td>기본 백엔드 <code>pm-worker → local-claude</code></td></tr>
+<tr><td class="path">app/pm-worker-companion.ts</td>
+<td>세션 id 없어도 답이 오면 성공 처리, 404 는 “엔드포인트 없음”으로 구분</td></tr>
+<tr><td class="path">deploy/sidak/pm-worker.asp</td>
+<td><b>git 제외(.gitignore)</b> — 서버 키 포함. 미러용 중계. 웹검색 우회 제거됨</td></tr>
+<tr><td class="path">서버 /ProjectManager/</td>
+<td><code>worker-bootstrap.asp</code>, <code>worker-restart.asp</code>,
+<code>worker/start_hikami_worker.cmd</code> 신규.
+<b>Anthropic 키는 요청에 따라 전부 제거함</b></td></tr>
+</table>
+
+<h2>재현·검증에 쓴 스크립트</h2>
+<p class="path">scratchpad 폴더:
+C:\Users\smini\AppData\Local\Temp\claude\D--soccerstarWebSource-GameCreator-catAgentGame\f1c41cfd-29e4-4cb0-b44a-be4d4b90d180\scratchpad\</p>
+<ul>
+<li><code>repro-report.py</code> — 자리 4개·pm-worker 로 맞추고 대화까지 시켜 스크린샷 저장</li>
+<li><code>work-test.py</code> — 브리지 토큰·세션을 심고 실제 업무를 시켜 근무 화면 촬영</li>
+<li><code>rebuild-mirror.sh</code> — 빌드 → 앱서버 재시작 → 셸 재수집 → 미러 생성.
+셸을 다시 안 받으면 옛 번들 해시를 가리켜 미러가 통째로 깨진다</li>
+<li><code>upload-mirror.py</code> — SFTP 업로드(같은 크기 건너뜀, HTML 은 항상 덮어씀)</li>
+</ul>
+
+<h2>함정 모음 — 같은 데서 시간 버리지 않도록</h2>
+<ul>
+<li><b>배포했는데 화면이 안 바뀐다</b> → <code>index.html</code> 브라우저 캐시.
+파일명이 고정이라 옛 index 가 옛 번들을 계속 가리킨다.
+지금은 <code>web.config</code> 로 HTML 만 no-store 처리해 뒀다(미러 빌더가 매번 다시 씀).</li>
+<li><b>Git Bash 로 한글을 curl 에 넣으면 깨진다</b> → 서버가 500 을 내며 엉뚱한 결론으로 샌다.
+반드시 Python 으로 UTF-8 전송.</li>
+<li><b>실패를 5xx 로 주면</b> Cloudflare 가 본문을 자기 오류 페이지로 갈아치워
+게임이 이유를 못 읽는다 → 200 + <code>error</code> 필드로 준다.</li>
+<li><b>고양이가 흩어져 있는 건 정상</b>이다. 근무 중이 아닐 때는 배회한다.
+위치 검증은 반드시 근무 상태에서.</li>
+<li><b>헤드리스 3D 검증은 CPU 를 많이 먹는다</b> → HTTP 응답·번들 문자열 검사로 먼저 확인하고,
+브라우저는 마지막에. 스크립트가 죽으면 헤드리스 Chrome 이 남으니 정리할 것.</li>
+</ul>
+
+</div></body></html>

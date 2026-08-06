@@ -6111,15 +6111,38 @@ export default function Home() {
                         : pmWorkerConnectionState === "loading"
                           ? "PM Worker AI를 확인하고 있어요"
                           : pmWorkerConnectionState === "unavailable"
-                            ? "이 화면에는 AI 연결이 없어요"
+                            ? "PM Worker AI 인증이 만료됐어요"
                             : "PM Worker AI 서버가 응답하지 않아요"}
                     </strong>
                     <p>
-                      ProjectManager 서버의 대화형 AI 워커를 사용합니다. 고양이
-                      상세 화면에서 질문할 때마다 조개{" "}
-                      {AI_CHAT_SHELL_COST}개가 차감되며, 연결 실패 시에는
-                      자동으로 돌려드려요.
+                      {pmWorkerConnectionState === "unavailable"
+                        ? "같은 오류 답변을 반복하지 않도록 질문 전송을 멈췄어요. 지금 바로 사용할 수 있는 내 PC Claude Code 또는 Codex로 전환해 주세요."
+                        : `ProjectManager 서버의 대화형 AI 워커를 사용합니다. 질문할 때마다 조개 ${AI_CHAT_SHELL_COST}개가 차감되며, 연결 실패 시에는 자동으로 돌려드려요.`}
                     </p>
+                    {pmWorkerConnectionState === "unavailable" && (
+                      <div className="backend-fallback-actions">
+                        {claudeAvailable && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              chooseCatCompanionBackend("local-claude")
+                            }
+                          >
+                            Claude Code (내 PC)로 전환
+                          </button>
+                        )}
+                        {codexAvailable && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              chooseCatCompanionBackend("local-session")
+                            }
+                          >
+                            ChatGPT Codex (내 PC)로 전환
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {/* AI 엔드포인트가 아예 없는 판에서는 다시 확인해 봐야 결과가 같다. */}
                     {pmWorkerConnectionState !== "ready" &&
                       pmWorkerConnectionState !== "unavailable" && (

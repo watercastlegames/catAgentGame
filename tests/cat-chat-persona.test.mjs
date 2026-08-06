@@ -40,3 +40,23 @@ test("cat persona does not let role-play outrank correct work", () => {
   assert.match(prompt, /accuracy and actually completing the task/);
   assert.match(prompt, /Never claim that work is complete/);
 });
+
+test("cat persona carries recent visible conversation into a follow-up", () => {
+  const prompt = persona.buildCatPersonaPrompt({
+    catName: "보리",
+    userPrompt: "그중에서 두 번째 장소만 더 알려줘.",
+    conversationHistory: [
+      { role: "user", content: "부천 실내 나들이 장소를 추천해줘." },
+      {
+        role: "assistant",
+        content: "한국만화박물관과 아트벙커 B39를 추천할게.",
+      },
+    ],
+  });
+
+  assert.match(prompt, /Recent conversation, oldest to newest/);
+  assert.match(prompt, /User: 부천 실내 나들이 장소를 추천해줘/);
+  assert.match(prompt, /Cat: 한국만화박물관과 아트벙커 B39를 추천할게/);
+  assert.match(prompt, /두 번째 장소만 더 알려줘/);
+  assert.match(prompt, /Do not greet as if this were the first message/);
+});

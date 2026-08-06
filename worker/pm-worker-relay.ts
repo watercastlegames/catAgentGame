@@ -19,6 +19,12 @@ const JSON_HEADERS = {
 const DEFAULT_ENDPOINT =
   "https://sidak.kr/autodev/ProjectManager/api/hikami.asp";
 const REQUEST_TIMEOUT_MS = 150_000;
+const HEALTH_PROBE_TIMEOUT_MS = 20_000;
+const HEALTH_CACHE_MS = 5 * 60_000;
+let healthCache:
+  | { expiresAt: number; ready: true }
+  | { expiresAt: number; ready: false; error: string; code: string }
+  | null = null;
 const CURRENT_WEB_TERMS = [
   "뉴스",
   "속보",
@@ -115,14 +121,23 @@ async function upstreamRequest(
 ) {
   const target = new URL(endpoint);
   if (action === "health") {
-    target.searchParams.set("action", "history");
-    target.searchParams.set("session_id", "agentforest-health");
+    /* history 는 저장 API만 살아 있어도 200을 돌려준다. 실제 모델 키가 폐기된
+       상태를 "연결됨"으로 오판하지 않도록 아주 짧은 대화 요청으로 검사한다. */
+    target.searchParams.set("action", "chat");
+    const healthPrompt = "연결 점검입니다. OK만 답해 주세요.";
+    const form = new URLSearchParams({
+      message: healthPrompt,
+      message_b64: utf8Base64(healthPrompt),
+    });
     return fetch(target, {
+      method: "POST",
       headers: {
         Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
         "X-HiKami-Key": apiKey,
       },
-      signal: AbortSignal.timeout(12_000),
+      body: form,
+      signal: AbortSignal.timeout(HEALTH_PROBE_TIMEOUT_MS),
     });
   }
 
@@ -222,13 +237,39 @@ export async function handlePmWorkerRequest(
 
   try {
     if (isHealth) {
+      if (healthCache && healthCache.expiresAt > Date.now()) {
+        return healthCache.ready
+          ? json({ ready: true, provider: "project-manager-worker" })
+          : json(
+              {
+                ready: false,
+                error: healthCache.error,
+                code: healthCache.code,
+              },
+              503,
+            );
+      }
       const upstream = await upstreamRequest(endpoint, apiKey, "health");
-      if (!upstream.ok) {
+      const body = await parseUpstreamBody(upstream);
+      if (!upstream.ok || !body?.reply) {
+        const workerDown =
+          body?.code === 503 || body?.error === "AI worker error";
+        const error = workerDown
+          ? "PM Worker AI 인증이 만료되어 현재 대화할 수 없어요. 내 PC Claude Code 또는 Codex를 선택해 주세요."
+          : "PM Worker AI가 실제 대화 요청에 응답하지 않아요.";
+        const code = workerDown ? "worker_down" : "pm_worker_unavailable";
+        healthCache = {
+          expiresAt: Date.now() + HEALTH_CACHE_MS,
+          ready: false,
+          error,
+          code,
+        };
         return json(
-          { ready: false, error: "PM Worker AI가 응답하지 않아요." },
+          { ready: false, error, code },
           503,
         );
       }
+      healthCache = { expiresAt: Date.now() + HEALTH_CACHE_MS, ready: true };
       return json({ ready: true, provider: "project-manager-worker" });
     }
 

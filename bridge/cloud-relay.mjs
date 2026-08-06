@@ -3,18 +3,29 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 
 const DEFAULT_RELAY_URL =
   "https://agent-forest-raccoon.sminia82.chatgpt.site";
+const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
 
-function wait(milliseconds, signal) {
+export function waitForRelayCycle(milliseconds, signal) {
+  if (signal?.aborted) return Promise.resolve();
+
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, milliseconds);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        resolve();
-      },
-      { once: true },
-    );
+    let settled = false;
+    let timer;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", finish);
+      resolve();
+    };
+
+    timer = setTimeout(finish, milliseconds);
+    signal?.addEventListener("abort", finish, { once: true });
+
+    // Cover the narrow race where the signal aborts between the first check
+    // and registering the listener.
+    if (signal?.aborted) finish();
   });
 }
 
@@ -53,6 +64,7 @@ export class CloudRelay {
     pairingCode,
     getSnapshot,
     executeCommand,
+    requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
   }) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
     this.deviceId = deviceId;
@@ -60,6 +72,7 @@ export class CloudRelay {
     this.pairingCode = pairingCode;
     this.getSnapshot = getSnapshot;
     this.executeCommand = executeCommand;
+    this.requestTimeoutMs = requestTimeoutMs;
     this.abortController = null;
     this.events = [];
     this.online = false;
@@ -78,16 +91,36 @@ export class CloudRelay {
   }
 
   async request(pathname, init = {}) {
-    const response = await fetch(`${this.baseUrl}${pathname}`, {
-      ...init,
-      headers: { ...this.headers(), ...(init.headers ?? {}) },
-      signal: this.abortController?.signal,
-    });
-    const body = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(body.error ?? `클라우드 중계 오류 (${response.status})`);
+    // A single long-lived AbortSignal must not be passed to every fetch call.
+    // Undici retains listeners while a request/body is alive; reusing the relay
+    // lifetime signal caused listeners and response state to accumulate until
+    // the local bridge stopped answering even /health.
+    const requestController = new AbortController();
+    const relaySignal = this.abortController?.signal;
+    const abortRequest = () => requestController.abort(relaySignal?.reason);
+    const timeout = setTimeout(
+      () => requestController.abort(new Error("클라우드 중계 요청 시간 초과")),
+      this.requestTimeoutMs,
+    );
+    timeout.unref?.();
+    relaySignal?.addEventListener("abort", abortRequest, { once: true });
+    if (relaySignal?.aborted) abortRequest();
+
+    try {
+      const response = await fetch(`${this.baseUrl}${pathname}`, {
+        ...init,
+        headers: { ...this.headers(), ...(init.headers ?? {}) },
+        signal: requestController.signal,
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(body.error ?? `클라우드 중계 오류 (${response.status})`);
+      }
+      return body;
+    } finally {
+      clearTimeout(timeout);
+      relaySignal?.removeEventListener("abort", abortRequest);
     }
-    return body;
   }
 
   publishEvent(event) {
@@ -198,13 +231,13 @@ export class CloudRelay {
           await this.cycle();
           this.online = true;
           this.lastError = null;
-          await wait(1_250, this.abortController.signal);
+          await waitForRelayCycle(1_250, this.abortController.signal);
         } catch (error) {
           if (this.abortController.signal.aborted) break;
           this.online = false;
           this.lastError =
             error instanceof Error ? error.message : "클라우드 중계 연결 실패";
-          await wait(4_000, this.abortController.signal);
+          await waitForRelayCycle(4_000, this.abortController.signal);
         }
       }
     })().finally(() => {

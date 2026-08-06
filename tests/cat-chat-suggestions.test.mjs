@@ -61,7 +61,8 @@ test("topic memory survives serialization and keeps a cat's dominant interest", 
 
   assert.equal(restored.entries.length, 3);
   assert.equal(result.length, 3);
-  assert.ok(result.every((item) => /시장|업종/.test(item)));
+  assert.match(result[0], /나스닥|업종/);
+  assert.ok(result.slice(1).every((item) => /방금|아까/.test(item)));
 });
 
 test("recent news questions produce three new news conversations", () => {
@@ -84,7 +85,59 @@ test("recent news questions produce three new news conversations", () => {
   });
 
   assert.equal(result.length, 3);
-  assert.ok(result.every((item) => item.includes("뉴스")));
+  assert.match(result[0], /아까.*뉴스/);
+  assert.ok(result.slice(1).every((item) => /방금|아까/.test(item)));
+});
+
+test("the latest cat conversation produces three direct follow-up prompts", () => {
+  const result = suggestions.buildCatChatSuggestions({
+    events: [
+      {
+        type: "pm-chat.queued",
+        threadId: "cat-1",
+        prompt: "부천에서 주말에 갈 만한 저렴한 실내 나들이 장소를 알려줘.",
+      },
+      {
+        type: "pm-chat.queued",
+        threadId: "cat-1",
+        prompt: "오늘 주식시장 분위기를 알려줘.",
+      },
+    ],
+    focusedCatId: "cat-1",
+    department: "general",
+    backend: "pm-worker",
+  });
+
+  assert.equal(result.length, 3);
+  assert.match(result[0], /부천에서 주말에 갈 만한/);
+  assert.match(result[1], /장소|일정/);
+  assert.match(result[2], /비용|선택지/);
+  assert.ok(result.every((item) => /아까|방금/.test(item)));
+});
+
+test("a short continuation keeps the preceding specific interest", () => {
+  let memory = suggestions.createEmptyCatChatTopicMemory();
+  memory = suggestions.rememberCatChatTopic(memory, {
+    catId: "cat-1",
+    prompt: "삼성전자와 SK하이닉스의 최근 주가 흐름을 비교해줘.",
+    createdAt: 100,
+  });
+  memory = suggestions.rememberCatChatTopic(memory, {
+    catId: "cat-1",
+    prompt: "그거 조금 더 자세히 알려줘.",
+    createdAt: 200,
+  });
+  const result = suggestions.buildCatChatSuggestions({
+    events: [],
+    memory,
+    focusedCatId: "cat-1",
+    department: "general",
+    backend: "pm-worker",
+  });
+
+  assert.match(result[0], /삼성전자와 SK하이닉스/);
+  assert.match(result[1], /시장 흐름/);
+  assert.match(result[2], /긍정·중립·주의/);
 });
 
 test("old event history migrates into durable topic memory", () => {

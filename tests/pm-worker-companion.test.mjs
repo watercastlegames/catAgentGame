@@ -16,9 +16,9 @@ const page = await readFile(
 );
 
 test("PM Worker chat charges exactly five shells per submitted conversation", () => {
-  assert.match(client, /PM_WORKER_CHAT_SHELL_COST\s*=\s*5/);
+  assert.match(client, /PM_WORKER_CHAT_SHELL_COST\s*=\s*AI_CHAT_SHELL_COST/);
   assert.match(page, /pm-worker-chat/);
-  assert.match(page, /recordShellDelta\(\s*-PM_WORKER_CHAT_SHELL_COST/);
+  assert.match(page, /chargeChatShells\("pm-worker-chat"\)/);
 });
 
 test("PM Worker secret stays in the server relay environment", () => {
@@ -33,11 +33,38 @@ test("PM Worker relay supports health and chat without exposing the upstream key
   assert.match(relay, /project-manager-worker/);
 });
 
+test("PM Worker health verifies a real chat instead of a history-only false positive", () => {
+  assert.match(relay, /target\.searchParams\.set\("action", "chat"\)/);
+  assert.match(relay, /healthPrompt/);
+  assert.match(relay, /HEALTH_CACHE_MS/);
+  assert.match(relay, /!upstream\.ok \|\| !body\?\.reply/);
+  assert.doesNotMatch(relay, /target\.searchParams\.set\("action", "history"\)/);
+  assert.match(client, /body\?\.ready === true/);
+  assert.match(client, /body\?\.code === "worker_down"/);
+  assert.match(page, /Claude Code \(내 PC\)로 전환/);
+  assert.match(page, /ChatGPT Codex \(내 PC\)로 전환/);
+});
+
 test("PM Worker relay explicitly requests web search for current-information prompts", () => {
   assert.match(relay, /export function needsCurrentWeb/);
   assert.match(relay, /CURRENT_WEB_TERMS/);
-  assert.match(relay, /needsCurrentWeb\(prompt\)/);
+  assert.match(relay, /needsCurrentWeb\(webQuery\)/);
   assert.match(relay, /form\.set\("web_search", "1"\)/);
+  assert.match(relay, /"최신"/);
+  assert.match(relay, /"최근"/);
+  assert.match(relay, /"급등"/);
+  assert.match(client, /webQuery/);
+});
+
+test("PM Worker rejects stale current-information replies without source links", () => {
+  assert.match(relay, /currentWebReplyHasSources/);
+  assert.match(relay, /2025년/);
+  assert.match(relay, /current_web_unverified/);
+});
+
+test("PM Worker accepts a compact local conversation fallback", () => {
+  assert.match(relay, /prompt\.length > 8_000/);
+  assert.match(relay, /AI 문맥을 포함한 대화 내용/);
 });
 
 test("PM Worker relay transports Korean prompts without Classic ASP form corruption", () => {

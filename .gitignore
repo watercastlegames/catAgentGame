@@ -34,6 +34,8 @@ yarn-error.log*
 .agent-forest-pairing.json
 .devserver.*.log
 .devserver.pid
+.devserver-*.log
+.devserver-*.pid
 
 # env files (can opt-in for committing if needed)
 .env*
@@ -50,6 +52,8 @@ next-env.d.ts
 /outputs/
 /work/
 /tmp/
+/deploy/sidak/_mirror/
+/deploy/sidak/preview/
 
 # Local generation sources and exports are not needed by the deployed site.
 /assets/

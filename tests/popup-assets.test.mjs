@@ -200,3 +200,22 @@ test("popup secondary text keeps a readable minimum size", async () => {
     /@media \(max-width:\s*420px\)\s*\{[\s\S]*?\.radio-panel\.game-popup \.food-grade-actions\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/,
   );
 });
+
+test("empty cat seats use horizontal card art instead of a stretched thumbnail", async () => {
+  const css = await readFile(
+    new URL("../app/globals.css", import.meta.url),
+    "utf8",
+  );
+  const emptySeatRules = [
+    ...css.matchAll(/\.cat-list-card\.empty\s*\{([\s\S]*?)\}/g),
+  ].map((match) => match[1]);
+
+  assert.ok(emptySeatRules.length >= 1);
+  assert.ok(
+    emptySeatRules.every((rule) => !rule.includes("card-thumbnail-v2.png")),
+  );
+  assert.match(
+    emptySeatRules.at(-1),
+    /border-image:\s*url\("\/art\/ui\/slices\/cat-list-card-default-v3\.png"\)\s*36 40 fill/,
+  );
+});
