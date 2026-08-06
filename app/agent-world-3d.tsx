@@ -362,6 +362,8 @@ const LOCATION_LABELS: Record<AgentWorldLocation, string> = {
 };
 
 const ILLUSTRATION_OUTLINE_COLOR = new THREE.Color(0x735b4f);
+/** 색을 건드리지 않는 tint. 소품은 저마다 보정값이 있지만 고양이는 원본 그대로 쓴다. */
+const ILLUSTRATION_NEUTRAL_TINT = new THREE.Color(0xffffff);
 const ILLUSTRATION_OUTLINE_THICKNESS = 0.0038;
 const ILLUSTRATION_OUTLINE_ALPHA = 0.72;
 const FAR_OCEAN_STYLE_COLOR = 0x77cbbd;
@@ -2830,12 +2832,14 @@ function isMeshyColorTextureMaterial(
   | THREE.MeshBasicMaterial
   | THREE.MeshStandardMaterial
   | THREE.MeshPhysicalMaterial
-  | THREE.MeshToonMaterial {
+  | THREE.MeshToonMaterial
+  | THREE.MeshPhongMaterial {
   return (
     material instanceof THREE.MeshBasicMaterial ||
     material instanceof THREE.MeshStandardMaterial ||
     material instanceof THREE.MeshPhysicalMaterial ||
-    material instanceof THREE.MeshToonMaterial
+    material instanceof THREE.MeshToonMaterial ||
+    material instanceof THREE.MeshPhongMaterial
   );
 }
 
@@ -2844,7 +2848,8 @@ function createUnlitMeshyMaterial(
     | THREE.MeshBasicMaterial
     | THREE.MeshStandardMaterial
     | THREE.MeshPhysicalMaterial
-    | THREE.MeshToonMaterial,
+    | THREE.MeshToonMaterial
+    | THREE.MeshPhongMaterial,
   tint: THREE.Color,
   anisotropy: number,
 ) {
@@ -7342,63 +7347,48 @@ float shoreOverlayWaterSignal( vec3 color ) {
 
             object.castShadow = false;
             object.receiveShadow = false;
+            /* 고양이도 소품과 같은 unlit 로 맞춘다.
+               전에는 고양이만 조명을 받는 재질이라 해가 기울면 혼자 어두워지고
+               소품과 붙여 놓으면 톤이 어긋났다. 소품이 쓰는 변환기를 그대로 쓴다.
+               (스키닝은 SkinnedMesh 면 렌더러가 알아서 붙여 준다) */
+            const anisotropy = Math.min(
+              4,
+              renderer.capabilities.getMaxAnisotropy(),
+            );
             const materials = Array.isArray(object.material)
               ? object.material
               : [object.material];
-            for (const material of materials) {
-              if (material instanceof THREE.MeshStandardMaterial) {
-                material.color.set(0xffffff);
-                material.roughness = 0.95;
-                material.metalness = 0;
-                material.emissive.set(0x000000);
-                material.emissiveMap = null;
-                material.emissiveIntensity = 0;
-                if (material.map) {
-                  material.map.colorSpace = THREE.SRGBColorSpace;
-                  material.map.anisotropy = Math.min(
-                    4,
-                    renderer.capabilities.getMaxAnisotropy(),
-                  );
-                }
-                if (material instanceof THREE.MeshPhysicalMaterial) {
-                  material.specularIntensity = 0.12;
-                  material.specularColor.set(0xffffff);
-                  material.clearcoat = 0;
-                  material.ior = 1.3;
-                }
-              } else if (material instanceof THREE.MeshPhongMaterial) {
-                material.color.set(0xffffff);
-                material.emissive.set(0x000000);
-                material.shininess = 4;
-                material.specular.set(0x2f2926);
-                if (material.map) {
-                  material.map.colorSpace = THREE.SRGBColorSpace;
-                  material.map.anisotropy = Math.min(
-                    4,
-                    renderer.capabilities.getMaxAnisotropy(),
-                  );
-                }
-              }
-              const texturedMaterial = material as THREE.Material & {
+            const styled = materials.map((material) => {
+              const textured = material as THREE.Material & {
                 map?: THREE.Texture | null;
+                color?: THREE.Color;
               };
-              if ("map" in texturedMaterial) {
-                if (!texturedMaterial.map) {
-                  texturedMaterial.map = catPaletteTexture;
-                }
-                texturedMaterial.map.colorSpace = THREE.SRGBColorSpace;
-                texturedMaterial.map.anisotropy = Math.min(
-                  4,
-                  renderer.capabilities.getMaxAnisotropy(),
-                );
+              // FBX 에 맵이 안 물린 파트는 공용 팔레트를 붙여야 색이 나온다.
+              if ("map" in textured && !textured.map) {
+                textured.map = catPaletteTexture;
               }
-              material.userData.outlineParameters = {
+              // 원본 재질 색이 흰색이 아니면 텍스처가 물든다. 흰색으로 눌러 둔다.
+              textured.color?.set(0xffffff);
+
+              const unlit = isMeshyColorTextureMaterial(material)
+                ? createUnlitMeshyMaterial(
+                    material,
+                    ILLUSTRATION_NEUTRAL_TINT,
+                    anisotropy,
+                  )
+                : material;
+              unlit.userData.outlineParameters = {
                 thickness: ILLUSTRATION_OUTLINE_THICKNESS,
                 color: ILLUSTRATION_OUTLINE_COLOR.toArray(),
                 alpha: ILLUSTRATION_OUTLINE_ALPHA,
+                visible: true,
               };
-              material.needsUpdate = true;
-            }
+              unlit.needsUpdate = true;
+              return unlit;
+            });
+            object.material = Array.isArray(object.material)
+              ? styled
+              : styled[0];
           });
 
           model.updateMatrixWorld(true);

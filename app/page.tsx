@@ -4526,16 +4526,6 @@ export default function Home() {
             />
           </button>
 
-          <a
-            className="developer-fixed-link"
-            href="/developer"
-            aria-label="개발자 정보 페이지로 이동"
-            title="개발자 정보"
-          >
-            <strong aria-hidden="true">{"</>"}</strong>
-            <span>개발자 정보</span>
-          </a>
-
           <nav
             className={`keycap-menu keycap-menu-pressed-${pressedRadioIndex}`}
             aria-label="하단 메뉴"
@@ -6414,6 +6404,16 @@ export default function Home() {
                     {STATUS_COPY[focusedRuntime?.status ?? "idle"]}
                   </span>
                 </div>
+                {/* 화면 위에 떠 있던 개발자 버튼을 여기로 옮겼다. 월드를 가리지 않는다.
+                    바깥 컨테이너는 행 개수가 고정된 그리드라 형제로 끼우면 눌린다 —
+                    반드시 섹션 안쪽 흐름에 둔다. */}
+                <a className="developer-entry" href="/developer">
+                  <strong aria-hidden="true">{"</>"}</strong>
+                  <span>
+                    <b>개발자 정보</b>
+                    <small>만든 사람 · 기술 스택 · 연락처</small>
+                  </span>
+                </a>
                 <div
                   className="daily-economy-summary"
                   aria-label="오늘의 조개 획득 현황"
@@ -6519,6 +6519,7 @@ export default function Home() {
                     <p>업무 지시에서 새 일을 맡겨 보세요.</p>
                   </div>
                 )}
+
               </section>
             )}
 

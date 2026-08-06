@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
-async function render() {
+async function render(pathname = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
 
   return worker.fetch(
-    new Request("http://localhost/", {
+    new Request(`http://localhost${pathname}`, {
       headers: { accept: "text/html" },
     }),
     {
@@ -22,6 +22,19 @@ async function render() {
     },
   );
 }
+
+test("serves the other-PC install guide as a standalone HTML page", async () => {
+  const response = await render("/install-guide");
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
+  assert.match(response.headers.get("content-disposition") ?? "", /^inline;/i);
+
+  const html = await response.text();
+  assert.match(html, /^<!doctype html>/i);
+  assert.match(html, /다른 PC에도[\s\S]*같은 숲을 열기/);
+  assert.match(html, /Claude Code 설치와 로그인/);
+  assert.match(html, /AgentForestWorkspace/);
+});
 
 test("server-renders the Agent Forest integration UI", async () => {
   const response = await render();
@@ -82,6 +95,25 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(seatProgression, /seatId: "seat-2"[\s\S]*?price: 250/);
   assert.match(seatProgression, /seatId: "seat-3"[\s\S]*?price: 600/);
   assert.match(seatProgression, /seatId: "seat-4"[\s\S]*?price: 1250/);
+  // 자리를 열면 외부 세션 유무와 관계없이 좌석별 기본 고양이가 즉시 생긴다.
+  assert.match(page, /return unlockedSeatIds\.map\(\(seatId\) =>/);
+  assert.match(
+    page,
+    /const catId = residentCatIdForSeat\(seatId\)/,
+  );
+  assert.match(
+    page,
+    /const boundThreadId = catSessionBindings\[seatId\] \?\? runtime\?\.threadId \?\? null/,
+  );
+  assert.match(
+    page,
+    /aria-label={`고양이별 \$\{selectedLocalProviderLabel\} 세션 연결`}/,
+  );
+  assert.match(page, /CAT_SESSION_BINDINGS_STORAGE_KEY/);
+  assert.match(page, /href="\/install-guide"/);
+  assert.match(page, /가이드 HTML 열기/);
+  assert.match(css, /\.connection-guide-banner/);
+  assert.match(page, /residentCatNameForSeat\(seatId\)/);
 
   // 체형 살찌우기는 몸통 뼈 가중치를 쓰는 바인드 포즈 정점 조작이어야 한다.
   // (뼈 스케일은 클립 68개가 전부 .scale 트랙을 갖고 있어 매 프레임 덮어쓴다)
@@ -164,12 +196,18 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(seatProgression, /workstation-seat-1-v1\.png/);
   assert.match(seatProgression, /workstation-seat-4-v1\.png/);
   assert.match(world3d, /WORKSTATION_PLACEMENT_SEATS/);
+  assert.doesNotMatch(page, /workstationDecor=\{/);
+  assert.doesNotMatch(page, /WORKSTATION_DECOR_CATALOG\.map/);
+  assert.doesNotMatch(page, /chooseWorkstationDecor/);
   assert.match(
     world3d,
     /ambientPhase: "resting" \| "prewalking" \| "walking" \| "settling"/,
   );
   assert.match(world3d, /const isSecondaryAutonomous =/);
-  assert.match(world3d, /if \(!entry\.care && ambientAnimation !== "walk"\)/);
+  assert.match(
+    world3d,
+    /if \(!entry\.care && !wheelAnimation && ambientAnimation !== "walk"\)/,
+  );
   assert.match(world3d, /interactionCatIdRef/);
   assert.match(world3d, /snackApproachTimeoutSeconds/);
   assert.match(world3d, /activeSnackEatingTimer = SNACK_EATING_SECONDS/);
@@ -179,7 +217,10 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   );
   assert.match(world3d, /primaryCare\.insideFacility = false/);
   assert.match(world3d, /activeSnackTimer = 0/);
-  assert.match(world3d, /!primaryCare &&\s*activeSnackPhase === "none"/);
+  assert.match(
+    world3d,
+    /!primaryCare &&\s*catExerciseWheelSession\?\.catId !== primaryView\.catId &&\s*activeSnackPhase === "none"/,
+  );
   assert.match(world3d, /interactionDebugState/);
   assert.match(world3d, /characterVisible: characterVisual\.visible/);
   assert.match(world3d, /"toy-run", "\|Run_F"/);
@@ -241,15 +282,17 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.doesNotMatch(world3d, /createScallopSurfaceGeometry/);
   assert.match(world3d, /shoreline-shimmer/);
   assert.match(world3d, /water-ripple/);
-  assert.match(page, /catStyle=\{catStyle\}/);
+  assert.match(page, /catStyle:\s*catStyles\[catId\]/);
+  assert.doesNotMatch(page, /catStyles\[runtime\?\.threadId\]/);
   assert.match(page, /catShape=\{catShape\}/);
   assert.doesNotMatch(page, /radioPage === "mission"/);
-  assert.match(world3d, /catStyleModelUrl\(catStyle\)/);
+  assert.match(world3d, /catStyleModelUrl\(styleId\)/);
+  assert.match(world3d, /characterModelsByStyle\.get\(seat\.catStyle/);
   assert.match(world3d, /PolyArt_Cats_color\.png/);
-  assert.match(
-    world3d,
-    /texturedMaterial\.map = catPaletteTexture/,
-  );
+  // 맵이 없는 파트에 공용 팔레트를 붙이는 폴백은 유지돼야 한다.
+  assert.match(world3d, /textured\.map = catPaletteTexture/);
+  // 고양이도 소품과 같은 unlit 로 그린다 — 혼자 조명을 받아 톤이 어긋나던 회귀 방지.
+  assert.match(world3d, /createUnlitMeshyMaterial\(\s*material,/);
   assert.match(world3d, /fattenCat\(model, catShape\)/);
   // 후처리 비교 캡처는 꾹꾹이용 코딩 화면·눌림 키캡을 강제로 띄우지 않는다.
   // monitorAblation 존재만으로 실시간 화면을 켰던 이전 회귀를 막는다.
@@ -347,7 +390,10 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /비용 없는 화면 시연/);
   assert.match(page, /이 고양이에게 업무 맡기기/);
   assert.match(page, /내 PC Codex 세션/);
-  assert.match(page, /선택한 Codex 세션에서 실행/);
+  assert.match(
+    page,
+    /선택한 \$\{selectedLocalProviderLabel\} 세션에서 실행/,
+  );
   assert.match(page, /AUTONOMOUS CAT MOTION ACTIVE/);
   assert.match(page, /고양이 자율 행동 · 책상 객체 충돌 회피/);
   assert.match(world3d, /new THREE\.OrthographicCamera/);
@@ -422,7 +468,28 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
     /else if \(asset\.id === "camping-lantern"\)/,
   );
   assert.match(world3d, /createCodingStationInteractionOverlay/);
-  assert.match(world3d, /low-monitor-workstation-live-code-screen/);
+  assert.match(
+    world3d,
+    /workstation-live-code-screen-\$\{layout\.seatId\}/,
+  );
+  assert.match(world3d, /WORKSTATION_INTERACTION_LAYOUTS/);
+  assert.match(world3d, /workstationInteractions/);
+  assert.match(
+    world3d,
+    /workstationInteractions\.get\(seatId\)/,
+  );
+  assert.match(
+    world3d,
+    /"seat-2": \{[\s\S]*?stationPosition: TENT_WORKSTATION_POSITION[\s\S]*?animatedKeycaps: false/,
+  );
+  assert.match(
+    world3d,
+    /"seat-3": \{[\s\S]*?stationPosition: ROUND_LAPTOP_STATION_POSITION[\s\S]*?animatedKeycaps: false/,
+  );
+  assert.match(
+    world3d,
+    /"seat-4": \{[\s\S]*?stationPosition: FOLDING_LAPTOP_STATION_POSITION[\s\S]*?animatedKeycaps: false/,
+  );
   assert.match(world3d, /desk-keycap-1-top-flat-v1\.png/);
   assert.match(world3d, /desk-keycap-2-top-flat-v1\.png/);
   assert.match(world3d, /desk-keycap-3-top-flat-v1\.png/);
@@ -434,17 +501,49 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /LOW_MONITOR_STATION_ROTATION_Y = -0\.06/);
   assert.match(
     world3d,
-    /LOW_MONITOR_SCREEN_LOCAL_POSITION = new THREE\.Vector3\(\s*0\.05,\s*0\.846,\s*-0\.481/,
+    /LOW_MONITOR_SCREEN_LOCAL_POSITION = new THREE\.Vector3\(\s*0\.048,\s*0\.878,\s*-0\.481/,
+  );
+  assert.match(
+    world3d,
+    /LOW_MONITOR_SCREEN_SIZE = new THREE\.Vector2\(0\.71, 0\.465\)/,
+  );
+  assert.match(
+    world3d,
+    /"seat-2": \{[\s\S]*?screenPosition: new THREE\.Vector3\(0, 0\.66, -0\.078\)[\s\S]*?screenSize: new THREE\.Vector2\(0\.615, 0\.37\)/,
+  );
+  assert.match(
+    world3d,
+    /"seat-3": \{[\s\S]*?screenPosition: new THREE\.Vector3\(-0\.06, 0\.792, -0\.755\)[\s\S]*?screenSize: new THREE\.Vector2\(0\.72, 0\.56\)/,
+  );
+  assert.match(
+    world3d,
+    /"seat-4": \{[\s\S]*?screenPosition: new THREE\.Vector3\(-0\.447, 0\.86, -0\.46\)[\s\S]*?screenSize: new THREE\.Vector2\(0\.61, 0\.395\)/,
   );
   assert.match(world3d, /LOW_MONITOR_KEYCAP_START_X = -0\.23/);
   assert.match(world3d, /LOW_MONITOR_KEYCAP_SPACING = 0\.2/);
   assert.match(world3d, /LOW_MONITOR_KEYCAP_Y = 0\.579/);
   assert.match(world3d, /LOW_MONITOR_KEYCAP_Z = -0\.17/);
-  assert.match(world3d, /low-monitor-workstation-interaction-overlay/);
+  assert.match(
+    world3d,
+    /workstation-interaction-overlay-\$\{layout\.seatId\}/,
+  );
+  assert.match(
+    world3d,
+    /secondaryEntry\?\.currentKey === "work"/,
+  );
+  assert.match(
+    world3d,
+    /case TENT_WORKSTATION_OBSTACLE\.id:[\s\S]*?SEAT_WORLD_POSITIONS\["seat-2"\]/,
+  );
+  assert.match(
+    world3d,
+    /case DESK_OBSTACLE\.id:[\s\S]*?SEAT_WORLD_POSITIONS\["seat-1"\]/,
+  );
   assert.match(world3d, /createMonitorScreenTexture/);
   assert.match(world3d, /drawMonitorScreen/);
   assert.match(world3d, /kneading\.ts/);
   assert.match(world3d, /CATCODE   UTF-8   RUNNING/);
+  assert.doesNotMatch(world3d, /context\.fillStyle = "#0f766e"/);
   assert.match(world3d, /MONITOR_CODE_FRAME_RATE = 8/);
   assert.match(world3d, /nextMonitorScreenFrame/);
   assert.match(world3d, /coding-desk-keycap-\$\{index \+ 1\}-top-texture/);
@@ -485,8 +584,14 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   );
   assert.match(world3d, /becameSecondaryAutonomous/);
   assert.match(world3d, /animatedDeskKeycaps/);
-  assert.match(world3d, /workstation\.add\(interactionGroup\)/);
-  assert.match(world3d, /monitorScreen\.visible = showDeskInteraction/);
+  assert.match(
+    world3d,
+    /workstation\.add\(workstationInteraction\.interactionGroup\)/,
+  );
+  assert.match(
+    world3d,
+    /interaction\.monitorScreen\.visible = showWorkstationInteraction/,
+  );
   assert.match(world3d, /\|Sitting_Idle/);
   assert.match(world3d, /\|Sitting_idle_2/);
   assert.match(world3d, /\|Sitting_idle_3/);
@@ -572,6 +677,14 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /createCampingLantern/);
   assert.doesNotMatch(world3d, /createBeachOfficeBench/);
   assert.match(world3d, /createMeshyPropTemplate/);
+  assert.match(world3d, /type MeshyPropMaterialStyle = "source" \| "unlit"/);
+  assert.match(world3d, /createUnlitMeshyMaterial/);
+  assert.match(world3d, /renderingStyle: "illustrated-unlit"/);
+  assert.match(
+    world3d,
+    /createCoveredCatLitterBox[\s\S]*createUnlitIllustratedMaterial/,
+  );
+  assert.match(world3d, /0\.78,\s*"unlit",/);
   assert.match(world3d, /ensurePalmLeafSwayMorphTargets/);
   assert.match(world3d, /registerPalmLeafSway/);
   assert.match(world3d, /palm-leaf-sway-morph-v2/);
@@ -603,7 +716,11 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /DodecahedronGeometry/);
   assert.match(world3d, /-coconut-/);
   assert.match(world3d, /emissive\.set\(0x000000\)/);
-  assert.match(world3d, /specularIntensity = 0\.12/);
+  // 고양이 재질에 있던 specular 보정은 unlit 전환으로 사라졌다.
+  // 대신 소품과 같은 외곽선 값을 쓰는지 확인한다(두께·색·알파 공용 상수).
+  assert.match(world3d, /thickness: ILLUSTRATION_OUTLINE_THICKNESS/);
+  assert.match(world3d, /color: ILLUSTRATION_OUTLINE_COLOR\.toArray\(\)/);
+  assert.match(world3d, /alpha: ILLUSTRATION_OUTLINE_ALPHA/);
   assert.match(world3d, /SketchOutlineEffect/);
   assert.match(sketchOutline, /paperGap/);
   assert.match(sketchOutline, /outlineGapStrength/);
@@ -651,13 +768,10 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   const facilityShopIndex = page.indexOf(
     'className="world-facility-shop"',
   );
-  const seatDecorHeadingIndex = page.indexOf(
-    '자리 {(selectedSeat ?? "seat-1").slice(-1)} 소품',
-  );
   assert.ok(deskPanelIndex >= 0);
   assert.ok(deskSeatGridIndex > deskPanelIndex);
   assert.ok(facilityShopIndex > deskSeatGridIndex);
-  assert.ok(seatDecorHeadingIndex > facilityShopIndex);
+  assert.equal(page.includes("자리 꾸미기 소품 12종"), false);
   assert.equal(
     page.slice(0, deskPanelIndex).includes("onClick={buySecondFoodBowl}"),
     false,

@@ -8881,78 +8881,10 @@ button {
   }
 }
 
-/* ── 게임 화면 우측 하단 개발자 버튼 ────────────────────────────────────
-   호르무즈의 .developer-fixed-link 와 같은 역할. 글자 라벨 없이 코드 기호(</>)
-   하나만 두고 이름은 스크린리더·툴팁으로만 전달한다. 크기·모양은 소리 버튼과 맞춘다.
-   하단 중앙의 키캡 4키가 무대 높이의 약 20%를 차지해(실측: 789px 무대에서 위쪽 638px)
-   그 위로 올린다. 키캡 좌우 여백은 좁은 화면에서 아이콘보다 작아져 corner 배치가 겹친다. */
-
-.developer-fixed-link {
-  position: absolute;
-  z-index: 30;
-  right: clamp(10px, 1.6%, 18px);
-  bottom: clamp(150px, 21.5%, 205px);
-  display: grid;
-  width: 44px;
-  height: 44px;
-  place-items: center;
-  border: 2px solid rgba(114, 82, 73, 0.72);
-  border-radius: 50%;
-  background: #f5be77;
-  box-shadow:
-    0 0 0 3px rgba(255, 250, 240, 0.9),
-    0 5px 0 rgba(160, 132, 112, 0.55),
-    0 8px 18px rgba(70, 48, 38, 0.28);
-  color: #6b4f42;
-  text-decoration: none;
-  transition:
-    opacity 0.28s ease,
-    transform 0.28s ease,
-    background 0.18s ease;
-}
-
-.developer-fixed-link strong {
-  font-family: "Gaegu", "Gowun Dodum", sans-serif;
-  font-size: 18px;
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: -0.06em;
-}
-
-/* 이름은 화면에 보이지 않고 보조기기와 title 로만 전달한다 */
-.developer-fixed-link span {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-.developer-fixed-link:hover {
-  background: #f8cd90;
-}
-
-.developer-fixed-link:active {
-  transform: translateY(2px);
-  box-shadow: none;
-}
-
-.developer-fixed-link:focus-visible {
-  outline: 2px solid var(--forest-600);
-  outline-offset: 2px;
-}
-
 /* 이 버튼만은 HUD 자동 숨김을 전혀 따라가지 않는다.
    찾아서 눌러야 하는 진입점이라 사라지거나 옅어지면 존재를 알 수 없다.
    (0.55 로 옅게 두었더니 배경에 묻혀 "안 보인다"는 보고가 나왔다) */
-.hud-dormant .developer-fixed-link {
-  opacity: 1;
-  pointer-events: auto;
-  transform: none;
-}
-
-/* ── 고양이 이미지 놀이 ─────────────────────────────────────────────── */
+.hud-dormant /* ── 고양이 이미지 놀이 ─────────────────────────────────────────────── */
 .radio-panel.game-popup .cat-detail-subtabs {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -9513,4 +9445,55 @@ button {
     bottom: clamp(84px, 13%, 120px);
     width: min(90%, 320px);
   }
+}
+
+/* 4번째 키캡(진행 상황·기록) 안의 개발자 정보 입구.
+   전에는 화면 우측 하단에 떠 있었는데 월드를 가려서 여기로 옮겼다. */
+.developer-entry {
+  display: grid;
+  align-items: center;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 2px solid rgba(114, 82, 73, 0.32);
+  border-radius: 14px;
+  background: rgba(255, 250, 238, 0.72);
+  color: #5c4a3d;
+  gap: 10px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  text-decoration: none;
+}
+
+.developer-entry:hover {
+  border-color: rgba(114, 82, 73, 0.6);
+  background: #fffaf0;
+}
+
+.developer-entry strong {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  border: 2px solid rgba(114, 82, 73, 0.55);
+  border-radius: 50%;
+  background: #f5be77;
+  color: #5c4a3d;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: -0.06em;
+  place-items: center;
+}
+
+.developer-entry span {
+  display: grid;
+  gap: 2px;
+}
+
+.developer-entry b {
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.developer-entry small {
+  color: #8a7563;
+  font-size: 11px;
+  font-weight: 700;
 }
