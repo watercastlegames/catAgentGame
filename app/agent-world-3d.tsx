@@ -347,7 +347,8 @@ const WORLD_TARGETS: Record<AgentWorldLocation, THREE.Vector3> = {
   general: new THREE.Vector3(-2.05, 0, -2.48),
   coding: CODING_DESK_TARGET,
   design: new THREE.Vector3(-2.2, 0, 0.78),
-  music: new THREE.Vector3(2.18, 0, 1.18),
+  // 4번 자리(접이식 노트북)와 같은 자리다 — SEAT_WORLD_POSITIONS["seat-4"] 와 함께 옮긴다.
+  music: new THREE.Vector3(1.79, 0, 1.18),
   queue: new THREE.Vector3(-0.25, 0, 2.45),
   office: new THREE.Vector3(-2.05, 0, -2.48),
 };
@@ -463,7 +464,11 @@ const SEAT_WORLD_POSITIONS: Record<SeatId, THREE.Vector3> = {
   "seat-1": new THREE.Vector3(2.12, 0, 4.12),
   "seat-2": new THREE.Vector3(-2.05, 0, -2.48),
   "seat-3": new THREE.Vector3(-2.2, 0, 0.78),
-  "seat-4": new THREE.Vector3(2.18, 0, 1.18),
+  /* 접이식 노트북은 화면이 모델 중심에서 가로로 크게 빠져 있다(local x -0.447).
+     책상 중심(x 2.18)에 세웠더니 고양이만 화면 옆으로 0.39 비켜서서,
+     이름표는 노트북 위에 뜨는데 정작 몸은 옆에 선 모양이 됐다.
+     다른 자리의 어긋남은 0.01~0.12 다 — 화면의 가로 위치에 맞춘다. */
+  "seat-4": new THREE.Vector3(1.79, 0, 1.18),
 };
 
 // 이름표와 차단 비콘은 씬의 어떤 오브젝트·외곽선보다 위에 그린다.
