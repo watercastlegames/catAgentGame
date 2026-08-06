@@ -88,12 +88,16 @@ export async function submitPmWorkerTask(
     body: JSON.stringify({ prompt, sessionId, webQuery }),
   });
   const body = (await response.json()) as PmWorkerChatResponse;
-  if (!response.ok || !body.reply || !body.sessionId) {
+  /* 답이 왔으면 성공이다. 세션 id 가 없다고 실패로 돌리면, 답을 받고도
+     조개를 돌려주고 "실패"라고 말하게 된다 — 세션은 다음 말을 이어 붙이기
+     위한 것이지 이번 답의 유효성과는 무관하다. */
+  if (!response.ok || !body.reply) {
     throw new Error(body.error ?? "PM Worker AI 응답을 받지 못했어요.");
   }
-  savePmWorkerSession(catId, body.sessionId);
+  // 고양이마다 따로 저장한다. 다른 고양이를 고르면 세션이 없어 새로 시작한다.
+  if (body.sessionId) savePmWorkerSession(catId, body.sessionId);
   return {
     reply: normalizePmWorkerReply(body.reply),
-    sessionId: body.sessionId,
+    sessionId: body.sessionId ?? null,
   };
 }
