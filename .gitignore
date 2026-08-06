@@ -67,3 +67,6 @@ next-env.d.ts
 /public/models/cat-care-v1/*-meshy6-v1_base_color.png
 /public/models/collectible-shell-v2/*_base_color-soft-seam-v1.png
 /public/models/collectible-shell-v2/*_base_color.png
+
+# 서버 키가 박히는 파일 — 절대 커밋하지 않는다
+deploy/sidak/pm-worker.asp

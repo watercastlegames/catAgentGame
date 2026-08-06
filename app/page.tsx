@@ -6103,7 +6103,9 @@ export default function Home() {
                         ? "PM Worker AI가 연결됐어요"
                         : pmWorkerConnectionState === "loading"
                           ? "PM Worker AI를 확인하고 있어요"
-                          : "PM Worker AI 연결을 확인해 주세요"}
+                          : pmWorkerConnectionState === "unavailable"
+                            ? "이 화면에는 AI 연결이 없어요"
+                            : "PM Worker AI 서버가 응답하지 않아요"}
                     </strong>
                     <p>
                       ProjectManager 서버의 대화형 AI 워커를 사용합니다. 고양이
@@ -6111,7 +6113,9 @@ export default function Home() {
                       {AI_CHAT_SHELL_COST}개가 차감되며, 연결 실패 시에는
                       자동으로 돌려드려요.
                     </p>
-                    {pmWorkerConnectionState !== "ready" && (
+                    {/* AI 엔드포인트가 아예 없는 판에서는 다시 확인해 봐야 결과가 같다. */}
+                    {pmWorkerConnectionState !== "ready" &&
+                      pmWorkerConnectionState !== "unavailable" && (
                       <button
                         type="button"
                         onClick={() => void retryPmWorkerConnection()}
