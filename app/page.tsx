@@ -3477,10 +3477,13 @@ export default function Home() {
     [],
   );
 
+  /* 개발자 도구용 조개 지급. 5개씩은 자리·털색 값을 시험해 보기에 너무 적어
+     같은 버튼을 수십 번 눌러야 했다. 한 번에 500개씩 준다. */
+  const ADMIN_SHELL_GRANT = 500;
   const grantAdministratorShells = useCallback(() => {
     if (!layoutAdminEnabled) return;
-    grantShellReward(5, "관리자 조개 보상");
-    setToast("관리자 조개 5개를 추가했어요.");
+    grantShellReward(ADMIN_SHELL_GRANT, "관리자 조개 보상");
+    setToast(`관리자 조개 ${ADMIN_SHELL_GRANT}개를 추가했어요.`);
   }, [grantShellReward, layoutAdminEnabled]);
 
   function persistCatSessionBindings(next: CatSessionBindings) {
@@ -4471,12 +4474,12 @@ export default function Home() {
             }`}
             aria-label={
               layoutAdminEnabled
-                ? `조개 ${shells}개, 관리자 조개 5개 추가`
+                ? `조개 ${shells}개, 관리자 조개 ${ADMIN_SHELL_GRANT}개 추가`
                 : `조개 ${shells}개`
             }
             title={
               layoutAdminEnabled
-                ? "관리자: 누를 때마다 조개 5개 추가"
+                ? `관리자: 누를 때마다 조개 ${ADMIN_SHELL_GRANT}개 추가`
                 : undefined
             }
             disabled={!layoutAdminEnabled}

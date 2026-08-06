@@ -189,7 +189,9 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(page, /hud-sound-off-v2\.png/);
   assert.match(page, /className=\{`world-currency-hud \$\{/);
   assert.match(page, /grantAdministratorShells/);
-  assert.match(page, /grantShellReward\(5, "관리자 조개 보상"\)/);
+  // 개발자 도구용 지급량은 한 번에 500개 — 5개씩이면 시험할 때 수십 번 눌러야 했다.
+  assert.match(page, /const ADMIN_SHELL_GRANT = 500/);
+  assert.match(page, /grantShellReward\(ADMIN_SHELL_GRANT, "관리자 조개 보상"\)/);
   assert.match(page, /disabled=\{!layoutAdminEnabled\}/);
   assert.match(seatProgression, /agent-forest-active-seat-count-v1/);
   assert.match(seatProgression, /MAX_SEAT_COUNT = 4/);

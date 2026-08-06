@@ -8,6 +8,8 @@ type UpstreamBody = {
   session_id?: string;
   error?: string;
   code?: number;
+  /** ASP 가 워커 원문 응답을 넣어 준다. 원인 파악에 이것만 한 게 없다. */
+  debug?: string;
 };
 
 const JSON_HEADERS = {
@@ -48,6 +50,22 @@ const CURRENT_WEB_TERMS = [
   "검색해",
   "찾아봐",
   "알아봐",
+  "오늘",
+  "현재",
+  "최신",
+  "최근",
+  "요즘",
+  "이번 주",
+  "방금",
+  "며칠",
+  "급등",
+  "급락",
+  "강세",
+  "약세",
+  "오른 이유",
+  "내린 이유",
+  "왜 오르",
+  "왜 내리",
   "stock price",
   "market news",
   "latest news",
@@ -93,6 +111,7 @@ async function upstreamRequest(
   action: "health" | "chat",
   prompt = "",
   sessionId = "",
+  useCurrentWeb = false,
 ) {
   const target = new URL(endpoint);
   if (action === "health") {
@@ -113,7 +132,7 @@ async function upstreamRequest(
     message_b64: utf8Base64(prompt),
   });
   if (sessionId) form.set("session_id", sessionId);
-  if (needsCurrentWeb(prompt)) form.set("web_search", "1");
+  if (useCurrentWeb) form.set("web_search", "1");
   return fetch(target, {
     method: "POST",
     headers: {
@@ -155,14 +174,27 @@ async function readChatBody(request: Request) {
     ? (JSON.parse(text) as Record<string, unknown>)
     : ({} as Record<string, unknown>);
   const prompt = String(body.prompt ?? "").trim();
+  const webQuery = String(body.webQuery ?? prompt).trim();
   const sessionId = String(body.sessionId ?? "").trim();
-  if (!prompt || prompt.length > 2_000) {
-    throw new Error("1~2,000자의 대화 내용을 입력해 주세요.");
+  if (!prompt || prompt.length > 8_000) {
+    throw new Error("AI 문맥을 포함한 대화 내용은 8,000자 이내여야 합니다.");
   }
   if (sessionId && !/^s\d{6}-\d{6}$/.test(sessionId)) {
     throw new Error("PM Worker 대화 세션 정보가 올바르지 않습니다.");
   }
-  return { prompt, sessionId };
+  if (!webQuery || webQuery.length > 2_000) {
+    throw new Error("최신 정보 검색어는 1~2,000자로 입력해 주세요.");
+  }
+  return { prompt, webQuery, sessionId };
+}
+
+function currentWebReplyHasSources(reply: string | undefined) {
+  if (!reply || !/https?:\/\/\S+/i.test(reply)) return false;
+  return !(
+    /직접\s*(?:조회|검색).*?(?:못|어렵)/i.test(reply) ||
+    /실시간\s*(?:데이터|자료|정보).*?(?:못|어렵|불가)/i.test(reply) ||
+    /2025년\s*5월까지의\s*정보/i.test(reply)
+  );
 }
 
 export async function handlePmWorkerRequest(
@@ -200,16 +232,21 @@ export async function handlePmWorkerRequest(
       return json({ ready: true, provider: "project-manager-worker" });
     }
 
-    const { prompt, sessionId } = await readChatBody(request);
+    const { prompt, webQuery, sessionId } = await readChatBody(request);
+    const useCurrentWeb = needsCurrentWeb(webQuery);
     let upstream = await upstreamRequest(
       endpoint,
       apiKey,
       "chat",
       prompt,
       sessionId,
+      useCurrentWeb,
     );
     let body = await parseUpstreamBody(upstream);
-    if (needsCurrentWeb(prompt) && body?.code === 503) {
+    if (
+      useCurrentWeb &&
+      (body?.code === 503 || !currentWebReplyHasSources(body?.reply))
+    ) {
       const restarted = await bootstrapCurrentWebRelay(endpoint, apiKey);
       if (restarted) {
         upstream = await upstreamRequest(
@@ -218,6 +255,7 @@ export async function handlePmWorkerRequest(
           "chat",
           prompt,
           sessionId,
+          useCurrentWeb,
         );
         body = await parseUpstreamBody(upstream);
       }
@@ -226,21 +264,41 @@ export async function handlePmWorkerRequest(
       return json({ error: "PM Worker AI 응답 형식이 올바르지 않아요." }, 502);
     }
     if (!upstream.ok || !body.reply || !body.session_id) {
+      /* ProjectManager 쪽 ASP 는 서버의 AI 워커(5201/5202)가 응답을 못 주면
+         언제나 "AI worker error" 한 줄만 준다. 그대로 흘리면 게임에서는
+         원인을 알 수 없어 "왜 연결이 안 되지"로만 남는다 — 실제로 무엇이
+         멈춘 것인지 말해 준다. 자세한 내용은 ASP 의 debug 에 들어 있다. */
+      const workerDown =
+        body.code === 503 || body.error === "AI worker error";
+      return json(
+        {
+          error: workerDown
+            ? "ProjectManager 서버의 AI 워커가 응답하지 않아요. 서버에서 워커를 다시 켜 주세요."
+            : (body.error ??
+              (upstream.status >= 500
+                ? "PM Worker AI가 잠시 응답하지 않아요."
+                : "PM Worker AI 요청을 처리하지 못했어요.")),
+          ...(workerDown ? { code: "worker_down" } : {}),
+          ...(body.debug ? { detail: String(body.debug).slice(0, 400) } : {}),
+        },
+        upstream.status >= 400 ? upstream.status : 502,
+      );
+    }
+    if (useCurrentWeb && !currentWebReplyHasSources(body.reply)) {
       return json(
         {
           error:
-            body.error ??
-            (upstream.status >= 500
-              ? "PM Worker AI가 잠시 응답하지 않아요."
-              : "PM Worker AI 요청을 처리하지 못했어요."),
+            "최신 웹 자료와 출처를 확인하지 못했어요. 잠시 후 다시 검색해 주세요.",
+          code: "current_web_unverified",
         },
-        upstream.status >= 400 ? upstream.status : 502,
+        502,
       );
     }
     return json({
       reply: body.reply,
       sessionId: body.session_id,
       provider: "project-manager-worker",
+      webSearchUsed: useCurrentWeb,
     });
   } catch (error) {
     const timedOut =
