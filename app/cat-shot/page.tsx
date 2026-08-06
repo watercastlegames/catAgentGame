@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
-import { OutlineEffect } from "three/addons/effects/OutlineEffect.js";
+import { SketchOutlineEffect } from "../sketch-outline-effect";
 import { catStyleModelUrl } from "../cat-styles";
 import { fattenCat } from "../cat-body";
 
@@ -12,9 +12,12 @@ import { fattenCat } from "../cat-body";
  * 헤드리스 크로미움으로 15장을 찍어 cat-styles-review-*.html 에 박아 넣는 용도다.
  * 캔버스를 창 크기에 정확히 맞춰야 스크린샷 = 캔버스가 된다.
  */
-const ILLUSTRATION_OUTLINE_COLOR = new THREE.Color(0x6f5040);
-const OUTLINE_THICKNESS = 0.0045;
-const OUTLINE_ALPHA = 0.85;
+/* 게임 월드(app/agent-world-3d.tsx)와 같은 값을 쓴다.
+   여기서 찍은 그림이 그대로 털색 목록 썸네일이 되므로, 값이 다르면
+   목록의 고양이와 사무실의 고양이가 다른 그림처럼 보인다. */
+const ILLUSTRATION_OUTLINE_COLOR = new THREE.Color(0x735b4f);
+const OUTLINE_THICKNESS = 0.0038;
+const OUTLINE_ALPHA = 0.72;
 const CAT_HEIGHT = 0.86;
 const PORTRAIT_YAW = -0.62;
 
@@ -43,20 +46,20 @@ export default function CatShotPage() {
     renderer.setClearAlpha(0);
     host.appendChild(renderer.domElement);
 
-    const outlineEffect = new OutlineEffect(renderer, {
-      defaultThickness: OUTLINE_THICKNESS,
+    /* 이 페이지는 직교 카메라라 gl_Position.w 가 늘 1 이다.
+       월드(원근)에서는 w 가 깊이라 같은 상수라도 화면에서 더 두껍게 나온다.
+       그래서 같은 굵기로 보이게 하려면 여기서만 배수를 곱해야 한다.
+       ?ot= 로 조절할 수 있게 열어 둔다. */
+    const outlineScale = Number(params.get("ot") ?? "3") || 3;
+    const outlineEffect = new SketchOutlineEffect(renderer, {
+      defaultThickness: OUTLINE_THICKNESS * outlineScale,
       defaultColor: ILLUSTRATION_OUTLINE_COLOR.toArray(),
       defaultAlpha: OUTLINE_ALPHA,
     });
 
+    // 월드가 unlit 이라 여기도 조명을 두지 않는다. 조명을 두면 목록 썸네일만
+    // 음영이 생겨 사무실에 서 있는 고양이와 다른 색으로 보인다.
     const scene = new THREE.Scene();
-    scene.add(new THREE.HemisphereLight(0xfff6dd, 0x8d7a68, 1.7));
-    const keyLight = new THREE.DirectionalLight(0xfff2d1, 2.1);
-    keyLight.position.set(-4, 10, 7);
-    scene.add(keyLight);
-    const fillLight = new THREE.DirectionalLight(0x9fcbe0, 0.65);
-    fillLight.position.set(8, 5, -4);
-    scene.add(fillLight);
 
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 40);
     const cameraOffset = new THREE.Vector3(0, 2.7, 6);
@@ -158,12 +161,29 @@ export default function CatShotPage() {
             if (textured.map) textured.map.colorSpace = THREE.SRGBColorSpace;
           }
           material.userData.outlineParameters = {
-            thickness: OUTLINE_THICKNESS,
+            thickness: OUTLINE_THICKNESS * outlineScale,
             color: ILLUSTRATION_OUTLINE_COLOR.toArray(),
             alpha: OUTLINE_ALPHA,
+            visible: true,
           };
           material.needsUpdate = true;
         }
+        // 조명 없이 텍스처 색 그대로 — 월드와 같은 unlit.
+        const unlit = materials.map((material) => {
+          const source = material as THREE.Material & {
+            color?: THREE.Color;
+            map?: THREE.Texture | null;
+          };
+          const basic = new THREE.MeshBasicMaterial({
+            color: source.color?.clone() ?? new THREE.Color(0xffffff),
+            map: source.map ?? paletteTexture,
+            side: THREE.DoubleSide,
+            toneMapped: material.toneMapped,
+          });
+          basic.userData.outlineParameters = material.userData.outlineParameters;
+          return basic;
+        });
+        object.material = Array.isArray(object.material) ? unlit : unlit[0];
       });
       model.updateMatrixWorld(true);
       const sourceSize = new THREE.Box3()

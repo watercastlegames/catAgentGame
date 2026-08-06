@@ -25,8 +25,17 @@ const outlineVertexShader = `
 
   uniform float outlineThickness;
 
-  vec4 calculateOutline(vec4 pos, vec3 normal, vec4 skinned) {
-    vec4 pos2 = projectionMatrix * modelViewMatrix * vec4(skinned.xyz + normal, 1.0);
+  /* 바깥으로 밀 방향을 '뷰 공간'에서 구한다.
+     예전에는 오브젝트 공간에서 법선을 1단위 더했는데, 그 1단위가 갖는 의미가
+     모델마다 달랐다 — 소품(원본 ~1단위)은 몸집만큼 밀려 방향이 또렷했지만,
+     고양이 FBX(cm 단위 원본)는 몸집의 몇 %도 안 돼 차이가 0에 가까웠고
+     normalize 가 그 오차를 증폭해 외곽선이 흐려지고 살짝 떠 보였다.
+     normalMatrix 로 법선을 뷰 공간에 옮기면 원본 단위가 상쇄돼
+     고양이든 자리든 같은 굵기·같은 선명도로 나온다. */
+  vec4 calculateOutline(vec4 pos, vec3 objectNormalIn, vec3 objectPos) {
+    vec4 viewPos = modelViewMatrix * vec4(objectPos, 1.0);
+    vec3 viewNormal = normalize(normalMatrix * objectNormalIn);
+    vec4 pos2 = projectionMatrix * vec4(viewPos.xyz + viewNormal * 0.02, 1.0);
     vec4 norm = normalize(pos - pos2);
     return pos + norm * outlineThickness * pos.w;
   }
@@ -44,7 +53,7 @@ const outlineVertexShader = `
     #include <project_vertex>
 
     vec3 outlineNormal = -objectNormal;
-    gl_Position = calculateOutline(gl_Position, outlineNormal, vec4(transformed, 1.0));
+    gl_Position = calculateOutline(gl_Position, outlineNormal, transformed);
 
     #include <logdepthbuf_vertex>
     #include <clipping_planes_vertex>
