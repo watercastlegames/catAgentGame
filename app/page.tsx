@@ -3792,7 +3792,8 @@ export default function Home() {
     worldAudioRef.current?.playUi("purchaseSuccess");
     // 조개가 실제로 빠져나간 순간이 "첫 업무를 맡겼다"의 유일한 확실한 신호다.
     advanceTutorial("first-task");
-    if (companionBackend === "pm-worker") {
+    // 개발자 도구를 켜 둔 동안은 횟수를 세지 않는다. 세면 껐을 때 이미 소진돼 있다.
+    if (companionBackend === "pm-worker" && !layoutAdminEnabled) {
       const nextQuota = consumeQuota(pmWorkerQuota);
       setPmWorkerQuota(nextQuota);
       writeQuota(nextQuota);
@@ -3835,8 +3836,14 @@ export default function Home() {
       setToast("Puter 무료 AI 연결 화면에서 로그인을 먼저 완료해 주세요.");
       return;
     }
-    // 맛보기용 공용 워커는 사장님 구독으로 돌아간다. 한 사람 하루 5회로 묶는다.
-    if (companionBackend === "pm-worker" && !canUsePmWorker(pmWorkerQuota)) {
+    /* 맛보기용 공용 워커는 사장님 구독으로 돌아간다. 한 사람 하루 5회로 묶는다.
+       단, 7 로 켠 개발자 도구 상태에서는 상한을 두지 않는다 —
+       만드는 사람이 확인하다가 막히면 확인 자체를 못 한다. */
+    if (
+      companionBackend === "pm-worker" &&
+      !layoutAdminEnabled &&
+      !canUsePmWorker(pmWorkerQuota)
+    ) {
       setToast(quotaNotice(pmWorkerQuota));
       return;
     }
