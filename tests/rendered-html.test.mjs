@@ -503,7 +503,7 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /LOW_MONITOR_STATION_ROTATION_Y = -0\.06/);
   assert.match(
     world3d,
-    /LOW_MONITOR_SCREEN_LOCAL_POSITION = new THREE\.Vector3\(\s*0\.048,\s*0\.878,\s*-0\.481/,
+    /LOW_MONITOR_SCREEN_LOCAL_POSITION = new THREE\.Vector3\(\s*0\.048,\s*0\.853,\s*-0\.481/,
   );
   assert.match(
     world3d,
@@ -511,15 +511,15 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   );
   assert.match(
     world3d,
-    /"seat-2": \{[\s\S]*?screenPosition: new THREE\.Vector3\(0, 0\.66, -0\.078\)[\s\S]*?screenSize: new THREE\.Vector2\(0\.615, 0\.37\)/,
+    /"seat-2": \{[\s\S]*?screenPosition: new THREE\.Vector3\(-0\.035, 0\.66, -0\.078\)[\s\S]*?screenSize: new THREE\.Vector2\(0\.615, 0\.37\)/,
   );
   assert.match(
     world3d,
-    /"seat-3": \{[\s\S]*?screenPosition: new THREE\.Vector3\(-0\.06, 0\.792, -0\.755\)[\s\S]*?screenSize: new THREE\.Vector2\(0\.72, 0\.56\)/,
+    /"seat-3": \{[\s\S]*?screenPosition: new THREE\.Vector3\(-0\.075, 0\.747, -0\.755\)[\s\S]*?screenSize: new THREE\.Vector2\(0\.6846, 0\.5025\)/,
   );
   assert.match(
     world3d,
-    /"seat-4": \{[\s\S]*?screenPosition: new THREE\.Vector3\(-0\.447, 0\.86, -0\.46\)[\s\S]*?screenSize: new THREE\.Vector2\(0\.61, 0\.395\)/,
+    /"seat-4": \{[\s\S]*?screenPosition: new THREE\.Vector3\(-0\.477, 0\.86, -0\.46\)[\s\S]*?screenSize: new THREE\.Vector2\(0\.586, 0\.3794\)/,
   );
   assert.match(world3d, /LOW_MONITOR_KEYCAP_START_X = -0\.23/);
   assert.match(world3d, /LOW_MONITOR_KEYCAP_SPACING = 0\.2/);

@@ -238,7 +238,7 @@ const LOW_MONITOR_STATION_POSITION = new THREE.Vector3(2.12, 0, 3.42);
 const LOW_MONITOR_STATION_ROTATION_Y = -0.06;
 const LOW_MONITOR_SCREEN_LOCAL_POSITION = new THREE.Vector3(
   0.048,
-  0.878,
+  0.853,
   -0.481,
 );
 const LOW_MONITOR_SCREEN_SIZE = new THREE.Vector2(0.71, 0.465);
@@ -280,6 +280,9 @@ type MonitorScreenCalibrationMetrics = WorkstationScreenPose & {
 // Each workstation model is a single baked mesh, so the live work display is
 // mounted as a small independent plane directly over that model's screen.
 // Positions are in the normalized workstation group's local coordinates.
+/* 화면 위치·크기는 관리자 보정 도구(7 → 화면)에서 맞춘 값을 그대로 옮겨 적은 것이다.
+   보정은 브라우저 localStorage 에만 남아 기기를 옮기면 사라진다 — 확정된 값은
+   여기에 못 박아 두어야 모두에게 같은 화면이 나온다. (2026-08-06 보정본) */
 const WORKSTATION_INTERACTION_LAYOUTS: Record<
   SeatId,
   WorkstationInteractionLayout
@@ -297,7 +300,7 @@ const WORKSTATION_INTERACTION_LAYOUTS: Record<
     seatId: "seat-2",
     stationPosition: TENT_WORKSTATION_POSITION,
     stationRotationY: 0.08,
-    screenPosition: new THREE.Vector3(0, 0.66, -0.078),
+    screenPosition: new THREE.Vector3(-0.035, 0.66, -0.078),
     screenSize: new THREE.Vector2(0.615, 0.37),
     screenRotationX: 0,
     animatedKeycaps: false,
@@ -306,11 +309,11 @@ const WORKSTATION_INTERACTION_LAYOUTS: Record<
     seatId: "seat-3",
     stationPosition: ROUND_LAPTOP_STATION_POSITION,
     stationRotationY: 0.08,
-    screenPosition: new THREE.Vector3(-0.06, 0.792, -0.755),
+    screenPosition: new THREE.Vector3(-0.075, 0.747, -0.755),
     // This laptop has a visibly wider baked bezel than the other three
     // workstations. Fill a little more of its recessed display so the
     // remaining frame reads at the same screen-space thickness.
-    screenSize: new THREE.Vector2(0.72, 0.56),
+    screenSize: new THREE.Vector2(0.6846, 0.5025),
     screenRotationX: -0.2,
     animatedKeycaps: false,
   },
@@ -318,8 +321,8 @@ const WORKSTATION_INTERACTION_LAYOUTS: Record<
     seatId: "seat-4",
     stationPosition: FOLDING_LAPTOP_STATION_POSITION,
     stationRotationY: -0.12,
-    screenPosition: new THREE.Vector3(-0.447, 0.86, -0.46),
-    screenSize: new THREE.Vector2(0.61, 0.395),
+    screenPosition: new THREE.Vector3(-0.477, 0.86, -0.46),
+    screenSize: new THREE.Vector2(0.586, 0.3794),
     screenRotationX: -0.32,
     animatedKeycaps: false,
   },
@@ -348,7 +351,7 @@ const WORLD_TARGETS: Record<AgentWorldLocation, THREE.Vector3> = {
   coding: CODING_DESK_TARGET,
   design: new THREE.Vector3(-2.2, 0, 0.78),
   // 4번 자리(접이식 노트북)와 같은 자리다 — SEAT_WORLD_POSITIONS["seat-4"] 와 함께 옮긴다.
-  music: new THREE.Vector3(1.79, 0, 1.18),
+  music: new THREE.Vector3(1.76, 0, 1.02),
   queue: new THREE.Vector3(-0.25, 0, 2.45),
   office: new THREE.Vector3(-2.05, 0, -2.48),
 };
@@ -467,8 +470,10 @@ const SEAT_WORLD_POSITIONS: Record<SeatId, THREE.Vector3> = {
   /* 접이식 노트북은 화면이 모델 중심에서 가로로 크게 빠져 있다(local x -0.447).
      책상 중심(x 2.18)에 세웠더니 고양이만 화면 옆으로 0.39 비켜서서,
      이름표는 노트북 위에 뜨는데 정작 몸은 옆에 선 모양이 됐다.
-     다른 자리의 어긋남은 0.01~0.12 다 — 화면의 가로 위치에 맞춘다. */
-  "seat-4": new THREE.Vector3(1.79, 0, 1.18),
+     다른 자리의 어긋남은 0.01~0.12 다 — 화면의 가로 위치에 맞춘다.
+     앞뒤 거리도 책상 중심에서 1.36 이라 혼자 멀찍이 떨어져 보였다.
+     2·3번이 1.17~1.20 이므로 1.20 에 맞춘다. */
+  "seat-4": new THREE.Vector3(1.76, 0, 1.02),
 };
 
 // 이름표와 차단 비콘은 씬의 어떤 오브젝트·외곽선보다 위에 그린다.
