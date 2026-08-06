@@ -133,12 +133,16 @@ export function visibleCompanionBackends(edition = APP_EDITION) {
   );
 }
 
-/* 처음 들어온 사람이 설치도 연결도 없이 바로 한 번 시켜볼 수 있도록
-   두 판 모두 PM Worker 로 시작한다. 내 PC 연결은 나중에 고르는 선택지로 남는다. */
+/* 기본은 내 PC 의 Claude Code 다.
+   PM Worker(서버)는 대화 워커가 API 키를 잃어 답하지 못하고,
+   무료 AI(Puter)는 대화 전에 로그인 창을 넘어야 한다.
+   내 PC 연결은 이미 깔려 있는 Claude Code 를 그대로 쓰므로
+   키도 로그인도 없이 답이 온다 — 6자리 코드만 한 번 넣으면 된다.
+   나머지 선택지는 연결 화면에 그대로 남는다. */
 export function defaultCompanionBackend(
   _edition = APP_EDITION,
 ): CompanionBackendId {
-  return "pm-worker";
+  return "local-claude";
 }
 
 export function parseCompanionBackend(
