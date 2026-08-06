@@ -35,7 +35,8 @@ import {
   MAX_CARE_FACILITY_COUNT,
   PURCHASABLE_WORLD_OBJECT_DEFAULT_POSES,
   WORLD_OBJECT_LAYOUT_STORAGE_KEY,
-  isWorldLayoutAdminHost,
+  getWorldLayoutAdminEnabled,
+  subscribeWorldLayoutAdmin,
   parseWorldObjectLayout,
   transformObstacleBounds,
   transformWorldPoint,
@@ -3380,8 +3381,8 @@ export default function AgentWorld3D({
   const [worldTimeTestMode, setWorldTimeTestMode] =
     useState<WorldTimeTestMode>("auto");
   const layoutAdminEnabled = useSyncExternalStore(
-    () => () => {},
-    () => isWorldLayoutAdminHost(window.location.hostname),
+    subscribeWorldLayoutAdmin,
+    getWorldLayoutAdminEnabled,
     () => false,
   );
   const [layoutSaveRevision, setLayoutSaveRevision] = useState(0);
@@ -3504,9 +3505,10 @@ export default function AgentWorld3D({
     let exerciseWheelSecondaryPreviewPending =
       interactionDebugMode &&
       diagnosticParams.get("wheelPreview") === "secondary";
-    const layoutEditorAuthorized = isWorldLayoutAdminHost(
-      window.location.hostname,
-    );
+    /* 장면을 만드는 이 이펙트는 한 번만 돈다. 값을 여기서 박아 두면
+       7 을 눌러 켜도 이번 세션에서는 배치 편집이 영영 안 열린다.
+       그래서 쓸 때마다 현재 값을 읽는 함수로 둔다. */
+    const layoutEditorAuthorized = () => getWorldLayoutAdminEnabled();
     const requestedCarePreview = diagnosticParams.get("carePreview");
     const carePreviewMode =
       ["food", "empty-food", "toilet"].includes(
@@ -3763,7 +3765,7 @@ export default function AgentWorld3D({
     let catExerciseWheelRunYaw = CAT_EXERCISE_WHEEL_ROTATION_Y + Math.PI / 2;
 
     let savedWorldLayout: WorldObjectLayout = {};
-    if (layoutEditorAuthorized) {
+    if (layoutEditorAuthorized()) {
       try {
         savedWorldLayout = parseWorldObjectLayout(
           window.localStorage.getItem(WORLD_OBJECT_LAYOUT_STORAGE_KEY),
@@ -3791,7 +3793,7 @@ export default function AgentWorld3D({
       rotationY: object.rotation.y,
     });
     const persistWorldLayout = () => {
-      if (!layoutEditorAuthorized) return;
+      if (!layoutEditorAuthorized()) return;
       try {
         window.localStorage.setItem(
           WORLD_OBJECT_LAYOUT_STORAGE_KEY,
@@ -3802,7 +3804,7 @@ export default function AgentWorld3D({
       }
     };
     const persistEditableObject = (entry: EditableWorldObject) => {
-      if (!layoutEditorAuthorized) return;
+      if (!layoutEditorAuthorized()) return;
       savedWorldLayout[entry.id] = objectPoseFor(entry.object);
       persistWorldLayout();
     };
@@ -4072,7 +4074,7 @@ export default function AgentWorld3D({
       return entry;
     };
     const setLayoutEditorEnabled = (enabled: boolean) => {
-      if (enabled && !layoutEditorAuthorized) return;
+      if (enabled && !layoutEditorAuthorized()) return;
       layoutEditorEnabled = enabled;
       objectDragPointerId = null;
       objectDragMoved = false;
@@ -4102,7 +4104,7 @@ export default function AgentWorld3D({
       persistWorldLayout();
     };
     const saveCurrentWorldLayout = () => {
-      if (!layoutEditorAuthorized) return;
+      if (!layoutEditorAuthorized()) return;
       savedWorldLayout = Object.fromEntries(
         [...editableWorldObjects.entries()]
           .sort(([leftId], [rightId]) => leftId.localeCompare(rightId))
@@ -4516,7 +4518,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       });
     };
     const persistMonitorScreenLayout = () => {
-      if (!layoutEditorAuthorized) return;
+      if (!layoutEditorAuthorized()) return;
       try {
         window.localStorage.setItem(
           WORKSTATION_SCREEN_LAYOUT_STORAGE_KEY,
@@ -4613,7 +4615,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       });
     };
 
-    if (layoutEditorAuthorized) {
+    if (layoutEditorAuthorized()) {
       try {
         savedMonitorScreenLayout = parseWorkstationScreenLayout(
           window.localStorage.getItem(WORKSTATION_SCREEN_LAYOUT_STORAGE_KEY),
@@ -4627,7 +4629,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
     }
 
     const setMonitorCalibrationEnabled = (enabled: boolean) => {
-      if (enabled && !layoutEditorAuthorized) return;
+      if (enabled && !layoutEditorAuthorized()) return;
       monitorCalibrationEnabled = enabled;
       setMonitorCalibrationMode(enabled);
       if (enabled) {
@@ -4651,7 +4653,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       publishSelectedMonitorMetrics();
     };
     const saveMonitorScreenLayout = () => {
-      if (!layoutEditorAuthorized) return;
+      if (!layoutEditorAuthorized()) return;
       savedMonitorScreenLayout = Object.fromEntries(
         (Object.keys(WORKSTATION_INTERACTION_LAYOUTS) as SeatId[]).map(
           (seatId) => [seatId, monitorScreenPoseFor(seatId)],

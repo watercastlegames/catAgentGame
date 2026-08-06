@@ -150,6 +150,55 @@ export function isWorldLayoutAdminHost(hostname) {
   return WORLD_LAYOUT_ADMIN_HOSTS.has(String(hostname ?? "").toLowerCase());
 }
 
+/* 관리자 도구(배치 편집 · 조개 지급 · 시간 프리셋)를 켜 두는 스위치.
+
+   전에는 호스트 이름만 봤다 — localhost 면 켜짐, 배포판이면 영영 꺼짐.
+   배포된 화면에서도 확인할 일이 있어 숫자 7 로 껐다 켤 수 있게 했다.
+   저장해 두는 이유: 새로고침할 때마다 다시 켜야 하면 확인이 번거롭다. */
+export const WORLD_LAYOUT_ADMIN_KEY = "agent-forest-layout-admin-v1";
+
+const layoutAdminListeners = new Set();
+let layoutAdminOverride = null;
+
+function readStoredLayoutAdmin() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(WORLD_LAYOUT_ADMIN_KEY);
+    if (raw === "on") return true;
+    if (raw === "off") return false;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function getWorldLayoutAdminEnabled() {
+  if (typeof window === "undefined") return false;
+  if (layoutAdminOverride === null) layoutAdminOverride = readStoredLayoutAdmin();
+  if (layoutAdminOverride !== null) return layoutAdminOverride;
+  return isWorldLayoutAdminHost(window.location.hostname);
+}
+
+export function subscribeWorldLayoutAdmin(listener) {
+  layoutAdminListeners.add(listener);
+  return () => layoutAdminListeners.delete(listener);
+}
+
+/** 켜짐/꺼짐을 뒤집고 저장한다. 바뀐 값을 돌려준다. */
+export function toggleWorldLayoutAdmin() {
+  const next = !getWorldLayoutAdminEnabled();
+  layoutAdminOverride = next;
+  if (typeof window !== "undefined") {
+    try {
+      window.localStorage.setItem(WORLD_LAYOUT_ADMIN_KEY, next ? "on" : "off");
+    } catch {
+      /* 저장이 막혀도 이번 방문 동안은 유지된다 */
+    }
+  }
+  layoutAdminListeners.forEach((listener) => listener());
+  return next;
+}
+
 function isFiniteNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
 }

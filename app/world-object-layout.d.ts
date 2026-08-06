@@ -46,3 +46,10 @@ export function transformObstacleBounds(
   initialPose: WorldObjectPose,
   currentPose: WorldObjectPose,
 ): WorldObjectBounds;
+
+export declare const WORLD_LAYOUT_ADMIN_KEY: string;
+export declare function getWorldLayoutAdminEnabled(): boolean;
+export declare function subscribeWorldLayoutAdmin(
+  listener: () => void,
+): () => void;
+export declare function toggleWorldLayoutAdmin(): boolean;

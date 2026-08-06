@@ -181,7 +181,11 @@ import {
   buildCatPersonaPrompt,
   type CatConversationMemory,
 } from "./cat-chat-persona";
-import { isWorldLayoutAdminHost } from "./world-object-layout.mjs";
+import {
+  getWorldLayoutAdminEnabled,
+  subscribeWorldLayoutAdmin,
+  toggleWorldLayoutAdmin,
+} from "./world-object-layout.mjs";
 import {
   createRandomResidentCatName,
   residentCatIdForSeat,
@@ -645,8 +649,8 @@ export default function Home() {
   );
   const [shells, setShells] = useState(0);
   const layoutAdminEnabled = useSyncExternalStore(
-    () => () => {},
-    () => isWorldLayoutAdminHost(window.location.hostname),
+    subscribeWorldLayoutAdmin,
+    getWorldLayoutAdminEnabled,
     () => false,
   );
   const [activeSeatCount, setActiveSeatCount] = useState(1);
@@ -2835,6 +2839,34 @@ export default function Home() {
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
   }, [confirmDialog, onboardingOpen, pendingCatStyle, uiPreview]);
+
+  /* 숫자 7 — 관리자 도구(배치 편집 · 조개 지급 · 시간 프리셋) 껐다 켜기.
+     전에는 localhost 에서만 켜져서 배포된 화면으로는 확인할 수가 없었다.
+     글자를 치는 중(고양이 이름 등)에는 무시한다 — 7 은 그냥 입력해야 할 글자다. */
+  useEffect(() => {
+    const handleDevKey = (event: KeyboardEvent) => {
+      if (event.key !== "7" || event.repeat) return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.isContentEditable ||
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement
+      ) {
+        return;
+      }
+      const enabled = toggleWorldLayoutAdmin();
+      worldAudioRef.current?.playUi("tabSwitch");
+      setToast(
+        enabled
+          ? "개발자 도구를 켰어요. 배치 편집과 조개 지급을 쓸 수 있어요."
+          : "개발자 도구를 껐어요.",
+      );
+    };
+    window.addEventListener("keydown", handleDevKey);
+    return () => window.removeEventListener("keydown", handleDevKey);
+  }, []);
 
   useEffect(() => {
     return () => {
