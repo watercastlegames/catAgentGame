@@ -13,6 +13,12 @@ import {
   steerAroundNeighbors2D,
 } from "./navigation.mjs";
 import { catStyleModelUrl } from "./cat-styles";
+import {
+  type CatPersonalityProfile,
+  catPersonalityForStyle,
+  pickPersonalityAmbientKey,
+  pickPersonalityYieldAnimation,
+} from "./cat-personalities.mjs";
 import { type CatShape, fattenCat } from "./cat-body";
 import {
   type CatCareIntent,
@@ -393,6 +399,11 @@ const CAT_AVOIDANCE_LOOK_AHEAD = 1.24;
 const CAT_WANDER_RESERVATION_DISTANCE = 0.96;
 const CAT_CROWD_REDIRECT_DISTANCE = 0.76;
 const CAT_CROWD_REDIRECT_COOLDOWN = 2.4;
+const CAT_AVOIDANCE_HOLD_MIN_SECONDS = 0.9;
+const CAT_AVOIDANCE_HOLD_MAX_SECONDS = 1.45;
+const CAT_AVOIDANCE_YIELD_MIN_SECONDS = 0.58;
+const CAT_AVOIDANCE_YIELD_MAX_SECONDS = 1.08;
+const CAT_SEPARATION_CORRECTION_SPEED = 0.12;
 const SEAT_WORK_VISUAL_LIFTS: Record<SeatId, number> = {
   "seat-1": 0,
   "seat-2": 0.07,
@@ -6482,6 +6493,15 @@ float shoreOverlayWaterSignal( vec3 color ) {
       );
     };
 
+    type CatAvoidanceMotion = {
+      direction: THREE.Vector3;
+      turn: -1 | 1;
+      holdSeconds: number;
+      yieldSeconds: number;
+      neighborId: string | null;
+      paused: boolean;
+      pauseAnimationKey: "idle-look" | "idle-relax" | "sit";
+    };
     type SecondaryAgent = {
       root: THREE.Group;
       visual: THREE.Group;
@@ -6505,7 +6525,10 @@ float shoreOverlayWaterSignal( vec3 color ) {
       ambientTimer: number;
       ambientPointIndex: number;
       ambientTarget: THREE.Vector3;
+      ambientAnimationKey: string;
       crowdRedirectCooldown: number;
+      personality: CatPersonalityProfile;
+      avoidance: CatAvoidanceMotion;
       wasAutonomous: boolean;
     };
     type CatExerciseWheelSession = {
@@ -6523,9 +6546,18 @@ float shoreOverlayWaterSignal( vec3 color ) {
       | "walking"
       | "settling" = "resting";
     let ambientTimer = 4;
-    let ambientAnimationIndex = 0;
     let ambientPointIndex = -1;
     let crowdRedirectCooldown = 0;
+    let primaryAmbientAnimationKey = "idle-look";
+    const primaryAvoidance: CatAvoidanceMotion = {
+      direction: new THREE.Vector3(),
+      turn: 1,
+      holdSeconds: 0,
+      yieldSeconds: 0,
+      neighborId: null,
+      paused: false,
+      pauseAnimationKey: "idle-look",
+    };
     let kneadingElapsed = 0;
     let kneadingBlend = 0;
     let wasKneadingLastFrame = false;
@@ -6614,6 +6646,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       root.add(visual);
       const styleModel =
         characterModelsByStyle.get(seat.catStyle ?? catStyle) ?? characterModel;
+      const personality = catPersonalityForStyle(seat.catStyle ?? catStyle);
       const model = cloneSkeleton(styleModel);
       visual.add(model);
       const shadow = new THREE.Mesh(
@@ -6639,7 +6672,12 @@ float shoreOverlayWaterSignal( vec3 color ) {
         ["walk", "|Walk_F"],
         ["run", "|Run_F"],
         ["idle", "|Idle_1"],
+        ["idle-look", "|Idle_1"],
+        ["idle-relax", "|Idle_2"],
         ["sit", "|Sitting_Idle"],
+        ["sit-play", "|Sitting_idle_2"],
+        ["sit-groom", "|Sitting_idle_3"],
+        ["lie", "|Lie_Idle"],
         ["eat", "|EatDrink"],
         ["work", DESK_KNEADING_ANIMATION_SUFFIX],
       ] as const;
@@ -6679,7 +6717,18 @@ float shoreOverlayWaterSignal( vec3 color ) {
         ambientTimer: randomBetween(3.5, 7.5),
         ambientPointIndex: -1,
         ambientTarget: root.position.clone(),
+        ambientAnimationKey: pickPersonalityAmbientKey(personality),
         crowdRedirectCooldown: 0,
+        personality,
+        avoidance: {
+          direction: new THREE.Vector3(),
+          turn: 1,
+          holdSeconds: 0,
+          yieldSeconds: 0,
+          neighborId: null,
+          paused: false,
+          pauseAnimationKey: "idle-look",
+        },
         wasAutonomous:
           seat.seatId !== "queue" &&
           !seat.blocked &&
@@ -6872,23 +6921,39 @@ float shoreOverlayWaterSignal( vec3 color ) {
           }
           return false;
         }
-        const steering = steerAroundNeighbors2D({
+        const steering = resolveNeighborSteering({
+          motion: entry.avoidance,
           selfId: entry.catId,
           start: entry.root.position,
           destination: goal,
           neighbors: catNeighborPositions(entry.catId),
-          clearance: CAT_MIN_SEPARATION,
-          lookAhead: CAT_AVOIDANCE_LOOK_AHEAD,
+          delta,
         });
-        const direction = new THREE.Vector3(steering.x, 0, steering.z);
+        const direction = steering.direction;
         const targetYaw = Math.atan2(direction.x, direction.z);
+        const turnDelta = Math.abs(
+          Math.atan2(
+            Math.sin(targetYaw - entry.yaw),
+            Math.cos(targetYaw - entry.yaw),
+          ),
+        );
+        const forwardFactor = THREE.MathUtils.clamp(
+          1 - turnDelta / (Math.PI * 0.7),
+          0.24,
+          1,
+        );
         entry.yaw = lerpAngle(
           entry.yaw,
           targetYaw,
-          1 - Math.exp(-delta * 7),
+          1 - Math.exp(-delta * (steering.avoiding ? 4.2 : 7)),
         );
         entry.visual.rotation.y = entry.yaw;
-        const step = Math.min(distance, CARE_MOVE_SPEED * delta);
+        if (steering.paused) return false;
+        const step = Math.min(
+          distance,
+          CARE_MOVE_SPEED * entry.personality.moveSpeedMultiplier *
+            forwardFactor * delta,
+        );
         entry.root.position.addScaledVector(direction.normalize(), step);
         return entry.root.position.distanceTo(target) <= CARE_ARRIVAL_DISTANCE;
       };
@@ -6912,6 +6977,8 @@ float shoreOverlayWaterSignal( vec3 color ) {
           entry.ambientInitialized = false;
         }
         if (seat.seatId !== "queue") entry.seatId = seat.seatId;
+        entry.personality = catPersonalityForStyle(seat.catStyle ?? catStyle);
+        advanceAvoidanceMotion(entry.avoidance, delta);
         const isSecondaryAutonomous =
           seat.seatId !== "queue" &&
           !seat.blocked &&
@@ -7231,7 +7298,19 @@ float shoreOverlayWaterSignal( vec3 color ) {
             entry.careLastTarget.copy(initialTarget);
             entry.careWaypoints.length = 0;
             entry.ambientPhase = "resting";
-            entry.ambientTimer = randomBetween(3.5, 7.5) + index * 0.8;
+            entry.ambientAnimationKey = pickPersonalityAmbientKey(
+              entry.personality,
+            );
+            const initialAmbient =
+              AMBIENT_ANIMATIONS.find(
+                (animation) => animation.key === entry.ambientAnimationKey,
+              ) ?? AMBIENT_ANIMATIONS[0];
+            entry.ambientTimer =
+              randomBetween(
+                initialAmbient.minSeconds,
+                initialAmbient.maxSeconds,
+              ) * entry.personality.restDurationMultiplier +
+              index * 0.8;
             entry.ambientInitialized = true;
           }
 
@@ -7260,11 +7339,12 @@ float shoreOverlayWaterSignal( vec3 color ) {
               : "walk";
           } else if (entry.ambientPhase === "resting") {
             entry.ambientTimer -= delta;
-            ambientAnimation =
-              (entry.ambientPointIndex + index) % 2 === 0 ? "idle" : "sit";
+            ambientAnimation = entry.ambientAnimationKey;
             if (entry.ambientTimer <= 0) {
               entry.ambientPhase = "prewalking";
-              entry.ambientTimer = randomBetween(0.65, 1.1);
+              entry.ambientTimer =
+                randomBetween(0.65, 1.1) *
+                entry.personality.preparationMultiplier;
               ambientAnimation = "idle";
             }
           } else if (entry.ambientPhase === "prewalking") {
@@ -7310,7 +7390,8 @@ float shoreOverlayWaterSignal( vec3 color ) {
           } else if (entry.ambientPhase === "walking") {
             ambientAnimation = "walk";
             const crowdRedirect =
-              entry.crowdRedirectCooldown <= 0
+              entry.crowdRedirectCooldown <= 0 &&
+              entry.avoidance.holdSeconds <= 0
                 ? chooseCrowdRedirect(
                     entry.root.position,
                     entry.catId,
@@ -7351,9 +7432,20 @@ float shoreOverlayWaterSignal( vec3 color ) {
             ambientAnimation = "idle";
             if (entry.ambientTimer <= 0) {
               entry.ambientPhase = "resting";
-              entry.ambientTimer = randomBetween(4.5, 9.5);
-              ambientAnimation =
-                (entry.ambientPointIndex + index) % 2 === 0 ? "sit" : "idle";
+              entry.ambientAnimationKey = pickPersonalityAmbientKey(
+                entry.personality,
+              );
+              const nextAmbient =
+                AMBIENT_ANIMATIONS.find(
+                  (animation) =>
+                    animation.key === entry.ambientAnimationKey,
+                ) ?? AMBIENT_ANIMATIONS[0];
+              entry.ambientTimer =
+                randomBetween(
+                  nextAmbient.minSeconds,
+                  nextAmbient.maxSeconds,
+                ) * entry.personality.restDurationMultiplier;
+              ambientAnimation = entry.ambientAnimationKey;
             }
           }
         }
@@ -7382,15 +7474,19 @@ float shoreOverlayWaterSignal( vec3 color ) {
           ),
           1 - Math.exp(-delta * MARKER_MOVE_EASE),
         );
-        const nextKey =
-          careAnimation ??
-          wheelAnimation ??
-          ambientAnimation ??
-          (seat.blocked
-            ? "sit"
-            : seat.status === "working"
-                ? "work"
-                : "idle");
+        const isYieldingWhileWalking =
+          entry.avoidance.paused &&
+          [careAnimation, wheelAnimation, ambientAnimation].includes("walk");
+        const nextKey = isYieldingWhileWalking
+          ? entry.avoidance.pauseAnimationKey
+          : careAnimation ??
+            wheelAnimation ??
+            ambientAnimation ??
+            (seat.blocked
+              ? "sit"
+              : seat.status === "working"
+                  ? "work"
+                  : "idle");
         setSecondaryAnimation(entry, nextKey);
         if (!entry.care && !wheelAnimation && ambientAnimation !== "walk") {
           if (nextKey === "work" && seat.seatId !== "queue") {
@@ -7634,6 +7730,129 @@ float shoreOverlayWaterSignal( vec3 color ) {
       });
       return neighbors;
     };
+    type CatEncounterPlan = {
+      turn: -1 | 1;
+      yieldCatId: string;
+      expiresAt: number;
+    };
+    const catEncounterPlans = new Map<string, CatEncounterPlan>();
+    const personalityForCatId = (catId: string) => {
+      const seat = seatsRef.current.find(
+        (candidate) => candidate.catId === catId,
+      );
+      return catPersonalityForStyle(seat?.catStyle ?? catStyle);
+    };
+    const encounterPlanFor = (leftCatId: string, rightCatId: string) => {
+      const pair = [String(leftCatId), String(rightCatId)].sort();
+      const key = pair.join("|");
+      const now = performance.now() / 1000;
+      const current = catEncounterPlans.get(key);
+      if (current && current.expiresAt > now) return current;
+
+      const leftYieldBias = personalityForCatId(pair[0]).yieldBias;
+      const rightYieldBias = personalityForCatId(pair[1]).yieldBias;
+      const yieldCatId =
+        Math.random() < leftYieldBias / (leftYieldBias + rightYieldBias)
+          ? pair[0]
+          : pair[1];
+      const plan: CatEncounterPlan = {
+        turn: Math.random() < 0.5 ? -1 : 1,
+        yieldCatId,
+        expiresAt:
+          now +
+          randomBetween(
+            CAT_AVOIDANCE_HOLD_MIN_SECONDS,
+            CAT_AVOIDANCE_HOLD_MAX_SECONDS,
+          ),
+      };
+      catEncounterPlans.set(key, plan);
+      return plan;
+    };
+    const advanceAvoidanceMotion = (
+      motion: CatAvoidanceMotion,
+      delta: number,
+    ) => {
+      motion.holdSeconds = Math.max(0, motion.holdSeconds - delta);
+      motion.yieldSeconds = Math.max(0, motion.yieldSeconds - delta);
+      motion.paused = false;
+      if (motion.holdSeconds <= 0) motion.neighborId = null;
+    };
+    const resolveNeighborSteering = ({
+      motion,
+      selfId,
+      start,
+      destination,
+      neighbors,
+      delta,
+    }: {
+      motion: CatAvoidanceMotion;
+      selfId: string;
+      start: THREE.Vector3;
+      destination: THREE.Vector3;
+      neighbors: Array<{ id: string; x: number; z: number }>;
+      delta: number;
+    }) => {
+      let steering = steerAroundNeighbors2D({
+        selfId,
+        start,
+        destination,
+        neighbors,
+        clearance: CAT_MIN_SEPARATION,
+        lookAhead: CAT_AVOIDANCE_LOOK_AHEAD,
+        preferredTurn: motion.holdSeconds > 0 ? motion.turn : 0,
+      });
+      if (
+        steering.avoiding &&
+        steering.blockerId &&
+        (motion.neighborId !== steering.blockerId || motion.holdSeconds <= 0)
+      ) {
+        const plan = encounterPlanFor(selfId, steering.blockerId);
+        motion.turn = plan.turn;
+        motion.neighborId = steering.blockerId;
+        motion.holdSeconds = Math.max(
+          0.1,
+          plan.expiresAt - performance.now() / 1000,
+        );
+        motion.yieldSeconds =
+          plan.yieldCatId === selfId
+            ? randomBetween(
+                CAT_AVOIDANCE_YIELD_MIN_SECONDS,
+                CAT_AVOIDANCE_YIELD_MAX_SECONDS,
+              )
+            : 0;
+        if (motion.yieldSeconds > 0) {
+          motion.pauseAnimationKey = pickPersonalityYieldAnimation(
+            personalityForCatId(selfId),
+          );
+        }
+        steering = steerAroundNeighbors2D({
+          selfId,
+          start,
+          destination,
+          neighbors,
+          clearance: CAT_MIN_SEPARATION,
+          lookAhead: CAT_AVOIDANCE_LOOK_AHEAD,
+          preferredTurn: motion.turn,
+        });
+      }
+
+      motion.paused = steering.avoiding && motion.yieldSeconds > 0;
+      const targetDirection = new THREE.Vector3(steering.x, 0, steering.z);
+      if (motion.direction.lengthSq() < 1e-6) {
+        motion.direction.copy(targetDirection);
+      } else {
+        motion.direction.lerp(
+          targetDirection,
+          1 - Math.exp(-delta * (steering.avoiding ? 3.6 : 9)),
+        );
+      }
+      if (motion.direction.lengthSq() > 1e-6) motion.direction.normalize();
+      return {
+        direction: motion.direction,
+        avoiding: steering.avoiding,
+        paused: motion.paused,
+      };
+    };
     const isWanderDestinationAvailable = (
       candidate: THREE.Vector3,
       selfId: string,
@@ -7684,7 +7903,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
           position.z - neighbor.z,
         ) < CAT_CROWD_REDIRECT_DISTANCE,
       );
-      if (crowdingNeighbors.length === 0) return null;
+      // 둘만 마주쳤을 때는 공유 회피 계획이 한 마리를 쉬게 한다. 세 마리
+      // 이상 뭉친 경우에만 목적지를 바꿔 모두 같은 방향으로 도는 현상을 막는다.
+      if (crowdingNeighbors.length < 2) return null;
 
       let bestIndex = -1;
       let bestScore = Number.NEGATIVE_INFINITY;
@@ -7734,17 +7955,26 @@ float shoreOverlayWaterSignal( vec3 color ) {
             target: AMBIENT_WANDER_POINTS[bestIndex],
           };
     };
-    const enforceCatSeparation = () => {
-      const positions = [
-        currentPosition,
-        ...Array.from(secondaryAgents.values(), (entry) => entry.root.position),
+    const enforceCatSeparation = (delta: number) => {
+      const participants = [
+        { position: currentPosition, avoidance: primaryAvoidance },
+        ...Array.from(secondaryAgents.values(), (entry) => ({
+          position: entry.root.position,
+          avoidance: entry.avoidance,
+        })),
       ];
-      // 두 번 완화하면 세 마리 이상이 한 지점에 모여도 한 프레임 안에 풀린다.
+      // 두 번의 작은 보정으로 세 마리 이상이 모여도 서서히 간격을 되찾는다.
       for (let pass = 0; pass < 2; pass += 1) {
-        for (let left = 0; left < positions.length; left += 1) {
-          for (let right = left + 1; right < positions.length; right += 1) {
-            const leftPosition = positions[left];
-            const rightPosition = positions[right];
+        for (let left = 0; left < participants.length; left += 1) {
+          for (
+            let right = left + 1;
+            right < participants.length;
+            right += 1
+          ) {
+            const leftParticipant = participants[left];
+            const rightParticipant = participants[right];
+            const leftPosition = leftParticipant.position;
+            const rightPosition = rightParticipant.position;
             separationDelta.subVectors(rightPosition, leftPosition);
             separationDelta.y = 0;
             let distance = separationDelta.length();
@@ -7756,9 +7986,20 @@ float shoreOverlayWaterSignal( vec3 color ) {
             } else {
               separationDelta.multiplyScalar(1 / distance);
             }
-            const correction = (CAT_MIN_SEPARATION - distance) * 0.5;
-            leftPosition.addScaledVector(separationDelta, -correction);
-            rightPosition.addScaledVector(separationDelta, correction);
+            // 겹친 만큼을 한 프레임에 강제로 밀면 화면에서 덜덜 떨린다.
+            // 아주 조금씩만 풀어 회피 애니메이션이 실제 분리를 담당하게 한다.
+            const correction = Math.min(
+              (CAT_MIN_SEPARATION - distance) * 0.11,
+              CAT_SEPARATION_CORRECTION_SPEED * delta,
+            );
+            // 쉬기로 한 고양이는 제자리에서 미끄러지지 않고, 지나가는 쪽만
+            // 천천히 간격을 회복한다.
+            if (!leftParticipant.avoidance.paused) {
+              leftPosition.addScaledVector(separationDelta, -correction);
+            }
+            if (!rightParticipant.avoidance.paused) {
+              rightPosition.addScaledVector(separationDelta, correction);
+            }
           }
         }
       }
@@ -8530,6 +8771,10 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const isAutonomous =
         mixer !== null &&
         AUTONOMOUS_STATUSES.has(motionRef.current.status);
+      const primaryPersonality = catPersonalityForStyle(
+        primaryView.catStyle ?? catStyle,
+      );
+      advanceAvoidanceMotion(primaryAvoidance, delta);
       crowdRedirectCooldown = Math.max(0, crowdRedirectCooldown - delta);
       if (!isAutonomous && primaryCare) {
         leaveCareQueue(primaryCare.intent, primaryCareCatId);
@@ -9062,7 +9307,8 @@ float shoreOverlayWaterSignal( vec3 color ) {
           }
         }
       } else if (isAutonomous) {
-        movementSpeed = AMBIENT_MOVE_SPEED;
+        movementSpeed =
+          AMBIENT_MOVE_SPEED * primaryPersonality.moveSpeedMultiplier;
 
         if (ambientPhase === "resting") {
           desiredPosition.copy(currentPosition);
@@ -9070,7 +9316,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
 
           if (ambientTimer <= 0) {
             ambientPhase = "prewalking";
-            ambientTimer = randomBetween(0.8, 1.25);
+            ambientTimer =
+              randomBetween(0.8, 1.25) *
+              primaryPersonality.preparationMultiplier;
             playAnimation("idle-look", 0.5);
             setAmbientLabel("몸을 일으키고 산책을 준비하는 중");
           }
@@ -9110,19 +9358,18 @@ float shoreOverlayWaterSignal( vec3 color ) {
           ambientTimer -= delta;
 
           if (ambientTimer <= 0) {
-            ambientAnimationIndex =
-              (ambientAnimationIndex +
-                1 +
-                Math.floor(
-                  Math.random() * (AMBIENT_ANIMATIONS.length - 1),
-                )) %
-              AMBIENT_ANIMATIONS.length;
-            const nextAmbient =
-              AMBIENT_ANIMATIONS[ambientAnimationIndex];
-            ambientTimer = randomBetween(
-              nextAmbient.minSeconds,
-              nextAmbient.maxSeconds,
+            primaryAmbientAnimationKey = pickPersonalityAmbientKey(
+              primaryPersonality,
             );
+            const nextAmbient =
+              AMBIENT_ANIMATIONS.find(
+                (animation) => animation.key === primaryAmbientAnimationKey,
+              ) ?? AMBIENT_ANIMATIONS[0];
+            ambientTimer =
+              randomBetween(
+                nextAmbient.minSeconds,
+                nextAmbient.maxSeconds,
+              ) * primaryPersonality.restDurationMultiplier;
             ambientPhase = "resting";
             playAnimation(nextAmbient.key, 0.5);
             setAmbientLabel(nextAmbient.label);
@@ -9132,7 +9379,8 @@ float shoreOverlayWaterSignal( vec3 color ) {
           let ambientDistance =
             currentPosition.distanceTo(desiredPosition);
           const crowdRedirect =
-            crowdRedirectCooldown <= 0
+            crowdRedirectCooldown <= 0 &&
+            primaryAvoidance.holdSeconds <= 0
               ? chooseCrowdRedirect(
                   currentPosition,
                   primaryView.catId,
@@ -9271,16 +9519,20 @@ float shoreOverlayWaterSignal( vec3 color ) {
 
       movementDirection.subVectors(movementGoal, currentPosition);
       if (isMoving && movementDirection.lengthSq() > 1e-6) {
-        const steering = steerAroundNeighbors2D({
+        const steering = resolveNeighborSteering({
+          motion: primaryAvoidance,
           selfId: primaryView.catId,
           start: currentPosition,
           destination: movementGoal,
           neighbors: catNeighborPositions(primaryView.catId),
-          clearance: CAT_MIN_SEPARATION,
-          lookAhead: CAT_AVOIDANCE_LOOK_AHEAD,
+          delta,
         });
-        movementDirection.set(steering.x, 0, steering.z);
+        movementDirection.copy(steering.direction);
         isAvoidingOtherCat = steering.avoiding;
+        if (steering.paused) {
+          movementForwardFactor = 0;
+          setAmbientLabel("다른 고양이에게 길을 양보하며 잠시 쉬는 중");
+        }
       }
       if (isUsingExerciseWheel && characterModel) {
         characterYaw = lerpAngle(
@@ -9306,6 +9558,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
         characterVisual.rotation.y = characterYaw;
       } else if (
         isMoving &&
+        !primaryAvoidance.paused &&
         characterModel &&
         movementDirection.lengthSq() > 0.001
       ) {
@@ -9321,13 +9574,13 @@ float shoreOverlayWaterSignal( vec3 color ) {
         );
         movementForwardFactor = THREE.MathUtils.clamp(
           1 - turnDelta / (Math.PI * 0.58),
-          0.08,
+          primaryAvoidance.paused ? 0 : 0.24,
           1,
         );
         characterYaw = lerpAngle(
           characterYaw,
           targetYaw,
-          1 - Math.exp(-delta * 7),
+          1 - Math.exp(-delta * (isAvoidingOtherCat ? 4.2 : 7)),
         );
         characterVisual.rotation.y = characterYaw;
       }
@@ -9472,7 +9725,12 @@ float shoreOverlayWaterSignal( vec3 color ) {
         avoidanceWaypoints.length = 0;
       }
       if (requestedWalkFadeSeconds !== null && !isKneading) {
-        if (currentPosition.distanceToSquared(frameMovementStart) > 1e-8) {
+        if (primaryAvoidance.paused) {
+          isMoving = false;
+          playAnimation(primaryAvoidance.pauseAnimationKey, 0.3);
+        } else if (
+          currentPosition.distanceToSquared(frameMovementStart) > 1e-8
+        ) {
           playAnimation("walk", requestedWalkFadeSeconds);
         } else {
           isMoving = false;
@@ -9488,7 +9746,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       blobShadow.visible = !primaryInsideLitterBox;
       primaryClickProxy.visible = !primaryInsideLitterBox;
       wasKneadingLastFrame = isKneading;
-      enforceCatSeparation();
+      enforceCatSeparation(delta);
       characterRoot.position.x = currentPosition.x;
       characterRoot.position.z = currentPosition.z;
       characterRoot.position.y = THREE.MathUtils.damp(

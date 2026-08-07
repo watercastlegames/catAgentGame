@@ -4738,6 +4738,27 @@ button {
   background: #ffd994;
 }
 
+.cat-personality-card {
+  display: grid;
+  gap: 4px;
+  padding: 10px 14px;
+  border: 2px solid rgba(116, 83, 68, 0.25);
+  border-radius: 15px;
+  background: rgba(231, 246, 218, 0.95);
+  color: #624a40;
+}
+
+.cat-personality-card strong {
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.cat-personality-card span {
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
 .cat-level-progress {
   display: grid;
   gap: 7px;

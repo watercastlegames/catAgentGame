@@ -36,9 +36,13 @@ test("routes each cat to its own workstation and separates overlapping cats", as
   assert.match(world, /CAT_MIN_SEPARATION = 0\.62/);
   assert.match(world, /CAT_AVOIDANCE_LOOK_AHEAD = 1\.24/);
   assert.match(world, /CAT_CROWD_REDIRECT_DISTANCE = 0\.76/);
+  assert.match(world, /CAT_AVOIDANCE_HOLD_MIN_SECONDS = 0\.9/);
+  assert.match(world, /pickPersonalityYieldAnimation/);
+  assert.match(world, /entry\.avoidance\.pauseAnimationKey/);
   assert.match(world, /const chooseCrowdRedirect = \(/);
   assert.match(world, /entry\.ambientTarget\.copy\(crowdRedirect\.target\)/);
   assert.match(world, /ambientTarget\.copy\(crowdRedirect\.target\)/);
-  assert.match(world, /const enforceCatSeparation = \(\) =>/);
-  assert.match(world, /enforceCatSeparation\(\);/);
+  assert.match(world, /const enforceCatSeparation = \(delta: number\) =>/);
+  assert.match(world, /CAT_SEPARATION_CORRECTION_SPEED \* delta/);
+  assert.match(world, /enforceCatSeparation\(delta\);/);
 });

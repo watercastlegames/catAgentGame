@@ -26,6 +26,7 @@ import {
 } from "./runtime-state.mjs";
 import { type CatCue, type WorldAudio, createWorldAudio } from "./world-audio";
 import { CAT_STYLES, catStylePreviewUrl } from "./cat-styles";
+import { catPersonalityForStyle } from "./cat-personalities.mjs";
 import type { CatShape } from "./cat-body";
 import {
   NEEDS_KEY,
@@ -857,6 +858,7 @@ export default function Home() {
     residentCatNameForSeat(focusedSeatId);
   const focusedCatStyle =
     catStyles[focusedResidentCatId] ?? "Blue";
+  const focusedCatPersonality = catPersonalityForStyle(focusedCatStyle);
   const focusedCatProgress = catLevelProgress(
     ensureCatProgressionProfile(catProgression, focusedResidentCatId).totalXp,
   );
@@ -3880,6 +3882,8 @@ export default function Home() {
       catName,
       userPrompt: message,
       conversationHistory: conversationMemoryFromEvents(focusedConversation),
+      personalityLabel: focusedCatPersonality.label,
+      personalityDescription: focusedCatPersonality.description,
     });
     setCatChatTopicMemory((current) => {
       const next = rememberCatChatTopic(current, {
@@ -4882,6 +4886,10 @@ export default function Home() {
                       <em>LV.{focusedCatProgress.level}</em>
                       <em>행복 {Math.round(focusedCatNeeds.happiness)}</em>
                     </span>
+                  </div>
+                  <div className="cat-personality-card">
+                    <strong>성격 · {focusedCatPersonality.label}</strong>
+                    <span>{focusedCatPersonality.description}</span>
                   </div>
                   <div
                     className="cat-level-progress"

@@ -60,3 +60,16 @@ test("cat persona carries recent visible conversation into a follow-up", () => {
   assert.match(prompt, /두 번째 장소만 더 알려줘/);
   assert.match(prompt, /Do not greet as if this were the first message/);
 });
+
+test("cat persona carries its style-based individual temperament", () => {
+  const prompt = persona.buildCatPersonaPrompt({
+    catName: "참치",
+    userPrompt: "오늘 뭐 하고 놀까?",
+    personalityLabel: "장난꾸러기",
+    personalityDescription: "앉아서 놀다가 신나게 돌아다니는 친구예요.",
+  });
+
+  assert.match(prompt, /individual temperament is "장난꾸러기"/);
+  assert.match(prompt, /신나게 돌아다니는 친구/);
+  assert.match(prompt, /without reducing accuracy/);
+});

@@ -138,12 +138,19 @@ export function steerAroundNeighbors2D({
   neighbors,
   clearance = 0.44,
   lookAhead = 0.86,
+  preferredTurn = 0,
 }) {
   const deltaX = destination.x - start.x;
   const deltaZ = destination.z - start.z;
   const remaining = Math.hypot(deltaX, deltaZ);
   if (remaining < 1e-6) {
-    return { x: 0, z: 0, avoiding: false };
+    return {
+      x: 0,
+      z: 0,
+      avoiding: false,
+      blockerId: null,
+      blockerDistance: Number.POSITIVE_INFINITY,
+    };
   }
 
   const forwardX = deltaX / remaining;
@@ -151,6 +158,8 @@ export function steerAroundNeighbors2D({
   let steerX = forwardX;
   let steerZ = forwardZ;
   let avoiding = false;
+  let blockerId = null;
+  let blockerDistance = Number.POSITIVE_INFINITY;
 
   const orderedNeighbors = [...neighbors]
     .filter((neighbor) => String(neighbor.id) !== String(selfId))
@@ -177,11 +186,13 @@ export function steerAroundNeighbors2D({
 
     const overlapRatio = Math.max(0, clearance - distance) / clearance;
     const turn =
-      Math.abs(signedLateralDistance) > 0.035
-        ? signedLateralDistance > 0
-          ? -1
-          : 1
-        : stablePairTurn(selfId, neighbor.id);
+      preferredTurn === -1 || preferredTurn === 1
+        ? preferredTurn
+        : Math.abs(signedLateralDistance) > 0.035
+          ? signedLateralDistance > 0
+            ? -1
+            : 1
+          : stablePairTurn(selfId, neighbor.id);
     const urgency =
       0.48 +
       Math.max(0, 1 - forwardDistance / Math.max(lookAhead, 1e-6)) * 0.86 +
@@ -194,16 +205,28 @@ export function steerAroundNeighbors2D({
       steerZ -= (offsetZ / distance) * overlapRatio * 1.35;
     }
     avoiding = true;
+    if (distance < blockerDistance) {
+      blockerId = String(neighbor.id);
+      blockerDistance = distance;
+    }
   }
 
   const steerLength = Math.hypot(steerX, steerZ);
   if (steerLength < 1e-6) {
-    return { x: forwardX, z: forwardZ, avoiding };
+    return {
+      x: forwardX,
+      z: forwardZ,
+      avoiding,
+      blockerId,
+      blockerDistance,
+    };
   }
   return {
     x: steerX / steerLength,
     z: steerZ / steerLength,
     avoiding,
+    blockerId,
+    blockerDistance,
   };
 }
 

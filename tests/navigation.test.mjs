@@ -167,6 +167,7 @@ test("keeps a clear walking direction when no cat blocks the corridor", () => {
   });
 
   assert.equal(steering.avoiding, false);
+  assert.equal(steering.blockerId, null);
   assert.ok(Math.abs(steering.x - 1) < 1e-6);
   assert.ok(Math.abs(steering.z) < 1e-6);
 });
@@ -180,6 +181,7 @@ test("the yielding cat steers around a cat directly ahead", () => {
   });
 
   assert.equal(steering.avoiding, true);
+  assert.equal(steering.blockerId, "cat-a");
   assert.ok(steering.x > 0);
   assert.ok(Math.abs(steering.z) > 0.35);
 });
@@ -203,4 +205,26 @@ test("both cats take opposite detours before a head-on meeting", () => {
   assert.ok(Math.abs(first.z) > 0.25);
   assert.ok(Math.abs(second.z) > 0.25);
   assert.ok(first.z * second.z < 0);
+});
+
+test("a held passing side does not flip when a blocker crosses the center line", () => {
+  const above = steerAroundNeighbors2D({
+    selfId: "cat-a",
+    start: { x: 0, z: 0 },
+    destination: { x: 2, z: 0 },
+    neighbors: [{ id: "cat-b", x: 0.42, z: 0.08 }],
+    preferredTurn: 1,
+  });
+  const below = steerAroundNeighbors2D({
+    selfId: "cat-a",
+    start: { x: 0, z: 0 },
+    destination: { x: 2, z: 0 },
+    neighbors: [{ id: "cat-b", x: 0.42, z: -0.08 }],
+    preferredTurn: 1,
+  });
+
+  assert.equal(above.avoiding, true);
+  assert.equal(below.avoiding, true);
+  assert.ok(above.z > 0.25);
+  assert.ok(below.z > 0.25);
 });
