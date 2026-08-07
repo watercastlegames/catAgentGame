@@ -118,6 +118,8 @@ type AgentWorld3DProps = {
   activeSeatCount: number;
   companionConnected: "connected" | "pairing" | "offline";
   completionSignal: number;
+  /** 상위 HUD가 표시되는 동안에만 월드의 머리 위 상태 태그를 보여준다. */
+  hudVisible: boolean;
   /** 팩의 스타일 id(예: "Blue"). 바뀌면 상위에서 key 로 씬을 다시 만든다. */
   catStyle?: string;
   /** 몸통을 부풀리는 정도. 없으면 원본 체형. */
@@ -3326,6 +3328,7 @@ export default function AgentWorld3D({
   seats,
   activeSeatCount,
   completionSignal,
+  hudVisible,
   catStyle = "Blue",
   catShape,
   onSeatClick,
@@ -3363,6 +3366,7 @@ export default function AgentWorld3D({
   });
   const seatsRef = useRef(seats);
   const completionSignalRef = useRef(completionSignal);
+  const hudVisibleRef = useRef(hudVisible);
   const onSeatClickRef = useRef(onSeatClick);
   const onRadioClickRef = useRef(onRadioClick);
   const activeSeatCountRef = useRef(activeSeatCount);
@@ -3500,6 +3504,7 @@ export default function AgentWorld3D({
     };
     seatsRef.current = runtimeSeats;
     completionSignalRef.current = completionSignal;
+    hudVisibleRef.current = hudVisible;
     onSeatClickRef.current = onSeatClick;
     onRadioClickRef.current = onRadioClick;
     activeSeatCountRef.current = localWorkPreviewEnabled ? 4 : activeSeatCount;
@@ -3528,6 +3533,7 @@ export default function AgentWorld3D({
   }, [
     activeSeatCount,
     completionSignal,
+    hudVisible,
     onRadioClick,
     onSeatClick,
     onShellCollect,
@@ -9830,6 +9836,14 @@ float shoreOverlayWaterSignal( vec3 color ) {
         delta,
       );
       outlineEffect.setGapStrength(outlineGapVisibility);
+      const worldHudTagsVisible = hudVisibleRef.current;
+      primaryMarker.marker.visible = worldHudTagsVisible;
+      secondaryAgents.forEach((entry) => {
+        entry.marker.marker.visible = worldHudTagsVisible;
+      });
+      litterBoxInstances.forEach((instance) => {
+        instance.gauge.label.visible = worldHudTagsVisible;
+      });
       billboardObjects.forEach((object) => {
         object.quaternion.copy(camera.quaternion);
       });
