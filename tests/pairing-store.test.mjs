@@ -26,6 +26,20 @@ test("persists only hashed companion tokens across bridge restarts", async (t) =
   assert.equal(restarted.hasToken(token), true);
 });
 
+test("keeps established browser pairings while pruning only very old clients", async (t) => {
+  const directory = await mkdtemp(path.join(tmpdir(), "agent-forest-pairing-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const filePath = path.join(directory, "pairing.json");
+  const store = new PairingStore(filePath);
+
+  for (let index = 0; index < 40; index += 1) {
+    store.addToken(`browser-token-${index}`);
+  }
+
+  assert.equal(store.hasToken("browser-token-0"), true);
+  assert.equal(store.hasToken("browser-token-39"), true);
+});
+
 test("blocks the twenty-first pairing attempt in one window", () => {
   const limiter = new PairingAttemptLimiter({ limit: 20, windowMs: 60_000 });
   for (let index = 0; index < 20; index += 1) {

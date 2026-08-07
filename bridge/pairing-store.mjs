@@ -9,6 +9,7 @@ import {
 import path from "node:path";
 
 const STORE_VERSION = 1;
+const MAX_PAIRED_CLIENTS = 128;
 
 function hashToken(token) {
   return createHash("sha256").update(String(token)).digest("hex");
@@ -83,7 +84,7 @@ export class PairingStore {
     const digest = hashToken(token);
     if (!this.state.tokenHashes.includes(digest)) {
       this.state.tokenHashes.push(digest);
-      this.state.tokenHashes = this.state.tokenHashes.slice(-24);
+      this.state.tokenHashes = this.state.tokenHashes.slice(-MAX_PAIRED_CLIENTS);
       this.#save();
     }
   }
