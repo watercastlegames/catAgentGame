@@ -29,9 +29,9 @@ test("routes each cat to its own workstation and separates overlapping cats", as
   );
   assert.match(
     world,
-    /"seat-2": new THREE\.Vector3\(-2\.05, 0, -2\.6\)/,
+    /"seat-2": new THREE\.Vector3\(-2\.08, 0, -2\.82\)/,
   );
-  assert.match(world, /"seat-3": new THREE\.Vector3\(-2\.2, 0, 0\.6\)/);
+  assert.match(world, /"seat-3": new THREE\.Vector3\(-2\.3, 0, 0\.34\)/);
   assert.match(world, /"seat-1": LOW_MONITOR_WORKING_MARKER_WORLD_POSITION/);
   assert.match(world, /CAT_MIN_SEPARATION = 0\.62/);
   assert.match(world, /CAT_AVOIDANCE_LOOK_AHEAD = 1\.24/);

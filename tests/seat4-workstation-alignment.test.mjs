@@ -10,16 +10,16 @@ const world = await readFile(
 test("seat 4 works directly in front of its folding laptop", () => {
   assert.match(
     world,
-    /music:\s*new THREE\.Vector3\(1\.87, 0, 0\.62\)/,
+    /music:\s*new THREE\.Vector3\(1\.78, 0, 0\.38\)/,
   );
   assert.match(
     world,
-    /"seat-4":\s*new THREE\.Vector3\(1\.87, 0, 0\.62\)/,
+    /"seat-4":\s*new THREE\.Vector3\(1\.78, 0, 0\.38\)/,
   );
-  assert.match(world, /SEAT_4_WORK_VISUAL_LIFT = 0\.13/);
+  assert.match(world, /"seat-4": 0\.13/);
   assert.match(
     world,
-    /seat\.status === "working" && entry\.seatId === "seat-4"/,
+    /seat\.status === "working" && entry\.seatId !== "queue"/,
   );
 
   const seat4Case = world.slice(
@@ -29,6 +29,24 @@ test("seat 4 works directly in front of its folding laptop", () => {
   assert.match(seat4Case, /SEAT_WORLD_POSITIONS\["seat-4"\]/);
   assert.match(seat4Case, /WORLD_TARGETS\.music/);
   assert.doesNotMatch(seat4Case, /keepAnchoredVectorOutsideObstacle/);
+});
+
+test("seats 2 and 3 keep their close laptop contact points while working", () => {
+  for (const [start, end] of [
+    [
+      "case TENT_WORKSTATION_OBSTACLE.id:",
+      "case ROUND_LAPTOP_STATION_OBSTACLE.id:",
+    ],
+    [
+      "case ROUND_LAPTOP_STATION_OBSTACLE.id:",
+      "case FOLDING_LAPTOP_STATION_OBSTACLE.id:",
+    ],
+  ]) {
+    const workstationCase = world.slice(world.indexOf(start), world.indexOf(end));
+    assert.doesNotMatch(workstationCase, /keepAnchoredVectorOutsideObstacle/);
+  }
+  assert.match(world, /"seat-2": 0\.07/);
+  assert.match(world, /"seat-3": 0\.08/);
 });
 
 test("working-seat preview is local-only and can inspect every workstation", () => {

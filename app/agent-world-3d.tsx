@@ -348,13 +348,13 @@ const CODING_DESK_TARGET = new THREE.Vector3(2.12, 0, 4.12);
 const DESK_KNEADING_EXIT_POSITION = new THREE.Vector3(2.12, 0, 4.62);
 const WORLD_TARGETS: Record<AgentWorldLocation, THREE.Vector3> = {
   entrance: new THREE.Vector3(-1.65, 0, 5.05),
-  general: new THREE.Vector3(-2.05, 0, -2.6),
+  general: new THREE.Vector3(-2.08, 0, -2.82),
   coding: CODING_DESK_TARGET,
-  design: new THREE.Vector3(-2.2, 0, 0.6),
+  design: new THREE.Vector3(-2.3, 0, 0.34),
   // 4번 자리(접이식 노트북)와 같은 자리다 — SEAT_WORLD_POSITIONS["seat-4"] 와 함께 옮긴다.
-  music: new THREE.Vector3(1.87, 0, 0.62),
+  music: new THREE.Vector3(1.78, 0, 0.38),
   queue: new THREE.Vector3(-0.25, 0, 2.45),
-  office: new THREE.Vector3(-2.05, 0, -2.6),
+  office: new THREE.Vector3(-2.08, 0, -2.82),
 };
 
 const LOCATION_LABELS: Record<AgentWorldLocation, string> = {
@@ -393,7 +393,12 @@ const CAT_AVOIDANCE_LOOK_AHEAD = 1.24;
 const CAT_WANDER_RESERVATION_DISTANCE = 0.96;
 const CAT_CROWD_REDIRECT_DISTANCE = 0.76;
 const CAT_CROWD_REDIRECT_COOLDOWN = 2.4;
-const SEAT_4_WORK_VISUAL_LIFT = 0.13;
+const SEAT_WORK_VISUAL_LIFTS: Record<SeatId, number> = {
+  "seat-1": 0,
+  "seat-2": 0.07,
+  "seat-3": 0.08,
+  "seat-4": 0.13,
+};
 const LASER_CHASE_DURATION_SECONDS = 20;
 const LASER_CHASE_MOVE_SPEED = 0.88;
 const FOOD_USE_SECONDS = 5.2;
@@ -473,11 +478,11 @@ const SEAT_WORLD_POSITIONS: Record<SeatId, THREE.Vector3> = {
   // 자리 1은 우측 하단 모니터, 자리 2는 좌측 상단 텐트다.
   // 두 값을 뒤집으면 두 번째 고양이가 텐트 대신 1번 자리로 향한다.
   "seat-1": new THREE.Vector3(2.12, 0, 4.12),
-  "seat-2": new THREE.Vector3(-2.05, 0, -2.6),
-  "seat-3": new THREE.Vector3(-2.2, 0, 0.6),
-  /* 고양이는 모델 원점이 아니라 실제 의자·노트북 중심에 맞춘다.
-     x 는 책상 중심을 유지하고 z 만 자리별 앞면 깊이에 맞춘 값이다. */
-  "seat-4": new THREE.Vector3(1.87, 0, 0.62),
+  "seat-2": new THREE.Vector3(-2.08, 0, -2.82),
+  "seat-3": new THREE.Vector3(-2.3, 0, 0.34),
+  /* 고양이는 모델 원점이 아니라 각 화면 중심과 의자·쿠션의 앞쪽 접촉점에 맞춘다.
+     작업 중에는 자기 자리 obstacle 을 제외하므로 테이블 경계 안쪽까지 접근할 수 있다. */
+  "seat-4": new THREE.Vector3(1.78, 0, 0.38),
 };
 
 // 이름표와 차단 비콘은 씬의 어떤 오브젝트·외곽선보다 위에 그린다.
@@ -3902,17 +3907,6 @@ export default function AgentWorld3D({
       );
       target.set(transformed.x, base.y, transformed.z);
     };
-    const keepAnchoredVectorOutsideObstacle = (
-      entry: EditableWorldObject,
-      target: THREE.Vector3,
-    ) => {
-      if (!entry.obstacle) return;
-      resolvePositionOutsideObstacles(
-        target,
-        [entry.obstacle],
-        OBSTACLE_ESCAPE_CLEARANCE * 1.35,
-      );
-    };
     const syncWorkstationAnchors = (entry: EditableWorldObject) => {
       switch (entry.id) {
         case TENT_WORKSTATION_OBSTACLE.id:
@@ -3931,12 +3925,8 @@ export default function AgentWorld3D({
             WORLD_TARGETS.office,
             worldTargets.office,
           );
-          keepAnchoredVectorOutsideObstacle(
-            entry,
-            seatWorldPositions["seat-2"],
-          );
-          keepAnchoredVectorOutsideObstacle(entry, worldTargets.general);
-          keepAnchoredVectorOutsideObstacle(entry, worldTargets.office);
+          /* 작업 중에는 자기 텐트 obstacle 을 이동 경로에서 제외한다.
+             여기서 다시 바깥으로 밀면 노트북과 고양이 사이가 벌어진다. */
           updateAnchoredVector(
             entry,
             SEAT_WORKING_MARKER_WORLD_POSITIONS["seat-2"],
@@ -3959,11 +3949,7 @@ export default function AgentWorld3D({
             WORLD_TARGETS.design,
             worldTargets.design,
           );
-          keepAnchoredVectorOutsideObstacle(
-            entry,
-            seatWorldPositions["seat-3"],
-          );
-          keepAnchoredVectorOutsideObstacle(entry, worldTargets.design);
+          /* 피크닉 자리도 작업 좌표는 쿠션과 노트북 사이의 접촉점이다. */
           updateAnchoredVector(
             entry,
             SEAT_WORKING_MARKER_WORLD_POSITIONS["seat-3"],
@@ -7226,8 +7212,8 @@ float shoreOverlayWaterSignal( vec3 color ) {
         );
         entry.visual.position.y = THREE.MathUtils.damp(
           entry.visual.position.y,
-          seat.status === "working" && entry.seatId === "seat-4"
-            ? SEAT_4_WORK_VISUAL_LIFT
+          seat.status === "working" && entry.seatId !== "queue"
+            ? SEAT_WORK_VISUAL_LIFTS[entry.seatId]
             : 0,
           10,
           delta,
