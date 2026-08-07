@@ -9,8 +9,11 @@ const worldSource = await readFile(
 );
 
 test("world overhead tags follow the shared HUD dormant state", () => {
-  assert.match(pageSource, /hudVisible=\{!hudDormant\}/);
-  assert.match(worldSource, /const hudVisibleRef = useRef\(hudVisible\)/);
+  assert.match(pageSource, /hudDormant \? "hud-dormant" : ""/);
+  assert.match(
+    worldSource,
+    /const worldHudTagsVisible = !host\.closest\("\.hud-dormant"\)/,
+  );
   assert.match(
     worldSource,
     /primaryMarker\.marker\.visible = worldHudTagsVisible/,

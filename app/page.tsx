@@ -4423,7 +4423,6 @@ export default function Home() {
             // 고양이별 FBX 구성이 바뀌면 씬을 다시 만들어 각 좌석의 외형을 따로 로드한다.
             key={`${seatViews.map((seat) => `${seat.catId}:${seat.catStyle}`).join("|")}-${catShapeId}-${foodBowlCount}-${litterBoxCount}`}
             catShape={catShape}
-            hudVisible={!hudDormant}
             seats={seatViews}
             activeSeatCount={activeSeatCount}
             companionConnected={

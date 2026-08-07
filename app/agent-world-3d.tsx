@@ -118,8 +118,6 @@ type AgentWorld3DProps = {
   activeSeatCount: number;
   companionConnected: "connected" | "pairing" | "offline";
   completionSignal: number;
-  /** 상위 HUD가 표시되는 동안에만 월드의 머리 위 상태 태그를 보여준다. */
-  hudVisible: boolean;
   /** 팩의 스타일 id(예: "Blue"). 바뀌면 상위에서 key 로 씬을 다시 만든다. */
   catStyle?: string;
   /** 몸통을 부풀리는 정도. 없으면 원본 체형. */
@@ -3328,7 +3326,6 @@ export default function AgentWorld3D({
   seats,
   activeSeatCount,
   completionSignal,
-  hudVisible,
   catStyle = "Blue",
   catShape,
   onSeatClick,
@@ -3366,7 +3363,6 @@ export default function AgentWorld3D({
   });
   const seatsRef = useRef(seats);
   const completionSignalRef = useRef(completionSignal);
-  const hudVisibleRef = useRef(hudVisible);
   const onSeatClickRef = useRef(onSeatClick);
   const onRadioClickRef = useRef(onRadioClick);
   const activeSeatCountRef = useRef(activeSeatCount);
@@ -3504,7 +3500,6 @@ export default function AgentWorld3D({
     };
     seatsRef.current = runtimeSeats;
     completionSignalRef.current = completionSignal;
-    hudVisibleRef.current = hudVisible;
     onSeatClickRef.current = onSeatClick;
     onRadioClickRef.current = onRadioClick;
     activeSeatCountRef.current = localWorkPreviewEnabled ? 4 : activeSeatCount;
@@ -3533,7 +3528,6 @@ export default function AgentWorld3D({
   }, [
     activeSeatCount,
     completionSignal,
-    hudVisible,
     onRadioClick,
     onSeatClick,
     onShellCollect,
@@ -9836,7 +9830,9 @@ float shoreOverlayWaterSignal( vec3 color ) {
         delta,
       );
       outlineEffect.setGapStrength(outlineGapVisibility);
-      const worldHudTagsVisible = hudVisibleRef.current;
+      // React prop/ref 갱신과 WebGL 렌더 루프의 타이밍이 어긋나도 태그가
+      // 남지 않도록 실제 HUD의 휴면 클래스를 단일 기준으로 사용한다.
+      const worldHudTagsVisible = !host.closest(".hud-dormant");
       primaryMarker.marker.visible = worldHudTagsVisible;
       secondaryAgents.forEach((entry) => {
         entry.marker.marker.visible = worldHudTagsVisible;
