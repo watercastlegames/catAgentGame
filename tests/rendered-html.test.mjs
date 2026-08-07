@@ -806,7 +806,7 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /new THREE\.Raycaster/);
   assert.match(world3d, /completion-spectacle-particles/);
   assert.match(world3d, /blocked-beacon/);
-  assert.match(world3d, /camping-radio-connection-lamp/);
+  assert.doesNotMatch(world3d, /camping-radio-connection-lamp/);
   assert.match(world3d, /0x6f5040/);
   assert.match(world3d, /ILLUSTRATION_OUTLINE_THICKNESS = 0\.0038/);
   assert.match(world3d, /ILLUSTRATION_OUTLINE_ALPHA = 0\.72/);

@@ -3325,7 +3325,6 @@ function createLitterOdorTexture() {
 export default function AgentWorld3D({
   seats,
   activeSeatCount,
-  companionConnected,
   completionSignal,
   catStyle = "Blue",
   catShape,
@@ -3363,7 +3362,6 @@ export default function AgentWorld3D({
     status: primarySeat.status,
   });
   const seatsRef = useRef(seats);
-  const connectionRef = useRef(companionConnected);
   const completionSignalRef = useRef(completionSignal);
   const onSeatClickRef = useRef(onSeatClick);
   const onRadioClickRef = useRef(onRadioClick);
@@ -3501,7 +3499,6 @@ export default function AgentWorld3D({
       status: currentPrimary.status,
     };
     seatsRef.current = runtimeSeats;
-    connectionRef.current = companionConnected;
     completionSignalRef.current = completionSignal;
     onSeatClickRef.current = onSeatClick;
     onRadioClickRef.current = onRadioClick;
@@ -3530,7 +3527,6 @@ export default function AgentWorld3D({
     onCatWheelPlayRef.current = onCatWheelPlay;
   }, [
     activeSeatCount,
-    companionConnected,
     completionSignal,
     onRadioClick,
     onSeatClick,
@@ -5908,24 +5904,6 @@ float shoreOverlayWaterSignal( vec3 color ) {
       .add(new THREE.Vector3(0.55, 0.54, 0.05));
     scene.add(radioClickProxy);
     clickableObjects.push(radioClickProxy);
-
-    const radioLampMaterial = new THREE.MeshBasicMaterial({
-      color: 0x8a8377,
-      toneMapped: false,
-      depthWrite: false,
-    });
-    disableOutline(radioLampMaterial);
-    const radioLamp = new THREE.Mesh(
-      new THREE.CircleGeometry(0.045, 24),
-      radioLampMaterial,
-    );
-    radioLamp.name = "camping-radio-connection-lamp";
-    radioLamp.position
-      .copy(FOLDING_LAPTOP_STATION_POSITION)
-      .add(new THREE.Vector3(0.55, 0.83, 0.17));
-    radioLamp.rotation.x = -0.75;
-    radioLamp.renderOrder = 20;
-    scene.add(radioLamp);
 
     const completionParticleCount = 12;
     const completionParticleGeometry = new THREE.DodecahedronGeometry(0.055, 0);
@@ -8590,22 +8568,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       });
       radioClickProxy.visible =
         layoutEditorEnabled || activeSeatCountRef.current >= 4;
-      radioLamp.visible =
-        layoutEditorEnabled || activeSeatCountRef.current >= 4;
       syncSecondaryAgents(delta);
-      const connectionState = connectionRef.current;
-      radioLampMaterial.color.setHex(
-        connectionState === "connected"
-          ? 0x8fd18a
-          : connectionState === "pairing"
-            ? 0xeeb04a
-            : 0x8a8377,
-      );
-      const lampPulse =
-        connectionState === "pairing"
-          ? 0.84 + Math.sin(animationTime * 4) * 0.16
-          : 1;
-      radioLamp.scale.setScalar(lampPulse);
 
       shellSpawnElapsed += delta;
       if (
