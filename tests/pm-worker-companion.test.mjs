@@ -41,6 +41,17 @@ test("PM Worker relay supports health and chat without exposing the upstream key
   assert.match(relay, /project-manager-worker/);
 });
 
+test("sidak static copy calls the Sites PM Worker relay with restricted CORS", () => {
+  assert.match(client, /PM_WORKER_SERVICE_ORIGIN/);
+  assert.match(client, /window\.location\.hostname === "sidak\.kr"/);
+  assert.match(client, /pmWorkerApiUrl\("\/api\/pm-worker\/health"\)/);
+  assert.match(client, /pmWorkerApiUrl\("\/api\/pm-worker\/chat"\)/);
+  assert.match(relay, /ALLOWED_BROWSER_ORIGINS/);
+  assert.match(relay, /"https:\/\/sidak\.kr"/);
+  assert.match(relay, /Access-Control-Allow-Origin/);
+  assert.match(relay, /request\.method === "OPTIONS"/);
+});
+
 test("PM Worker health verifies a real chat instead of a history-only false positive", () => {
   assert.match(relay, /target\.searchParams\.set\("action", "chat"\)/);
   assert.match(relay, /healthPrompt/);

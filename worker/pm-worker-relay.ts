@@ -16,6 +16,10 @@ const JSON_HEADERS = {
   "Content-Type": "application/json; charset=utf-8",
   "Cache-Control": "no-store",
 };
+const ALLOWED_BROWSER_ORIGINS = new Set([
+  "https://sidak.kr",
+  "https://www.sidak.kr",
+]);
 const DEFAULT_ENDPOINT =
   "https://sidak.kr/autodev/ProjectManager/api/hikami.asp";
 const REQUEST_TIMEOUT_MS = 150_000;
@@ -93,10 +97,23 @@ function utf8Base64(value: string) {
   return btoa(binary);
 }
 
-function json(body: unknown, status = 200) {
+function responseHeaders(request?: Request) {
+  const headers = new Headers(JSON_HEADERS);
+  const origin = request?.headers.get("Origin")?.trim() ?? "";
+  if (ALLOWED_BROWSER_ORIGINS.has(origin)) {
+    headers.set("Access-Control-Allow-Origin", origin);
+    headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    headers.set("Access-Control-Allow-Headers", "Accept, Content-Type");
+    headers.set("Access-Control-Max-Age", "86400");
+    headers.append("Vary", "Origin");
+  }
+  return headers;
+}
+
+function json(body: unknown, status = 200, request?: Request) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: JSON_HEADERS,
+    headers: responseHeaders(request),
   });
 }
 
@@ -221,12 +238,30 @@ export async function handlePmWorkerRequest(
     request.method === "GET" && url.pathname === "/api/pm-worker/health";
   const isChat =
     request.method === "POST" && url.pathname === "/api/pm-worker/chat";
+  const isPreflight =
+    request.method === "OPTIONS" &&
+    (url.pathname === "/api/pm-worker/health" ||
+      url.pathname === "/api/pm-worker/chat");
+  if (isPreflight) {
+    const origin = request.headers.get("Origin")?.trim() ?? "";
+    return ALLOWED_BROWSER_ORIGINS.has(origin)
+      ? new Response(null, { status: 204, headers: responseHeaders(request) })
+      : json({ error: "허용되지 않은 요청 출처입니다." }, 403, request);
+  }
   if (!isHealth && !isChat) return null;
+
+  const requestOrigin = request.headers.get("Origin")?.trim() ?? "";
+  if (requestOrigin && !ALLOWED_BROWSER_ORIGINS.has(requestOrigin)) {
+    return json({ error: "허용되지 않은 요청 출처입니다." }, 403, request);
+  }
+
+  const respond = (body: unknown, status = 200) =>
+    json(body, status, request);
 
   const endpoint = endpointFor(env);
   const apiKey = env?.PM_WORKER_CHAT_API_KEY?.trim() ?? "";
   if (!endpoint || !apiKey) {
-    return json(
+    return respond(
       {
         error: "PM Worker AI 서버 연결 정보가 아직 설정되지 않았어요.",
         code: "pm_worker_unavailable",
@@ -239,8 +274,8 @@ export async function handlePmWorkerRequest(
     if (isHealth) {
       if (healthCache && healthCache.expiresAt > Date.now()) {
         return healthCache.ready
-          ? json({ ready: true, provider: "project-manager-worker" })
-          : json(
+          ? respond({ ready: true, provider: "project-manager-worker" })
+          : respond(
               {
                 ready: false,
                 error: healthCache.error,
@@ -264,13 +299,13 @@ export async function handlePmWorkerRequest(
           error,
           code,
         };
-        return json(
+        return respond(
           { ready: false, error, code },
           503,
         );
       }
       healthCache = { expiresAt: Date.now() + HEALTH_CACHE_MS, ready: true };
-      return json({ ready: true, provider: "project-manager-worker" });
+      return respond({ ready: true, provider: "project-manager-worker" });
     }
 
     const { prompt, webQuery, sessionId } = await readChatBody(request);
@@ -302,7 +337,7 @@ export async function handlePmWorkerRequest(
       }
     }
     if (!body) {
-      return json({ error: "PM Worker AI 응답 형식이 올바르지 않아요." }, 502);
+      return respond({ error: "PM Worker AI 응답 형식이 올바르지 않아요." }, 502);
     }
     if (!upstream.ok || !body.reply || !body.session_id) {
       /* ProjectManager 쪽 ASP 는 서버의 AI 워커(5201/5202)가 응답을 못 주면
@@ -311,7 +346,7 @@ export async function handlePmWorkerRequest(
          멈춘 것인지 말해 준다. 자세한 내용은 ASP 의 debug 에 들어 있다. */
       const workerDown =
         body.code === 503 || body.error === "AI worker error";
-      return json(
+      return respond(
         {
           error: workerDown
             ? "ProjectManager 서버의 AI 워커가 응답하지 않아요. 서버에서 워커를 다시 켜 주세요."
@@ -326,7 +361,7 @@ export async function handlePmWorkerRequest(
       );
     }
     if (useCurrentWeb && !currentWebReplyHasSources(body.reply)) {
-      return json(
+      return respond(
         {
           error:
             "최신 웹 자료와 출처를 확인하지 못했어요. 잠시 후 다시 검색해 주세요.",
@@ -335,7 +370,7 @@ export async function handlePmWorkerRequest(
         502,
       );
     }
-    return json({
+    return respond({
       reply: body.reply,
       sessionId: body.session_id,
       provider: "project-manager-worker",
@@ -344,7 +379,7 @@ export async function handlePmWorkerRequest(
   } catch (error) {
     const timedOut =
       error instanceof DOMException && error.name === "TimeoutError";
-    return json(
+    return respond(
       {
         error: timedOut
           ? "PM Worker AI 응답 시간이 초과됐어요."

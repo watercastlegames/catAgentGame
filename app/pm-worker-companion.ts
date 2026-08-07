@@ -5,6 +5,18 @@ import { AI_CHAT_SHELL_COST } from "./ai-chat-economy.mjs";
 
 export const PM_WORKER_CHAT_SHELL_COST = AI_CHAT_SHELL_COST;
 const PM_WORKER_SESSION_KEY = "agent-forest-pm-worker-sessions-v1";
+const PM_WORKER_SERVICE_ORIGIN =
+  "https://agent-forest-raccoon.sminia82.chatgpt.site";
+
+function pmWorkerApiUrl(path: string) {
+  if (typeof window === "undefined") return path;
+  /* sidak.kr 판은 정적 복사본이라 자체 /api 라우트가 없다. AI 비밀키를
+     브라우저에 노출하지 않고 Sites Worker의 서버 릴레이만 호출한다. */
+  return window.location.hostname === "sidak.kr" ||
+    window.location.hostname === "www.sidak.kr"
+    ? `${PM_WORKER_SERVICE_ORIGIN}${path}`
+    : path;
+}
 
 export type PmWorkerConnectionState =
   | "loading"
@@ -65,7 +77,7 @@ export function clearPmWorkerSession(catId: string) {
 
 export async function inspectPmWorkerConnection(): Promise<PmWorkerConnectionState> {
   try {
-    const response = await fetch("/api/pm-worker/health", {
+    const response = await fetch(pmWorkerApiUrl("/api/pm-worker/health"), {
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
@@ -90,7 +102,7 @@ export async function submitPmWorkerTask(
   webQuery = prompt,
 ) {
   const sessionId = readPmWorkerSession(catId);
-  const response = await fetch("/api/pm-worker/chat", {
+  const response = await fetch(pmWorkerApiUrl("/api/pm-worker/chat"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
