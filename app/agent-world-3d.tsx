@@ -10,6 +10,7 @@ import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 import {
   findAvoidancePath2D,
   resolvePointOutsideObstacles2D,
+  steerAroundNeighbors2D,
 } from "./navigation.mjs";
 import { catStyleModelUrl } from "./cat-styles";
 import { type CatShape, fattenCat } from "./cat-body";
@@ -351,7 +352,7 @@ const WORLD_TARGETS: Record<AgentWorldLocation, THREE.Vector3> = {
   coding: CODING_DESK_TARGET,
   design: new THREE.Vector3(-2.2, 0, 0.78),
   // 4번 자리(접이식 노트북)와 같은 자리다 — SEAT_WORLD_POSITIONS["seat-4"] 와 함께 옮긴다.
-  music: new THREE.Vector3(2.18, 0, 0.84),
+  music: new THREE.Vector3(1.87, 0, 0.62),
   queue: new THREE.Vector3(-0.25, 0, 2.45),
   office: new THREE.Vector3(-2.05, 0, -2.48),
 };
@@ -386,6 +387,9 @@ const CARE_ARRIVAL_DISTANCE = 0.075;
 const CARE_MOVE_SPEED = 0.62;
 const CARE_EATING_TURN_SPEED = 14;
 const CAT_MIN_SEPARATION = 0.44;
+const CAT_AVOIDANCE_LOOK_AHEAD = 0.9;
+const CAT_WANDER_RESERVATION_DISTANCE = 0.72;
+const SEAT_4_WORK_VISUAL_LIFT = 0.13;
 const LASER_CHASE_DURATION_SECONDS = 20;
 const LASER_CHASE_MOVE_SPEED = 0.88;
 const FOOD_USE_SECONDS = 5.2;
@@ -471,7 +475,7 @@ const SEAT_WORLD_POSITIONS: Record<SeatId, THREE.Vector3> = {
      화면이 모델 중심에서 빠져 있다고 고양이까지 옆으로 옮겼더니
      책상에서 떨어져 딴 데 서 있는 꼴이 됐다. x 는 책상에 맞추고,
      앞뒤 거리만 2·3번과 같은 1.20 으로 둔다. */
-  "seat-4": new THREE.Vector3(2.18, 0, 0.84),
+  "seat-4": new THREE.Vector3(1.87, 0, 0.62),
 };
 
 // 이름표와 차단 비콘은 씬의 어떤 오브젝트·외곽선보다 위에 그린다.
@@ -6861,7 +6865,15 @@ float shoreOverlayWaterSignal( vec3 color ) {
           }
           return false;
         }
-        const direction = goal.clone().sub(entry.root.position);
+        const steering = steerAroundNeighbors2D({
+          selfId: entry.catId,
+          start: entry.root.position,
+          destination: goal,
+          neighbors: catNeighborPositions(entry.catId),
+          clearance: CAT_MIN_SEPARATION,
+          lookAhead: CAT_AVOIDANCE_LOOK_AHEAD,
+        });
+        const direction = new THREE.Vector3(steering.x, 0, steering.z);
         const targetYaw = Math.atan2(direction.x, direction.z);
         entry.yaw = lerpAngle(
           entry.yaw,
@@ -7187,6 +7199,14 @@ float shoreOverlayWaterSignal( vec3 color ) {
           10,
           delta,
         );
+        entry.visual.position.y = THREE.MathUtils.damp(
+          entry.visual.position.y,
+          seat.status === "working" && entry.seatId === "seat-4"
+            ? SEAT_4_WORK_VISUAL_LIFT
+            : 0,
+          10,
+          delta,
+        );
         let ambientAnimation: string | null = null;
         if (!entry.care && !wheelAnimation) {
           if (!entry.ambientInitialized) {
@@ -7248,7 +7268,8 @@ float shoreOverlayWaterSignal( vec3 color ) {
                 const candidate = AMBIENT_WANDER_POINTS[candidateIndex];
                 if (
                   candidateIndex !== entry.ambientPointIndex &&
-                  entry.root.position.distanceTo(candidate) > 0.9
+                  entry.root.position.distanceTo(candidate) > 0.9 &&
+                  isWanderDestinationAvailable(candidate, entry.catId)
                 ) {
                   nextPointIndex = candidateIndex;
                   break;
@@ -7278,6 +7299,17 @@ float shoreOverlayWaterSignal( vec3 color ) {
           } else if (entry.ambientPhase === "walking") {
             ambientAnimation = "walk";
             if (
+              !isWanderDestinationAvailable(
+                entry.ambientTarget,
+                entry.catId,
+              )
+            ) {
+              entry.careWaypoints.length = 0;
+              entry.careLastTarget.copy(entry.root.position);
+              entry.ambientPhase = "prewalking";
+              entry.ambientTimer = randomBetween(0.18, 0.42);
+              ambientAnimation = "idle";
+            } else if (
               moveSecondaryTowards(
                 entry,
                 entry.ambientTarget,
@@ -7556,6 +7588,65 @@ float shoreOverlayWaterSignal( vec3 color ) {
     const lastNavigationTarget = currentPosition.clone();
     const avoidanceWaypoints: THREE.Vector3[] = [];
     const separationDelta = new THREE.Vector3();
+    const catNeighborPositions = (selfId: string) => {
+      const neighbors: Array<{ id: string; x: number; z: number }> = [];
+      const primaryCatId =
+        (seatsRef.current[0] ?? DEFAULT_SEAT_VIEW).catId;
+      if (primaryCatId !== selfId) {
+        neighbors.push({
+          id: primaryCatId,
+          x: currentPosition.x,
+          z: currentPosition.z,
+        });
+      }
+      secondaryAgents.forEach((entry) => {
+        if (entry.catId === selfId) return;
+        neighbors.push({
+          id: entry.catId,
+          x: entry.root.position.x,
+          z: entry.root.position.z,
+        });
+      });
+      return neighbors;
+    };
+    const isWanderDestinationAvailable = (
+      candidate: THREE.Vector3,
+      selfId: string,
+    ) => {
+      const minimumDistanceSquared =
+        CAT_WANDER_RESERVATION_DISTANCE * CAT_WANDER_RESERVATION_DISTANCE;
+      if (
+        catNeighborPositions(selfId).some((neighbor) => {
+          const deltaX = candidate.x - neighbor.x;
+          const deltaZ = candidate.z - neighbor.z;
+          return deltaX * deltaX + deltaZ * deltaZ < minimumDistanceSquared;
+        })
+      ) {
+        return false;
+      }
+
+      const primaryCatId =
+        (seatsRef.current[0] ?? DEFAULT_SEAT_VIEW).catId;
+      if (
+        primaryCatId !== selfId &&
+        (ambientPhase === "walking" || ambientPhase === "settling") &&
+        candidate.distanceToSquared(ambientTarget) < minimumDistanceSquared
+      ) {
+        return false;
+      }
+      for (const entry of secondaryAgents.values()) {
+        if (
+          entry.catId !== selfId &&
+          (entry.ambientPhase === "walking" ||
+            entry.ambientPhase === "settling") &&
+          candidate.distanceToSquared(entry.ambientTarget) <
+            minimumDistanceSquared
+        ) {
+          return false;
+        }
+      }
+      return true;
+    };
     const enforceCatSeparation = () => {
       const positions = [
         currentPosition,
@@ -8363,6 +8454,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       let isUsingExerciseWheel = false;
       let movementSpeed = TASK_MOVE_SPEED;
       let movementForwardFactor = 1;
+      let isAvoidingOtherCat = false;
       let requestedWalkFadeSeconds: number | null = null;
       frameMovementStart.copy(currentPosition);
 
@@ -8907,7 +8999,8 @@ float shoreOverlayWaterSignal( vec3 color ) {
               const candidate = AMBIENT_WANDER_POINTS[candidateIndex];
               if (
                 candidateIndex !== ambientPointIndex &&
-                currentPosition.distanceTo(candidate) > 1.1
+                currentPosition.distanceTo(candidate) > 1.1 &&
+                isWanderDestinationAvailable(candidate, primaryView.catId)
               ) {
                 nextPointIndex = candidateIndex;
                 break;
@@ -8951,7 +9044,20 @@ float shoreOverlayWaterSignal( vec3 color ) {
           const ambientDistance =
             currentPosition.distanceTo(desiredPosition);
 
-          if (ambientDistance <= AMBIENT_ARRIVAL_DISTANCE) {
+          if (
+            !isWanderDestinationAvailable(
+              ambientTarget,
+              primaryView.catId,
+            )
+          ) {
+            avoidanceWaypoints.length = 0;
+            lastNavigationTarget.copy(currentPosition);
+            ambientPhase = "prewalking";
+            ambientTimer = randomBetween(0.18, 0.42);
+            desiredPosition.copy(currentPosition);
+            isMoving = false;
+            playAnimation("idle-look", 0.22);
+          } else if (ambientDistance <= AMBIENT_ARRIVAL_DISTANCE) {
             currentPosition.copy(ambientTarget);
             desiredPosition.copy(currentPosition);
             ambientPhase = "settling";
@@ -9058,6 +9164,18 @@ float shoreOverlayWaterSignal( vec3 color ) {
       }
 
       movementDirection.subVectors(movementGoal, currentPosition);
+      if (isMoving && movementDirection.lengthSq() > 1e-6) {
+        const steering = steerAroundNeighbors2D({
+          selfId: primaryView.catId,
+          start: currentPosition,
+          destination: movementGoal,
+          neighbors: catNeighborPositions(primaryView.catId),
+          clearance: CAT_MIN_SEPARATION,
+          lookAhead: CAT_AVOIDANCE_LOOK_AHEAD,
+        });
+        movementDirection.set(steering.x, 0, steering.z);
+        isAvoidingOtherCat = steering.avoiding;
+      }
       if (isUsingExerciseWheel && characterModel) {
         characterYaw = lerpAngle(
           characterYaw,
@@ -9192,13 +9310,15 @@ float shoreOverlayWaterSignal( vec3 color ) {
           currentPosition.distanceTo(movementGoal);
         const stepDistance =
           movementSpeed * movementForwardFactor * delta;
-        if (remainingDistance <= stepDistance) {
+        if (remainingDistance <= stepDistance && !isAvoidingOtherCat) {
           nextPosition.copy(movementGoal);
         } else {
-          nextPosition.copy(currentPosition).lerp(
-            movementGoal,
-            stepDistance / remainingDistance,
-          );
+          nextPosition
+            .copy(currentPosition)
+            .addScaledVector(
+              movementDirection,
+              Math.min(stepDistance, remainingDistance),
+            );
         }
         const touchesDesk =
           wantsDeskInteraction &&

@@ -627,7 +627,8 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /AMBIENT_MOVE_SPEED = 0\.46/);
   assert.match(world3d, /TASK_MOVE_SPEED = 1\.35/);
   assert.match(world3d, /const remainingDistance/);
-  assert.match(world3d, /stepDistance \/ remainingDistance/);
+  assert.match(world3d, /\.addScaledVector\(/);
+  assert.match(world3d, /Math\.min\(stepDistance, remainingDistance\)/);
   assert.doesNotMatch(world3d, /\.moveTowards\(/);
   assert.match(world3d, /걸음을 멈추고 주변을 살피는 중/);
   assert.match(world3d, /몸을 일으키고 산책을 준비하는 중/);

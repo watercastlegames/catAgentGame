@@ -122,6 +122,95 @@ function distanceBetween(a, b) {
   return Math.hypot(a.x - b.x, a.z - b.z);
 }
 
+function stablePairTurn(leftId, rightId) {
+  const pair = [String(leftId), String(rightId)].sort().join("|");
+  let hash = 0;
+  for (let index = 0; index < pair.length; index += 1) {
+    hash = (hash * 31 + pair.charCodeAt(index)) >>> 0;
+  }
+  return hash % 2 === 0 ? -1 : 1;
+}
+
+export function steerAroundNeighbors2D({
+  selfId,
+  start,
+  destination,
+  neighbors,
+  clearance = 0.44,
+  lookAhead = 0.86,
+}) {
+  const deltaX = destination.x - start.x;
+  const deltaZ = destination.z - start.z;
+  const remaining = Math.hypot(deltaX, deltaZ);
+  if (remaining < 1e-6) {
+    return { x: 0, z: 0, avoiding: false };
+  }
+
+  const forwardX = deltaX / remaining;
+  const forwardZ = deltaZ / remaining;
+  let steerX = forwardX;
+  let steerZ = forwardZ;
+  let avoiding = false;
+
+  const orderedNeighbors = [...neighbors]
+    .filter((neighbor) => String(neighbor.id) !== String(selfId))
+    .sort((left, right) => String(left.id).localeCompare(String(right.id)));
+
+  for (const neighbor of orderedNeighbors) {
+    const offsetX = neighbor.x - start.x;
+    const offsetZ = neighbor.z - start.z;
+    const distance = Math.hypot(offsetX, offsetZ);
+    if (distance > lookAhead + clearance) continue;
+
+    const forwardDistance = offsetX * forwardX + offsetZ * forwardZ;
+    if (forwardDistance < -clearance * 0.22 || forwardDistance > lookAhead) {
+      continue;
+    }
+
+    const signedLateralDistance =
+      forwardX * offsetZ - forwardZ * offsetX;
+    const corridor =
+      clearance *
+      (1.12 -
+        Math.max(0, forwardDistance) / Math.max(lookAhead, 1e-6) * 0.34);
+    if (Math.abs(signedLateralDistance) > corridor) continue;
+
+    const overlapRatio = Math.max(0, clearance - distance) / clearance;
+    const hasRightOfWay =
+      String(selfId).localeCompare(String(neighbor.id)) < 0;
+    if (hasRightOfWay && overlapRatio < 0.12) continue;
+
+    const turn =
+      Math.abs(signedLateralDistance) > 0.035
+        ? signedLateralDistance > 0
+          ? -1
+          : 1
+        : stablePairTurn(selfId, neighbor.id);
+    const urgency =
+      0.48 +
+      Math.max(0, 1 - forwardDistance / Math.max(lookAhead, 1e-6)) * 0.86 +
+      overlapRatio * 1.65;
+
+    steerX += -forwardZ * turn * urgency;
+    steerZ += forwardX * turn * urgency;
+    if (distance > 1e-5 && overlapRatio > 0) {
+      steerX -= (offsetX / distance) * overlapRatio * 1.35;
+      steerZ -= (offsetZ / distance) * overlapRatio * 1.35;
+    }
+    avoiding = true;
+  }
+
+  const steerLength = Math.hypot(steerX, steerZ);
+  if (steerLength < 1e-6) {
+    return { x: forwardX, z: forwardZ, avoiding };
+  }
+  return {
+    x: steerX / steerLength,
+    z: steerZ / steerLength,
+    avoiding,
+  };
+}
+
 function distanceToObstacle(point, obstacle) {
   const closestX = Math.min(
     obstacle.maxX,

@@ -4,6 +4,7 @@ import {
   findAvoidancePath2D,
   resolvePointOutsideObstacles2D,
   segmentIntersectsObstacle2D,
+  steerAroundNeighbors2D,
 } from "../app/navigation.mjs";
 
 const distance = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -155,4 +156,49 @@ test("escapes overlapping placement obstacles without remaining trapped", () => 
     obstacles.some((obstacle) => isInside(resolved, obstacle)),
     false,
   );
+});
+
+test("keeps a clear walking direction when no cat blocks the corridor", () => {
+  const steering = steerAroundNeighbors2D({
+    selfId: "cat-b",
+    start: { x: 0, z: 0 },
+    destination: { x: 2, z: 0 },
+    neighbors: [{ id: "cat-a", x: 0, z: 1.4 }],
+  });
+
+  assert.equal(steering.avoiding, false);
+  assert.ok(Math.abs(steering.x - 1) < 1e-6);
+  assert.ok(Math.abs(steering.z) < 1e-6);
+});
+
+test("the yielding cat steers around a cat directly ahead", () => {
+  const steering = steerAroundNeighbors2D({
+    selfId: "cat-b",
+    start: { x: 0, z: 0 },
+    destination: { x: 2, z: 0 },
+    neighbors: [{ id: "cat-a", x: 0.42, z: 0 }],
+  });
+
+  assert.equal(steering.avoiding, true);
+  assert.ok(steering.x > 0);
+  assert.ok(Math.abs(steering.z) > 0.35);
+});
+
+test("only one cat yields before a head-on meeting", () => {
+  const first = steerAroundNeighbors2D({
+    selfId: "cat-a",
+    start: { x: -0.35, z: 0 },
+    destination: { x: 2, z: 0 },
+    neighbors: [{ id: "cat-b", x: 0.35, z: 0 }],
+  });
+  const second = steerAroundNeighbors2D({
+    selfId: "cat-b",
+    start: { x: 0.35, z: 0 },
+    destination: { x: -2, z: 0 },
+    neighbors: [{ id: "cat-a", x: -0.35, z: 0 }],
+  });
+
+  assert.equal(first.avoiding, false);
+  assert.equal(second.avoiding, true);
+  assert.ok(Math.abs(second.z) > 0.25);
 });

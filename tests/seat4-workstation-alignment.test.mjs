@@ -10,11 +10,16 @@ const world = await readFile(
 test("seat 4 works directly in front of its folding laptop", () => {
   assert.match(
     world,
-    /music:\s*new THREE\.Vector3\(2\.18, 0, 0\.84\)/,
+    /music:\s*new THREE\.Vector3\(1\.87, 0, 0\.62\)/,
   );
   assert.match(
     world,
-    /"seat-4":\s*new THREE\.Vector3\(2\.18, 0, 0\.84\)/,
+    /"seat-4":\s*new THREE\.Vector3\(1\.87, 0, 0\.62\)/,
+  );
+  assert.match(world, /SEAT_4_WORK_VISUAL_LIFT = 0\.13/);
+  assert.match(
+    world,
+    /seat\.status === "working" && entry\.seatId === "seat-4"/,
   );
 
   const seat4Case = world.slice(
