@@ -176,10 +176,6 @@ export function steerAroundNeighbors2D({
     if (Math.abs(signedLateralDistance) > corridor) continue;
 
     const overlapRatio = Math.max(0, clearance - distance) / clearance;
-    const hasRightOfWay =
-      String(selfId).localeCompare(String(neighbor.id)) < 0;
-    if (hasRightOfWay && overlapRatio < 0.12) continue;
-
     const turn =
       Math.abs(signedLateralDistance) > 0.035
         ? signedLateralDistance > 0

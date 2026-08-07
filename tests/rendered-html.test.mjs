@@ -672,7 +672,7 @@ test("ships local bridge hooks, responsive styles, and 2.5D assets", async () =>
   assert.match(world3d, /CAMPING_SUPPLY_CLUSTER_OBSTACLE/);
   assert.match(world3d, /CAMPING_LANTERN_OBSTACLE/);
   assert.doesNotMatch(world3d, /BEACH_BENCH_OBSTACLE/);
-  assert.match(world3d, /office: new THREE\.Vector3\(-2\.05, 0, -2\.48\)/);
+  assert.match(world3d, /office: new THREE\.Vector3\(-2\.05, 0, -2\.6\)/);
   assert.match(world3d, /createPalmFrondGeometry/);
   assert.match(world3d, /createPalmTree/);
   assert.match(world3d, /createRockCluster/);

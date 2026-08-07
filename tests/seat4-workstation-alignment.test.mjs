@@ -31,12 +31,21 @@ test("seat 4 works directly in front of its folding laptop", () => {
   assert.doesNotMatch(seat4Case, /keepAnchoredVectorOutsideObstacle/);
 });
 
-test("working-seat preview is local-only and drives seat 4 into working state", () => {
-  assert.match(world, /requestedWorkPreview === "seat-4"/);
+test("working-seat preview is local-only and can inspect every workstation", () => {
+  assert.match(world, /requestedWorkPreviewSeatId = \[/);
+  assert.match(world, /requestedWorkPreviewSeatId !== null/);
   assert.match(world, /window\.location\.hostname/);
   assert.match(
     world,
-    /seatId: "seat-4",[\s\S]*?status: "working"/,
+    /requestedWorkPreviewSeatId === "seat-2" \? "working" : "idle"/,
+  );
+  assert.match(
+    world,
+    /requestedWorkPreviewSeatId === "seat-3" \? "working" : "idle"/,
+  );
+  assert.match(
+    world,
+    /requestedWorkPreviewSeatId === "seat-4" \? "working" : "idle"/,
   );
   assert.match(
     world,

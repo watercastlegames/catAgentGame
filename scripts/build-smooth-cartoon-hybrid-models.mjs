@@ -111,6 +111,7 @@ const models = [
       "folding-laptop-radio-workstation-smooth-cartoon-v1.png",
     ),
     paletteStrength: 0.7,
+    neutralizeMint: true,
   },
   {
     id: "low-monitor-workstation",
@@ -255,7 +256,11 @@ function softPaletteColor(red, green, blue) {
   return output.map((value) => value / Math.max(weightSum, 0.000001));
 }
 
-async function createSmoothCartoonTexture(source, paletteStrength) {
+async function createSmoothCartoonTexture(
+  source,
+  paletteStrength,
+  neutralizeMint = false,
+) {
   const { data, info } = await sharp(source)
     .ensureAlpha()
     .median(3)
@@ -270,6 +275,19 @@ async function createSmoothCartoonTexture(source, paletteStrength) {
     const green = data[offset + 1];
     const blue = data[offset + 2];
     const luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722;
+    const isMintAccent =
+      neutralizeMint &&
+      green - red > 10 &&
+      green - blue > 5 &&
+      blue - red > 3;
+    if (isMintAccent) {
+      const shade = (luminance - 184) * 0.3;
+      output[offset] = clampByte(224 + shade);
+      output[offset + 1] = clampByte(193 + shade);
+      output[offset + 2] = clampByte(151 + shade);
+      output[offset + 3] = data[offset + 3];
+      continue;
+    }
     const softened = [
       luminance + (red - luminance) * 0.62,
       luminance + (green - luminance) * 0.62,
@@ -400,6 +418,7 @@ for (const model of models) {
   const texture = await createSmoothCartoonTexture(
     sourceTexture.bytes,
     model.paletteStrength,
+    model.neutralizeMint,
   );
   const nextBinary = replaceEmbeddedTexture(json, binary, texture.webp);
   const output = encodeGlb(json, nextBinary);
@@ -415,6 +434,7 @@ for (const model of models) {
     output: path.relative(projectRoot, model.output),
     preview: path.relative(projectRoot, model.preview),
     paletteStrength: model.paletteStrength,
+    neutralizeMint: model.neutralizeMint ?? false,
     textureSize: [texture.width, texture.height],
     sourceBytes: sourceBuffer.length,
     outputBytes: output.length,

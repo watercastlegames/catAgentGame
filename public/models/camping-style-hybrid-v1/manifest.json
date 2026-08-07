@@ -56,6 +56,7 @@
       "output": "public\\models\\camping-style-hybrid-v1\\tent-workstation-smooth-cartoon-v1.glb",
       "preview": "tmp\\style-analysis\\smooth-cartoon-hybrid-v1\\tent-workstation-smooth-cartoon-v1.png",
       "paletteStrength": 0.7,
+      "neutralizeMint": false,
       "textureSize": [
         2048,
         2048
@@ -70,6 +71,7 @@
       "output": "public\\models\\camping-style-hybrid-v1\\round-laptop-workstation-smooth-cartoon-v1.glb",
       "preview": "tmp\\style-analysis\\smooth-cartoon-hybrid-v1\\round-laptop-workstation-smooth-cartoon-v1.png",
       "paletteStrength": 0.7,
+      "neutralizeMint": false,
       "textureSize": [
         2048,
         2048
@@ -84,12 +86,13 @@
       "output": "public\\models\\camping-style-hybrid-v1\\folding-laptop-radio-workstation-smooth-cartoon-v1.glb",
       "preview": "tmp\\style-analysis\\smooth-cartoon-hybrid-v1\\folding-laptop-radio-workstation-smooth-cartoon-v1.png",
       "paletteStrength": 0.7,
+      "neutralizeMint": true,
       "textureSize": [
         2048,
         2048
       ],
       "sourceBytes": 1754160,
-      "outputBytes": 4299504
+      "outputBytes": 4281448
     },
     {
       "id": "low-monitor-workstation",
@@ -98,6 +101,7 @@
       "output": "public\\models\\camping-style-hybrid-v1\\low-monitor-cat-keycap-workstation-smooth-cartoon-v1.glb",
       "preview": "tmp\\style-analysis\\smooth-cartoon-hybrid-v1\\low-monitor-cat-keycap-workstation-smooth-cartoon-v1.png",
       "paletteStrength": 0.7,
+      "neutralizeMint": false,
       "textureSize": [
         2048,
         2048
@@ -112,6 +116,7 @@
       "output": "public\\models\\camping-style-hybrid-v1\\camping-supplies-cluster-smooth-cartoon-v1.glb",
       "preview": "tmp\\style-analysis\\smooth-cartoon-hybrid-v1\\camping-supplies-cluster-smooth-cartoon-v1.png",
       "paletteStrength": 0.72,
+      "neutralizeMint": false,
       "textureSize": [
         2048,
         2048

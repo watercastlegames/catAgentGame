@@ -348,13 +348,13 @@ const CODING_DESK_TARGET = new THREE.Vector3(2.12, 0, 4.12);
 const DESK_KNEADING_EXIT_POSITION = new THREE.Vector3(2.12, 0, 4.62);
 const WORLD_TARGETS: Record<AgentWorldLocation, THREE.Vector3> = {
   entrance: new THREE.Vector3(-1.65, 0, 5.05),
-  general: new THREE.Vector3(-2.05, 0, -2.48),
+  general: new THREE.Vector3(-2.05, 0, -2.6),
   coding: CODING_DESK_TARGET,
-  design: new THREE.Vector3(-2.2, 0, 0.78),
+  design: new THREE.Vector3(-2.2, 0, 0.6),
   // 4번 자리(접이식 노트북)와 같은 자리다 — SEAT_WORLD_POSITIONS["seat-4"] 와 함께 옮긴다.
   music: new THREE.Vector3(1.87, 0, 0.62),
   queue: new THREE.Vector3(-0.25, 0, 2.45),
-  office: new THREE.Vector3(-2.05, 0, -2.48),
+  office: new THREE.Vector3(-2.05, 0, -2.6),
 };
 
 const LOCATION_LABELS: Record<AgentWorldLocation, string> = {
@@ -386,9 +386,13 @@ const TASK_ARRIVAL_DISTANCE = 0.025;
 const CARE_ARRIVAL_DISTANCE = 0.075;
 const CARE_MOVE_SPEED = 0.62;
 const CARE_EATING_TURN_SPEED = 14;
-const CAT_MIN_SEPARATION = 0.44;
-const CAT_AVOIDANCE_LOOK_AHEAD = 0.9;
-const CAT_WANDER_RESERVATION_DISTANCE = 0.72;
+// The visible character is wider than its root point. Start turning before
+// the final separation pass has to push overlapping meshes apart.
+const CAT_MIN_SEPARATION = 0.62;
+const CAT_AVOIDANCE_LOOK_AHEAD = 1.24;
+const CAT_WANDER_RESERVATION_DISTANCE = 0.96;
+const CAT_CROWD_REDIRECT_DISTANCE = 0.76;
+const CAT_CROWD_REDIRECT_COOLDOWN = 2.4;
 const SEAT_4_WORK_VISUAL_LIFT = 0.13;
 const LASER_CHASE_DURATION_SECONDS = 20;
 const LASER_CHASE_MOVE_SPEED = 0.88;
@@ -412,7 +416,7 @@ const TENT_WORKSTATION_MODEL_URL =
 const ROUND_LAPTOP_STATION_MODEL_URL =
   "/models/camping-style-hybrid-v1/round-laptop-workstation-smooth-cartoon-v1.glb?rev=4";
 const FOLDING_LAPTOP_STATION_MODEL_URL =
-  "/models/camping-style-hybrid-v1/folding-laptop-radio-workstation-smooth-cartoon-v1.glb?rev=4";
+  "/models/camping-style-hybrid-v1/folding-laptop-radio-workstation-smooth-cartoon-v1.glb?rev=5";
 const LOW_MONITOR_STATION_MODEL_URL =
   "/models/camping-style-hybrid-v1/low-monitor-cat-keycap-workstation-smooth-cartoon-v1.glb?rev=2";
 const DEFAULT_WORLD_RENDER_SCALE = 4;
@@ -469,12 +473,10 @@ const SEAT_WORLD_POSITIONS: Record<SeatId, THREE.Vector3> = {
   // 자리 1은 우측 하단 모니터, 자리 2는 좌측 상단 텐트다.
   // 두 값을 뒤집으면 두 번째 고양이가 텐트 대신 1번 자리로 향한다.
   "seat-1": new THREE.Vector3(2.12, 0, 4.12),
-  "seat-2": new THREE.Vector3(-2.05, 0, -2.48),
-  "seat-3": new THREE.Vector3(-2.2, 0, 0.78),
-  /* 다른 자리는 모두 책상과 x 가 같다 — 고양이는 책상 정면에 선다.
-     화면이 모델 중심에서 빠져 있다고 고양이까지 옆으로 옮겼더니
-     책상에서 떨어져 딴 데 서 있는 꼴이 됐다. x 는 책상에 맞추고,
-     앞뒤 거리만 2·3번과 같은 1.20 으로 둔다. */
+  "seat-2": new THREE.Vector3(-2.05, 0, -2.6),
+  "seat-3": new THREE.Vector3(-2.2, 0, 0.6),
+  /* 고양이는 모델 원점이 아니라 실제 의자·노트북 중심에 맞춘다.
+     x 는 책상 중심을 유지하고 z 만 자리별 앞면 깊이에 맞춘 값이다. */
   "seat-4": new THREE.Vector3(1.87, 0, 0.62),
 };
 
@@ -3412,10 +3414,18 @@ export default function AgentWorld3D({
     const requestedWorkPreview = new URLSearchParams(
       window.location.search,
     ).get("workPreview");
+    const requestedWorkPreviewSeatId = [
+      "seat-1",
+      "seat-2",
+      "seat-3",
+      "seat-4",
+    ].includes(requestedWorkPreview ?? "")
+      ? (requestedWorkPreview as SeatId)
+      : null;
     const localWorkPreviewEnabled =
       ["localhost", "127.0.0.1", "::1", "[::1]"].includes(
         window.location.hostname,
-      ) && requestedWorkPreview === "seat-4";
+      ) && requestedWorkPreviewSeatId !== null;
     const previewStyle = seats[0]?.catStyle;
     const runtimeSeats = localWorkPreviewEnabled
       ? ([
@@ -3425,8 +3435,10 @@ export default function AgentWorld3D({
             catId: "work-preview-seat-1",
             agentName: "자리 1",
             location: "coding",
-            status: "idle",
-            statusLabel: "쉬는 중",
+            status:
+              requestedWorkPreviewSeatId === "seat-1" ? "working" : "idle",
+            statusLabel:
+              requestedWorkPreviewSeatId === "seat-1" ? "작업 중" : "쉬는 중",
             catStyle: previewStyle,
           },
           {
@@ -3435,8 +3447,10 @@ export default function AgentWorld3D({
             catId: "work-preview-seat-2",
             agentName: "자리 2",
             location: "general",
-            status: "idle",
-            statusLabel: "쉬는 중",
+            status:
+              requestedWorkPreviewSeatId === "seat-2" ? "working" : "idle",
+            statusLabel:
+              requestedWorkPreviewSeatId === "seat-2" ? "작업 중" : "쉬는 중",
             catStyle: previewStyle,
           },
           {
@@ -3445,8 +3459,10 @@ export default function AgentWorld3D({
             catId: "work-preview-seat-3",
             agentName: "자리 3",
             location: "design",
-            status: "idle",
-            statusLabel: "쉬는 중",
+            status:
+              requestedWorkPreviewSeatId === "seat-3" ? "working" : "idle",
+            statusLabel:
+              requestedWorkPreviewSeatId === "seat-3" ? "작업 중" : "쉬는 중",
             catStyle: previewStyle,
           },
           {
@@ -3455,8 +3471,10 @@ export default function AgentWorld3D({
             catId: "work-preview-seat-4",
             agentName: "자리 4",
             location: "music",
-            status: "working",
-            statusLabel: "작업 중",
+            status:
+              requestedWorkPreviewSeatId === "seat-4" ? "working" : "idle",
+            statusLabel:
+              requestedWorkPreviewSeatId === "seat-4" ? "작업 중" : "쉬는 중",
             catStyle: previewStyle,
           },
         ] satisfies SeatView[])
@@ -6501,6 +6519,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       ambientTimer: number;
       ambientPointIndex: number;
       ambientTarget: THREE.Vector3;
+      crowdRedirectCooldown: number;
       wasAutonomous: boolean;
     };
     type CatExerciseWheelSession = {
@@ -6520,6 +6539,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
     let ambientTimer = 4;
     let ambientAnimationIndex = 0;
     let ambientPointIndex = -1;
+    let crowdRedirectCooldown = 0;
     let kneadingElapsed = 0;
     let kneadingBlend = 0;
     let wasKneadingLastFrame = false;
@@ -6673,6 +6693,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
         ambientTimer: randomBetween(3.5, 7.5),
         ambientPointIndex: -1,
         ambientTarget: root.position.clone(),
+        crowdRedirectCooldown: 0,
         wasAutonomous:
           seat.seatId !== "queue" &&
           !seat.blocked &&
@@ -6920,6 +6941,10 @@ float shoreOverlayWaterSignal( vec3 color ) {
         entry.careRetrySeconds = Math.max(
           0,
           entry.careRetrySeconds - delta,
+        );
+        entry.crowdRedirectCooldown = Math.max(
+          0,
+          entry.crowdRedirectCooldown - delta,
         );
 
         if (
@@ -7298,7 +7323,21 @@ float shoreOverlayWaterSignal( vec3 color ) {
             }
           } else if (entry.ambientPhase === "walking") {
             ambientAnimation = "walk";
-            if (
+            const crowdRedirect =
+              entry.crowdRedirectCooldown <= 0
+                ? chooseCrowdRedirect(
+                    entry.root.position,
+                    entry.catId,
+                    entry.ambientPointIndex,
+                  )
+                : null;
+            if (crowdRedirect) {
+              entry.ambientPointIndex = crowdRedirect.pointIndex;
+              entry.ambientTarget.copy(crowdRedirect.target);
+              entry.careWaypoints.length = 0;
+              entry.careLastTarget.copy(entry.root.position);
+              entry.crowdRedirectCooldown = CAT_CROWD_REDIRECT_COOLDOWN;
+            } else if (
               !isWanderDestinationAvailable(
                 entry.ambientTarget,
                 entry.catId,
@@ -7646,6 +7685,68 @@ float shoreOverlayWaterSignal( vec3 color ) {
         }
       }
       return true;
+    };
+    const chooseCrowdRedirect = (
+      position: THREE.Vector3,
+      selfId: string,
+      currentPointIndex: number,
+    ) => {
+      const neighbors = catNeighborPositions(selfId);
+      const crowdingNeighbors = neighbors.filter((neighbor) =>
+        Math.hypot(
+          position.x - neighbor.x,
+          position.z - neighbor.z,
+        ) < CAT_CROWD_REDIRECT_DISTANCE,
+      );
+      if (crowdingNeighbors.length === 0) return null;
+
+      let bestIndex = -1;
+      let bestScore = Number.NEGATIVE_INFINITY;
+      AMBIENT_WANDER_POINTS.forEach((candidate, candidateIndex) => {
+        if (
+          candidateIndex === currentPointIndex ||
+          position.distanceTo(candidate) < 1 ||
+          !isWanderDestinationAvailable(candidate, selfId)
+        ) {
+          return;
+        }
+
+        const candidateX = candidate.x - position.x;
+        const candidateZ = candidate.z - position.z;
+        const candidateLength = Math.max(
+          Math.hypot(candidateX, candidateZ),
+          0.0001,
+        );
+        let nearestNeighborDistance = Number.POSITIVE_INFINITY;
+        let awayScore = 0;
+        neighbors.forEach((neighbor) => {
+          nearestNeighborDistance = Math.min(
+            nearestNeighborDistance,
+            Math.hypot(candidate.x - neighbor.x, candidate.z - neighbor.z),
+          );
+          const awayX = position.x - neighbor.x;
+          const awayZ = position.z - neighbor.z;
+          const awayLength = Math.max(Math.hypot(awayX, awayZ), 0.0001);
+          awayScore +=
+            (candidateX * awayX + candidateZ * awayZ) /
+            (candidateLength * awayLength);
+        });
+        const score =
+          nearestNeighborDistance * 2.1 +
+          awayScore * 0.72 +
+          candidateLength * 0.08;
+        if (score > bestScore) {
+          bestScore = score;
+          bestIndex = candidateIndex;
+        }
+      });
+
+      return bestIndex < 0
+        ? null
+        : {
+            pointIndex: bestIndex,
+            target: AMBIENT_WANDER_POINTS[bestIndex],
+          };
     };
     const enforceCatSeparation = () => {
       const positions = [
@@ -8443,6 +8544,7 @@ float shoreOverlayWaterSignal( vec3 color ) {
       const isAutonomous =
         mixer !== null &&
         AUTONOMOUS_STATUSES.has(motionRef.current.status);
+      crowdRedirectCooldown = Math.max(0, crowdRedirectCooldown - delta);
       if (!isAutonomous && primaryCare) {
         leaveCareQueue(primaryCare.intent, primaryCareCatId);
         releaseCareFacility(primaryCare.intent, primaryCareCatId);
@@ -9041,8 +9143,26 @@ float shoreOverlayWaterSignal( vec3 color ) {
           }
         } else {
           desiredPosition.copy(ambientTarget);
-          const ambientDistance =
+          let ambientDistance =
             currentPosition.distanceTo(desiredPosition);
+          const crowdRedirect =
+            crowdRedirectCooldown <= 0
+              ? chooseCrowdRedirect(
+                  currentPosition,
+                  primaryView.catId,
+                  ambientPointIndex,
+                )
+              : null;
+          if (crowdRedirect) {
+            ambientPointIndex = crowdRedirect.pointIndex;
+            ambientTarget.copy(crowdRedirect.target);
+            desiredPosition.copy(ambientTarget);
+            ambientDistance = currentPosition.distanceTo(desiredPosition);
+            avoidanceWaypoints.length = 0;
+            lastNavigationTarget.copy(currentPosition);
+            crowdRedirectCooldown = CAT_CROWD_REDIRECT_COOLDOWN;
+            setAmbientLabel("다른 고양이를 피해 새 길로 산책하는 중");
+          }
 
           if (
             !isWanderDestinationAvailable(

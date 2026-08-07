@@ -29,10 +29,16 @@ test("routes each cat to its own workstation and separates overlapping cats", as
   );
   assert.match(
     world,
-    /"seat-2": new THREE\.Vector3\(-2\.05, 0, -2\.48\)/,
+    /"seat-2": new THREE\.Vector3\(-2\.05, 0, -2\.6\)/,
   );
+  assert.match(world, /"seat-3": new THREE\.Vector3\(-2\.2, 0, 0\.6\)/);
   assert.match(world, /"seat-1": LOW_MONITOR_WORKING_MARKER_WORLD_POSITION/);
-  assert.match(world, /CAT_MIN_SEPARATION = 0\.44/);
+  assert.match(world, /CAT_MIN_SEPARATION = 0\.62/);
+  assert.match(world, /CAT_AVOIDANCE_LOOK_AHEAD = 1\.24/);
+  assert.match(world, /CAT_CROWD_REDIRECT_DISTANCE = 0\.76/);
+  assert.match(world, /const chooseCrowdRedirect = \(/);
+  assert.match(world, /entry\.ambientTarget\.copy\(crowdRedirect\.target\)/);
+  assert.match(world, /ambientTarget\.copy\(crowdRedirect\.target\)/);
   assert.match(world, /const enforceCatSeparation = \(\) =>/);
   assert.match(world, /enforceCatSeparation\(\);/);
 });

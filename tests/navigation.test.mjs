@@ -184,7 +184,7 @@ test("the yielding cat steers around a cat directly ahead", () => {
   assert.ok(Math.abs(steering.z) > 0.35);
 });
 
-test("only one cat yields before a head-on meeting", () => {
+test("both cats take opposite detours before a head-on meeting", () => {
   const first = steerAroundNeighbors2D({
     selfId: "cat-a",
     start: { x: -0.35, z: 0 },
@@ -198,7 +198,9 @@ test("only one cat yields before a head-on meeting", () => {
     neighbors: [{ id: "cat-a", x: -0.35, z: 0 }],
   });
 
-  assert.equal(first.avoiding, false);
+  assert.equal(first.avoiding, true);
   assert.equal(second.avoiding, true);
+  assert.ok(Math.abs(first.z) > 0.25);
   assert.ok(Math.abs(second.z) > 0.25);
+  assert.ok(first.z * second.z < 0);
 });
