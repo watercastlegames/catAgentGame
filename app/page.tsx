@@ -401,6 +401,7 @@ const BRIDGE_URL =
   process.env.NEXT_PUBLIC_AGENT_BRIDGE_URL ?? "http://127.0.0.1:4317";
 const COMPANION_TOKEN_KEY = "agent-forest-companion-token";
 const COMPANION_TRANSPORT_KEY = "agent-forest-companion-transport";
+const RELAY_CURSOR_KEY = "agent-forest-relay-cursor-v1";
 const SELECTED_SESSION_KEY = "agent-forest-selected-session";
 const SEAT_ASSIGNMENTS_KEY = "agent-forest-seat-assignments-v1";
 const LEGACY_ACORN_KEY = "agent-forest-acorns-v1";
@@ -737,7 +738,15 @@ export default function Home() {
     null,
   );
 
-  const relayEventCursor = useRef(0);
+  // 재접속 때마다 0부터 폴링하면 device 큐의 과거 이벤트를 통째로 다시 받아
+  // 상태 전이가 폭발하고 고양이가 메아리처럼 울어댄다. 마지막 위치를 저장해 둔다.
+  const relayEventCursor = useRef<number>(-1);
+  if (relayEventCursor.current < 0) {
+    relayEventCursor.current =
+      typeof window !== "undefined"
+        ? Number(window.localStorage.getItem(RELAY_CURSOR_KEY)) || 0
+        : 0;
+  }
   const sessionRefreshPromiseRef = useRef<{
     provider: LocalSessionProvider;
     promise: Promise<void>;
@@ -2778,9 +2787,16 @@ export default function Home() {
       if (!seen.has(threadId)) previous.delete(threadId);
     }
     audio.setTypingCount(typingCount);
-    // 첫 렌더에서 복원된 상태까지 울어대지 않도록 한 박자 늦게 연다.
-    catCuePrimedRef.current = true;
   }, [runtimeList]);
+
+  // 접속 직후엔 세션 복원·과거 이벤트·데모 시작이 한꺼번에 상태를 바꾸면서
+  // 고양이가 메아리처럼 울어댄다. 잠깐 무음으로 흘려보낸 뒤 진짜 상태 변화만 울린다.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      catCuePrimedRef.current = true;
+    }, 3_000);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (demoStartedRef.current || companionToken) return;
@@ -2970,6 +2986,12 @@ export default function Home() {
           );
           consumeBridgeEvent(entry.event as BridgeEvent);
         }
+        if ((body.events?.length ?? 0) > 0) {
+          window.localStorage.setItem(
+            RELAY_CURSOR_KEY,
+            String(relayEventCursor.current),
+          );
+        }
         setBridgeState("connected");
       } catch {
         if (!disposed) setBridgeState("disconnected");
@@ -3139,6 +3161,10 @@ export default function Home() {
     setCompanionTransport(transport);
     setCompanionToken(body.token);
     relayEventCursor.current = Number(body.eventCursor ?? 0);
+    window.localStorage.setItem(
+      RELAY_CURSOR_KEY,
+      String(relayEventCursor.current),
+    );
     setBridgeState("connected");
     const companion = body.companion as
       { pendingApprovals?: BridgeEvent[] } | undefined;
