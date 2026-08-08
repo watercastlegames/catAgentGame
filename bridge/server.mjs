@@ -1022,10 +1022,13 @@ async function startClaudeTurn(threadId, body) {
 const pmWorkerFallbackSessions = new Map();
 
 async function startPmWorkerFallback(body) {
-  if (!claudeAdapter || !claudeAuth.loggedIn) {
+  // PM Worker 대신 답하는 엔진을 내 PC Codex 로 둔다.
+  // (Claude Code 로 되돌리려면 createSession()->claudeAdapter.createSession(),
+  //  startCodexTurn->startClaudeTurn 으로 바꾸면 된다.)
+  const client = await ensureAppServer().catch(() => null);
+  if (!client?.ready) {
     throw new Error(
-      claudeAuth.detail ||
-        "PM Worker와 내 PC Claude Code가 모두 연결되어 있지 않습니다.",
+      "PM Worker와 내 PC Codex가 모두 연결되어 있지 않습니다.",
     );
   }
   const conversationThreadId = safeText(
@@ -1037,14 +1040,15 @@ async function startPmWorkerFallback(body) {
   }
   let threadId = pmWorkerFallbackSessions.get(conversationThreadId);
   if (!threadId) {
-    const session = claudeAdapter.createSession();
+    // provider 인자 없이 만들면 Codex 스레드가 생성된다.
+    const session = await createSession();
     threadId = session.id;
     pmWorkerFallbackSessions.set(conversationThreadId, threadId);
     sessionListCache.clear();
   }
   return {
-    fallbackProvider: "local-claude",
-    ...(await startClaudeTurn(threadId, {
+    fallbackProvider: "local-codex",
+    ...(await startCodexTurn(threadId, {
       ...body,
       conversationThreadId,
     })),

@@ -984,7 +984,7 @@ export default function Home() {
   const selectedLocalProviderLabel =
     selectedLocalProvider === "claude" ? "Claude Code" : "Codex";
   const pmWorkerLocalFallbackReady = Boolean(
-    companionToken && bridgeState === "connected" && claudeAvailable,
+    companionToken && bridgeState === "connected" && codexAvailable,
   );
   const pmWorkerReady =
     pmWorkerConnectionState === "ready" || pmWorkerLocalFallbackReady;
@@ -1010,7 +1010,7 @@ export default function Home() {
         ? pmWorkerConnectionState === "ready"
           ? `PM Worker AI 연결됨 · 대화당 조개 ${AI_CHAT_SHELL_COST}개`
           : pmWorkerLocalFallbackReady
-            ? `PM Worker AI 자동 복구 · 내 PC Claude Code 연결됨 · 대화당 조개 ${AI_CHAT_SHELL_COST}개`
+            ? `PM Worker AI 자동 복구 · 내 PC Codex 연결됨 · 대화당 조개 ${AI_CHAT_SHELL_COST}개`
           : pmWorkerConnectionState === "loading"
             ? "PM Worker AI 연결 확인 중"
             : pmWorkerConnectionState === "unavailable"
@@ -3861,7 +3861,7 @@ export default function Home() {
       !pmWorkerReady
     ) {
       setToast(
-        "PM Worker AI가 멈춰 있고 내 PC Claude Code도 연결되지 않았어요.",
+        "PM Worker AI가 멈춰 있고 내 PC Codex도 연결되지 않았어요.",
       );
       return;
     }
@@ -4018,7 +4018,7 @@ export default function Home() {
         title:
           pmWorkerConnectionState === "ready"
             ? "ProjectManager 워커가 답변을 작성하고 있어요"
-            : "내 PC Claude Code가 PM Worker를 대신해 답변하고 있어요",
+            : "내 PC Codex가 PM Worker를 대신해 답변하고 있어요",
         detail: "선택한 고양이가 답변을 기다리고 있어요.",
       });
       setPrompt("");
@@ -4041,7 +4041,7 @@ export default function Home() {
         const body = (await response.json()) as { error?: string };
         if (!response.ok) {
           throw new Error(
-            body.error ?? "내 PC Claude Code 자동 복구에 실패했어요.",
+            body.error ?? "내 PC Codex 자동 복구에 실패했어요.",
           );
         }
         delegatedToLocalFallback = true;
@@ -6168,7 +6168,7 @@ export default function Home() {
                       {pmWorkerConnectionState === "ready"
                         ? "PM Worker AI가 연결됐어요"
                         : pmWorkerLocalFallbackReady
-                          ? "PM Worker AI를 내 PC Claude Code로 자동 복구했어요"
+                          ? "PM Worker AI를 내 PC Codex로 자동 복구했어요"
                         : pmWorkerConnectionState === "loading"
                           ? "PM Worker AI를 확인하고 있어요"
                           : pmWorkerConnectionState === "unavailable"
@@ -6178,7 +6178,7 @@ export default function Home() {
                     <p>
                       {pmWorkerLocalFallbackReady &&
                       pmWorkerConnectionState !== "ready"
-                        ? `공용 워커 인증이 끊겨도 질문을 멈추지 않고, 연결된 내 PC Claude Code가 같은 고양이 대화창으로 답변합니다. 질문마다 조개 ${AI_CHAT_SHELL_COST}개를 사용해요.`
+                        ? `공용 워커 인증이 끊겨도 질문을 멈추지 않고, 연결된 내 PC Codex가 같은 고양이 대화창으로 답변합니다. 질문마다 조개 ${AI_CHAT_SHELL_COST}개를 사용해요.`
                         : pmWorkerConnectionState === "unavailable"
                         ? "같은 오류 답변을 반복하지 않도록 질문 전송을 멈췄어요. 지금 바로 사용할 수 있는 내 PC Claude Code 또는 Codex로 전환해 주세요."
                         : `ProjectManager 서버의 대화형 AI 워커를 사용합니다. 질문할 때마다 조개 ${AI_CHAT_SHELL_COST}개가 차감되며, 연결 실패 시에는 자동으로 돌려드려요.`}
@@ -6222,7 +6222,7 @@ export default function Home() {
                           : "연결 다시 확인"}
                       </button>
                     )}
-                    {/* 서버 워커가 안 되면 내 PC Claude Code 가 대신 답한다.
+                    {/* 서버 워커가 안 되면 내 PC Codex 가 대신 답한다.
                         그러려면 이 PC 를 6자리 코드로 한 번 연결해 둬야 한다.
                         아직 연결 전이면 코드 입력을 보여준다. */}
                     {!companionToken && (
@@ -6231,7 +6231,7 @@ export default function Home() {
                         onSubmit={pairCompanion}
                       >
                         <label htmlFor="pm-pairing-code">
-                          내 PC Claude Code 연결 코드 (최초 1회)
+                          내 PC Codex 연결 코드 (최초 1회)
                         </label>
                         <div className="pairing-controls">
                           <input
