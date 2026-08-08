@@ -133,16 +133,15 @@ export function visibleCompanionBackends(edition = APP_EDITION) {
   );
 }
 
-/* 기본은 내 PC 의 Claude Code 다.
-   PM Worker(서버)는 대화 워커가 API 키를 잃어 답하지 못하고,
-   무료 AI(Puter)는 대화 전에 로그인 창을 넘어야 한다.
-   내 PC 연결은 이미 깔려 있는 Claude Code 를 그대로 쓰므로
-   키도 로그인도 없이 답이 온다 — 6자리 코드만 한 번 넣으면 된다.
-   나머지 선택지는 연결 화면에 그대로 남는다. */
+/* 기본은 PM Worker 다 — 사용자가 아는 "공용 AI" 이름을 유지한다.
+   서버 대화 워커가 인증을 잃어 답하지 못하면, 게임이 자동으로
+   내 PC Claude Code(브리지)로 위임한다(delegateToLocalClaude).
+   그래서 6자리 코드로 한 번 연결해 두면 서버 상태와 무관하게 답이 온다.
+   sidak.kr 미러에서는 cloud 릴레이 프록시를 타고 이 PC 에 닿는다. */
 export function defaultCompanionBackend(
   _edition = APP_EDITION,
 ): CompanionBackendId {
-  return "local-claude";
+  return "pm-worker";
 }
 
 export function parseCompanionBackend(

@@ -5,17 +5,18 @@ import { AI_CHAT_SHELL_COST } from "./ai-chat-economy.mjs";
 
 export const PM_WORKER_CHAT_SHELL_COST = AI_CHAT_SHELL_COST;
 const PM_WORKER_SESSION_KEY = "agent-forest-pm-worker-sessions-v1";
-const PM_WORKER_SERVICE_ORIGIN =
-  "https://agent-forest-raccoon.sminia82.chatgpt.site";
+const PM_WORKER_SIDAK_RELAY =
+  "/autodev/GameCreator/catAgentGame/pm-worker.asp";
 
 function pmWorkerApiUrl(path: string) {
   if (typeof window === "undefined") return path;
-  /* sidak.kr 판은 정적 복사본이라 자체 /api 라우트가 없다. AI 비밀키를
-     브라우저에 노출하지 않고 Sites Worker의 서버 릴레이만 호출한다. */
-  return window.location.hostname === "sidak.kr" ||
-    window.location.hostname === "www.sidak.kr"
-    ? `${PM_WORKER_SERVICE_ORIGIN}${path}`
-    : path;
+  /* sidak.kr 판은 정적 복사본이라 /api 라우트가 없다. 같은 IIS 서버의
+     Classic ASP 중계기를 사용해 AI 비밀키를 브라우저에 노출하지 않는다. */
+  const isSidak =
+    window.location.hostname === "sidak.kr" ||
+    window.location.hostname === "www.sidak.kr";
+  if (!isSidak) return path;
+  return `${PM_WORKER_SIDAK_RELAY}?action=${path.endsWith("/health") ? "health" : "chat"}`;
 }
 
 export type PmWorkerConnectionState =

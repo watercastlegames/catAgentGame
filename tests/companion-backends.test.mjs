@@ -32,7 +32,7 @@ test("public builds expose both local coding CLIs and start on the shared worker
   assert.equal(visible[1].title, "Claude Code (내 PC)");
   // 처음 들어온 사람이 설치·페어링 없이 바로 한 번 시켜볼 수 있어야 해서
   // 두 판 모두 pm-worker 로 시작한다. 내 PC 연결은 고르는 선택지로 남는다.
-  assert.equal(backends.defaultCompanionBackend("public"), "local-claude");
+  assert.equal(backends.defaultCompanionBackend("public"), "pm-worker");
 });
 
 test("service builds expose all six backends but do not fake owner CLI readiness", () => {
@@ -44,14 +44,14 @@ test("service builds expose all six backends but do not fake owner CLI readiness
     visible.find((backend) => backend.id === "local-claude")?.available,
     "requires-pairing",
   );
-  assert.equal(backends.defaultCompanionBackend("service"), "local-claude");
+  assert.equal(backends.defaultCompanionBackend("service"), "pm-worker");
 });
 
 test("stored backend selection is constrained to the current edition", () => {
   // public 판에 없는 값이 저장돼 있으면 기본값으로 되돌린다.
   assert.equal(
     backends.parseCompanionBackend("chatgpt-cli", "public"),
-    "local-claude",
+    "pm-worker",
   );
   assert.equal(
     backends.parseCompanionBackend("local-session", "public"),

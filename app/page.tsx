@@ -6222,6 +6222,43 @@ export default function Home() {
                           : "연결 다시 확인"}
                       </button>
                     )}
+                    {/* 서버 워커가 안 되면 내 PC Claude Code 가 대신 답한다.
+                        그러려면 이 PC 를 6자리 코드로 한 번 연결해 둬야 한다.
+                        아직 연결 전이면 코드 입력을 보여준다. */}
+                    {!companionToken && (
+                      <form
+                        className="pairing-form pm-worker-pairing"
+                        onSubmit={pairCompanion}
+                      >
+                        <label htmlFor="pm-pairing-code">
+                          내 PC Claude Code 연결 코드 (최초 1회)
+                        </label>
+                        <div className="pairing-controls">
+                          <input
+                            id="pm-pairing-code"
+                            value={pairingCode}
+                            onChange={(event) =>
+                              setPairingCode(
+                                event.target.value
+                                  .replace(/\D/g, "")
+                                  .slice(0, 6),
+                              )
+                            }
+                            inputMode="numeric"
+                            pattern="[0-9]{6}"
+                            maxLength={6}
+                            placeholder="000000"
+                            autoComplete="one-time-code"
+                          />
+                          <button
+                            type="submit"
+                            disabled={pairingBusy || pairingCode.length !== 6}
+                          >
+                            {pairingBusy ? "연결 중" : "연결"}
+                          </button>
+                        </div>
+                      </form>
+                    )}
                   </div>
                 ) : selectedCompanionBackend?.available === "server-pending" ? (
                   <div className="ui-empty-state state-error">

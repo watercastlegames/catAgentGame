@@ -18,6 +18,7 @@ const STAGE_HEIGHT = 932;
 const OUT_WIDTH = 1080;
 const OUT_HEIGHT = 1920;
 const COUNTDOWN_SECONDS = 3;
+const LOCAL_GAME_URL = "http://localhost:3000/";
 
 type Phase = "idle" | "arming" | "countdown" | "recording" | "done";
 
@@ -77,9 +78,15 @@ export default function PlayRecordPage() {
   }, []);
 
   const gameUrl = useCallback(() => {
-    // /play-record 에서 게임 뿌리로 올라간다. 하위 폴더 배포(미러)에서도 맞게 잡힌다.
-    const path = window.location.pathname.replace(/play-record\/?$/, "");
-    return new URL(path || "/", window.location.origin).href;
+    /* 이 녹화 페이지가 올라간 바로 그 사이트의 게임을 연다.
+       sidak.kr/.../play-record 에서 열면 sidak.kr 게임이 뜨고,
+       그 게임은 cloud 릴레이로 내 PC Claude Code 와 대화가 된다.
+       (개발용으로 localhost 에서 열면 localhost 게임을 연다) */
+    if (typeof window !== "undefined") {
+      const path = window.location.pathname.replace(/play-record\/?$/, "");
+      return new URL(path || "/", window.location.origin).href;
+    }
+    return LOCAL_GAME_URL;
   }, []);
 
   const stopEverything = useCallback(() => {
