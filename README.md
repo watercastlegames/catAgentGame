@@ -20,6 +20,19 @@
 
 <p align="center"><b>이미지를 누르면 공개 화면을 바로 열 수 있습니다.</b></p>
 
+## 게임 플레이 미리보기
+
+실제 브라우저에서 고양이가 월드를 돌아다니고, 러닝휠을 이용하며, 여러 에이전트가
+함께 움직이는 모습을 담았습니다.
+
+| 대표 게임 화면 | 12초 플레이 미리보기 |
+|---|---|
+| <img src="docs/readme-assets/agent-forest-gameplay.jpg" width="420" alt="네 마리 고양이 에이전트가 해변 사무실을 돌아다니는 Agent Forest 게임 화면"> | <a href="docs/readme-assets/agent-forest-gameplay.mp4"><img src="docs/readme-assets/agent-forest-gameplay-preview.gif" width="420" alt="고양이 이동과 러닝휠 이용을 보여 주는 Agent Forest 플레이 미리보기"></a> |
+
+<p align="center">
+  <a href="docs/readme-assets/agent-forest-gameplay.mp4"><b>▶ 20초 전체 플레이 영상 보기 (MP4, 1.5MB)</b></a>
+</p>
+
 ## 어떤 프로젝트인가요?
 
 Agent Forest는 **실제 AI 개발 세션을 연결하는 도구**와 **작업 상태를 읽기 쉬운
